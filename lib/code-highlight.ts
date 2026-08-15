@@ -52,7 +52,7 @@ export function highlightCodeBlocks(container: HTMLElement | null) {
     const result = highlightSource(source, requestedLanguage);
     code.innerHTML = result.html;
     code.className = `hljs language-${result.language}`;
-    code.dataset.language = result.language;
+    code.dataset.language = requestedLanguage;
     if (pre) pre.dataset.language = codeLanguages.find((item) => item.value === result.language)?.label || result.language.toUpperCase();
   });
 }

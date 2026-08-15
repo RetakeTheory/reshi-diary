@@ -4,7 +4,10 @@ import { getApiAdmin } from "../../../admin/admin-auth";
 const MAX_FILE_SIZE = 1024 * 1024;
 
 function safeName(value: string) {
-  return value.normalize("NFKC").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "attachment";
+  const withoutControlCharacters = [...value.normalize("NFKC")]
+    .map((character) => character.charCodeAt(0) < 32 ? "-" : character)
+    .join("");
+  return withoutControlCharacters.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "attachment";
 }
 
 function encodeKey(key: string) {
@@ -17,16 +20,17 @@ export async function POST(request: Request) {
 
   const form = await request.formData();
   const file = form.get("file");
-  if (!(file instanceof File)) return Response.json({ error: "请选择要上传的文件" }, { status: 400 });
-  if (file.size > MAX_FILE_SIZE) return Response.json({ error: "单个文件不能超过 1 MB" }, { status: 413 });
+  if (!(file instanceof File)) return Response.json({ error: "请选择要上传的图片" }, { status: 400 });
+  if (!file.type.startsWith("image/")) return Response.json({ error: "这里只接收图片文件" }, { status: 415 });
+  if (file.size > MAX_FILE_SIZE) return Response.json({ error: "单张图片不能超过 1 MB" }, { status: 413 });
 
   const filename = safeName(file.name);
-  const previewable = form.get("previewable") === "true";
+  const previewable = true;
   const key = `${Date.now()}-${crypto.randomUUID()}`;
   await saveUpload({
     key,
     filename,
-    contentType: file.type || "application/octet-stream",
+    contentType: file.type,
     size: file.size,
     previewable,
     data: await file.arrayBuffer(),

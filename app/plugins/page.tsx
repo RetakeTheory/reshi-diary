@@ -23,6 +23,10 @@ export default function PluginsPage() {
           <div className="plugin-card-art number-art" aria-hidden="true"><span>🎲</span><i>02</i></div>
           <div><small>RANDOM DROP / 02</small><h2>随机数</h2><p>输入上限和数量，不重复抽取，让数字替你决定支线走向。</p><b>召唤数字 <ArrowIcon /></b></div>
         </a>
+        <a className="plugin-card" href="/plugins/prize-wheel">
+          <div className="plugin-card-art wheel-art" aria-hidden="true"><span>🎡</span><i>03</i></div>
+          <div><small>LUCKY DRAW / 03</small><h2>自定义抽奖</h2><p>自己填写奖项，平分概率或设置权重，然后看转盘把谁送上领奖台。</p><b>打开转盘 <ArrowIcon /></b></div>
+        </a>
       </section>
     </main>
   );
