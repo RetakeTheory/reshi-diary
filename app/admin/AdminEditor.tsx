@@ -3,6 +3,7 @@
 import { MouseEvent, SyntheticEvent, useMemo, useRef, useState } from "react";
 import katex from "katex";
 import ArrowIcon from "../ArrowIcon";
+import { codeLanguages, highlightCodeBlocks, highlightSource } from "../../lib/code-highlight";
 
 type AdminPost = {
   id: number; title: string; slug: string; excerpt: string; content: string; category: string;
@@ -23,6 +24,14 @@ function hydrateFormulas(container: HTMLElement | null) {
   });
 }
 
+function ImageToolbarIcon() {
+  return <svg className="toolbar-flat-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><circle cx="8.5" cy="9" r="1.6" /><path d="m5 17 4.4-4.4 3.3 3.2 2.4-2.4L19 17.3" /></svg>;
+}
+
+function FileToolbarIcon() {
+  return <svg className="toolbar-flat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h7.4l3.6 3.7v13.3h-11z" /><path d="M13.5 3.8v4h3.8M9.5 12h5M9.5 15.5h5" /></svg>;
+}
+
 export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[] }) {
   const [items, setItems] = useState(initialPosts);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -31,6 +40,9 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
   const [message, setMessage] = useState("");
   const [formulaOpen, setFormulaOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [codeLanguage, setCodeLanguage] = useState("auto");
+  const [codeText, setCodeText] = useState("");
   const [tableRows, setTableRows] = useState(3);
   const [tableColumns, setTableColumns] = useState(3);
   const [latex, setLatex] = useState("E = mc^2");
@@ -114,17 +126,30 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
     setTableOpen(false);
   }
 
-  function insertCodeBlock(event: MouseEvent<HTMLButtonElement>) {
+  function openCodePanel(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
-    restoreSelection();
+    rememberSelection();
     const selection = window.getSelection();
     const selectedText = selection?.rangeCount ? selection.getRangeAt(0).toString() : "";
+    setCodeText(selectedText);
+    setFormulaOpen(false); setTableOpen(false); setCodeOpen((open) => !open);
+  }
+
+  function insertCodeBlock(event: SyntheticEvent) {
+    event.preventDefault();
+    const source = codeText.trim() ? codeText : "在这里输入代码";
+    const result = highlightSource(source, codeLanguage);
     const pre = document.createElement("pre");
     const code = document.createElement("code");
-    code.textContent = selectedText || "在这里输入代码";
+    const languageLabel = codeLanguages.find((item) => item.value === result.language)?.label || result.language.toUpperCase();
+    pre.dataset.language = languageLabel;
+    code.dataset.language = result.language;
+    code.className = `hljs language-${result.language}`;
+    code.innerHTML = result.html;
     pre.append(code);
     insertNode(pre);
     insertNode(document.createElement("p"));
+    setCodeOpen(false); setCodeText(""); setCodeLanguage("auto");
   }
 
   async function upload(file: File, previewable: boolean) {
@@ -172,7 +197,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
 
   function edit(post: AdminPost) {
     setEditingId(post.id); setForm({ title: post.title, excerpt: post.excerpt, category: post.category });
-    if (editorRef.current) { editorRef.current.innerHTML = looksLikeHtml(post.content) ? post.content : legacyContent(post.content); hydrateFormulas(editorRef.current); }
+    if (editorRef.current) { editorRef.current.innerHTML = looksLikeHtml(post.content) ? post.content : legacyContent(post.content); hydrateFormulas(editorRef.current); highlightCodeBlocks(editorRef.current); }
     setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -223,18 +248,23 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
               <div className="toolbar-group">
                 <button type="button" title="无序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertUnorderedList")}>•≡</button>
                 <button type="button" title="有序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertOrderedList")}>1.</button>
-                <button type="button" title="代码块" onMouseDown={insertCodeBlock}>&lt;/&gt;</button>
+                <button type="button" title="插入代码块" onMouseDown={openCodePanel}>&lt;/&gt;</button>
               </div>
               <div className="toolbar-group toolbar-insert">
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setFormulaOpen((open) => !open); }}>∑ <span>公式</span></button>
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setTableOpen((open) => !open); }}>▦ <span>表格</span></button>
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}>▧ <span>图片</span></button>
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><ArrowIcon direction="down" /> <span>文件</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setCodeOpen(false); setFormulaOpen((open) => !open); }}>∑ <span>公式</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setCodeOpen(false); setTableOpen((open) => !open); }}>▦ <span>表格</span></button>
+                <button type="button" title="插入图片" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}><ImageToolbarIcon /> <span>图片</span></button>
+                <button type="button" title="插入文件" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><FileToolbarIcon /> <span>文件</span></button>
               </div>
             </div>
-            {formulaOpen && <div className="formula-panel"><label><span>LaTeX 公式</span><input autoFocus value={latex} onChange={(e) => setLatex(e.target.value)} placeholder="例如：\\frac{a}{b}" /></label><label className="formula-mode"><input type="checkbox" checked={displayFormula} onChange={(e) => setDisplayFormula(e.target.checked)} /> 独占一行</label><button type="button" onClick={insertFormula}>插入公式</button></div>}
+            {codeOpen && <div className="code-panel">
+              <label><span>代码语言</span><select value={codeLanguage} onChange={(event) => setCodeLanguage(event.target.value)}>{codeLanguages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}</select></label>
+              <label className="code-source"><span>代码内容</span><textarea value={codeText} onChange={(event) => setCodeText(event.target.value)} spellCheck={false} placeholder="粘贴代码；选择自动识别也可以。" /></label>
+              <button type="button" onClick={insertCodeBlock}>高亮并插入</button>
+            </div>}
+            {formulaOpen && <div className="formula-panel"><label><span>LaTeX 公式</span><input value={latex} onChange={(e) => setLatex(e.target.value)} placeholder="例如：\\frac{a}{b}" /></label><label className="formula-mode"><input type="checkbox" checked={displayFormula} onChange={(e) => setDisplayFormula(e.target.checked)} /> 独占一行</label><button type="button" onClick={insertFormula}>插入公式</button></div>}
             {tableOpen && <div className="table-panel"><label><span>行数</span><input type="number" min="1" max="12" value={tableRows} onChange={(e) => setTableRows(Number(e.target.value))} /></label><label><span>列数</span><input type="number" min="1" max="8" value={tableColumns} onChange={(e) => setTableColumns(Number(e.target.value))} /></label><button type="button" onClick={insertTable}>插入表格</button></div>}
-            <div ref={editorRef} className="rich-editor" contentEditable suppressContentEditableWarning data-placeholder="开始写作……" onKeyUp={rememberSelection} onMouseUp={rememberSelection} />
+            <div ref={editorRef} className="rich-editor" contentEditable role="textbox" tabIndex={0} aria-multiline="true" suppressContentEditableWarning data-placeholder="开始写作……" onKeyUp={rememberSelection} onMouseUp={rememberSelection} />
             <div className="attachment-options"><label><input type="checkbox" checked={attachmentPreview} onChange={(e) => setAttachmentPreview(e.target.checked)} /> 插入文件时允许在线预览</label><span>{uploading || "使用 D1 轻量存储 · 单个文件不超过 1 MB"}</span></div>
             <input ref={imageInputRef} className="sr-only" type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && addImage(e.target.files[0])} />
             <input ref={fileInputRef} className="sr-only" type="file" onChange={(e) => e.target.files?.[0] && addAttachment(e.target.files[0])} />

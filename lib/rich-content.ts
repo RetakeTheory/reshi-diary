@@ -33,6 +33,7 @@ export function sanitizeRichHtml(input: string) {
       if (name === "alt" && tag === "img") attributes.push(`alt="${escapeAttribute(value.slice(0, 180))}"`);
       if (name === "data-latex" && (tag === "span" || tag === "div")) attributes.push(`data-latex="${escapeAttribute(value.slice(0, 1500))}"`);
       if (name === "data-display" && (tag === "span" || tag === "div")) attributes.push(`data-display="${value === "block" ? "block" : "inline"}"`);
+      if (name === "data-language" && (tag === "pre" || tag === "code") && /^[a-z0-9+#-]{1,30}$/i.test(value)) attributes.push(`data-language="${escapeAttribute(value)}"`);
       if (name === "data-previewable" && tag === "div") attributes.push(`data-previewable="${value === "true" ? "true" : "false"}"`);
       if (name === "style") {
         const alignment = value.match(/^\s*text-align\s*:\s*(left|center|right)\s*;?\s*$/i);

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import katex from "katex";
+import { highlightCodeBlocks } from "../../../lib/code-highlight";
 
 export default function RichPostContent({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -12,6 +13,7 @@ export default function RichPostContent({ html }: { html: string }) {
         displayMode: node.dataset.display === "block",
       });
     });
+    highlightCodeBlocks(ref.current);
   }, [html]);
   return <div ref={ref} className="rich-content" dangerouslySetInnerHTML={{ __html: html }} />;
 }
