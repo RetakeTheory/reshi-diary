@@ -1,6 +1,7 @@
 "use client";
 
-import { ClipboardEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { ClipboardEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { browserSupportsWebAuthn, startAuthentication, type PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
 import ArrowIcon from "../../ArrowIcon";
 
 const CODE_LENGTH = 6;
@@ -11,6 +12,7 @@ export default function EmailLogin({ email }: { email: string }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const passkeySupported = useSyncExternalStore(() => () => undefined, browserSupportsWebAuthn, () => false);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const verifyingRef = useRef(false);
 
@@ -51,6 +53,34 @@ export default function EmailLogin({ email }: { email: string }) {
       inputRefs.current[0]?.focus();
       inputRefs.current[0]?.select();
     } finally { verifyingRef.current = false; setBusy(false); }
+  }
+
+  async function signInWithPasskey() {
+    setBusy(true); setMessage("");
+    try {
+      const optionsResponse = await fetch("/api/admin/auth/passkey-options", { method: "POST" });
+      const optionsResult = await optionsResponse.json() as {
+        flowId?: string;
+        options?: PublicKeyCredentialRequestOptionsJSON;
+        error?: string;
+      };
+      if (!optionsResponse.ok || !optionsResult.flowId || !optionsResult.options) {
+        throw new Error(optionsResult.error || "暂时无法使用 Passkey 登录");
+      }
+
+      const authentication = await startAuthentication({ optionsJSON: optionsResult.options });
+      const verifyResponse = await fetch("/api/admin/auth/passkey-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flowId: optionsResult.flowId, response: authentication }),
+      });
+      const verifyResult = await verifyResponse.json() as { ok?: boolean; error?: string };
+      if (!verifyResponse.ok) throw new Error(verifyResult.error || "Passkey 验证失败");
+      window.location.assign("/admin");
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "";
+      setMessage(name === "NotAllowedError" ? "已取消 Passkey 验证" : error instanceof Error ? error.message : "Passkey 登录失败");
+    } finally { setBusy(false); }
   }
 
   function verify(event: FormEvent) {
@@ -130,7 +160,13 @@ export default function EmailLogin({ email }: { email: string }) {
         </div>
       </div>}
       {message && <div className={`login-status ${message.startsWith("验证码已发送") ? "success" : ""}`} role="status">{message}</div>}
-      {step === "email" ? <button className="login-action" type="button" disabled={busy} onClick={sendCode}>{busy ? "正在发送…" : <>发送邮箱验证码 <ArrowIcon /></>}</button> : <>
+      {step === "email" ? <>
+        <button className="login-action" type="button" disabled={busy} onClick={sendCode}>{busy ? "正在发送…" : <>发送邮箱验证码 <ArrowIcon /></>}</button>
+        {passkeySupported && <>
+          <div className="login-divider"><span>或</span></div>
+          <button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><span className="passkey-symbol" aria-hidden="true">⌁</span> 使用 Passkey 登录</button>
+        </>}
+      </> : <>
         <button className="login-action" type="submit" disabled={busy}>{busy ? "正在验证…" : <>验证并进入后台 <ArrowIcon /></>}</button>
         <button className="login-resend" type="button" disabled={busy || cooldown > 0} onClick={sendCode}>{cooldown > 0 ? `${cooldown} 秒后可重新发送` : "重新发送验证码"}</button>
       </>}

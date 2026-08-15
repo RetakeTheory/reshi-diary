@@ -13,9 +13,9 @@ export default async function AdminLoginPage() {
       <section className="login-card">
         <div className="login-mark">✦</div>
         <p>ADMIN ACCESS / 管理员登录</p>
-        <h1>验证码会直接<br />发送到邮箱。</h1>
+        <h1>安全登录，<br />由你选择。</h1>
         <EmailLogin email={ADMIN_EMAIL} />
-        <p className="login-note">验证码仅在 10 分钟内有效，验证后立即失效。本网站不会保存邮箱密码。</p>
+        <p className="login-note">验证码会发送到管理员邮箱且仅在 10 分钟内有效；设置 Passkey 后也可直接使用设备验证。</p>
         <a className="login-back" href="/"><ArrowIcon direction="left" /> 返回首页</a>
       </section>
     </main>

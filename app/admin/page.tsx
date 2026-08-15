@@ -1,9 +1,11 @@
 import { desc } from "drizzle-orm";
+import Link from "next/link";
 import { getDb } from "../../db";
 import { posts } from "../../db/schema";
 import { ensureDatabaseSchema } from "../../db/runtime";
 import { requireAdmin } from "./admin-auth";
 import AdminEditor from "./AdminEditor";
+import PasskeyManager from "./PasskeyManager";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +24,10 @@ export default async function AdminPage() {
   return (
     <main className="admin-shell">
       <header className="admin-topbar">
-        <a className="brand" href="/"><span>RE</span>reshi 的日记本</a>
+        <Link className="brand" href="/"><span>RE</span>reshi 的日记本</Link>
         <div><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
+      <PasskeyManager />
       <AdminEditor initialPosts={initialPosts} />
     </main>
   );
