@@ -32,5 +32,35 @@ export const posts = sqliteTable(
   ],
 );
 
+export const adminLoginCodes = sqliteTable(
+  "admin_login_codes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    email: text("email").notNull(),
+    codeHash: text("code_hash").notNull(),
+    salt: text("salt").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    usedAt: integer("used_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [index("idx_admin_login_codes_email_created_at").on(table.email, table.createdAt)],
+);
+
+export const adminSessions = sqliteTable(
+  "admin_sessions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    tokenHash: text("token_hash").notNull(),
+    email: text("email").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_admin_sessions_token_hash").on(table.tokenHash),
+    index("idx_admin_sessions_expires_at").on(table.expiresAt),
+  ],
+);
+
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;

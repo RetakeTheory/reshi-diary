@@ -8,6 +8,13 @@
       "when": 1786805544871,
       "tag": "0000_harsh_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786811204619,
+      "tag": "0001_sloppy_iron_monger",
+      "breakpoints": true
     }
   ]
 }

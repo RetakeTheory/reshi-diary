@@ -1,43 +1,33 @@
-import { eq } from "drizzle-orm";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { ChatGPTUser, getChatGPTUser, requireChatGPTUser } from "../chatgpt-auth";
-import { getDb } from "../../db";
+import { getD1 } from "../../db/runtime";
 import { ensureDatabaseSchema } from "../../db/runtime";
-import { admins } from "../../db/schema";
+import { ADMIN_EMAIL, ADMIN_SESSION_COOKIE, hashValue } from "../../lib/admin-email-auth";
 
-export const ADMIN_EMAIL = "reshi1417@163.com";
+export { ADMIN_EMAIL } from "../../lib/admin-email-auth";
 
-export async function getAdminAccess(user: ChatGPTUser) {
+export async function getAdminSession() {
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+  if (!token) return null;
   await ensureDatabaseSchema();
-  const db = await getDb();
-  const [existing] = await db.select().from(admins).where(eq(admins.userId, user.userId)).limit(1);
-  if (existing) return existing;
-  if (user.email.trim().toLowerCase() !== ADMIN_EMAIL) return null;
-
-  try {
-    const [admin] = await db.insert(admins).values({
-      userId: user.userId,
-      email: ADMIN_EMAIL,
-      displayName: "reshi",
-      createdAt: new Date(),
-    }).returning();
-    return admin;
-  } catch {
-    const [admin] = await db.select().from(admins).where(eq(admins.userId, user.userId)).limit(1);
-    return admin || null;
+  const db = await getD1();
+  const tokenHash = await hashValue(token);
+  const session = await db.prepare("SELECT email, expires_at FROM admin_sessions WHERE token_hash = ? LIMIT 1")
+    .bind(tokenHash).first<{ email: string; expires_at: number }>();
+  if (!session || session.email !== ADMIN_EMAIL || session.expires_at <= Date.now()) {
+    if (session) await db.prepare("DELETE FROM admin_sessions WHERE token_hash = ?").bind(tokenHash).run();
+    return null;
   }
+  return { email: session.email, displayName: "reshi", tokenHash };
 }
 
-export async function requireAdmin(returnTo = "/admin") {
-  const user = await requireChatGPTUser(returnTo);
-  const admin = await getAdminAccess(user);
-  if (!admin) redirect("/admin/login?denied=1");
-  return { user, admin };
+export async function requireAdmin() {
+  const admin = await getAdminSession();
+  if (!admin) redirect("/admin/login");
+  return { admin };
 }
 
 export async function getApiAdmin() {
-  const user = await getChatGPTUser();
-  if (!user) return null;
-  const admin = await getAdminAccess(user);
-  return admin ? { user, admin } : null;
+  const admin = await getAdminSession();
+  return admin ? { admin } : null;
 }
