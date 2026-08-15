@@ -1,94 +1,137 @@
-const projects = [
-  {
-    index: "01", title: "微光旅行", type: "品牌体验 / 2026",
-    summary: "为城市短途旅行设计的一套轻量品牌与数字产品，让计划旅程像翻开一本杂志。",
-    tone: "coral", mark: "WEEKEND\nSLOWLY",
-  },
-  {
-    index: "02", title: "见山笔记", type: "产品设计 / 2025",
-    summary: "一个帮助创作者整理碎片灵感、重新发现内容之间联系的写作空间。",
-    tone: "blue", mark: "IDEAS\nCONNECT",
-  },
-  {
-    index: "03", title: "寻常咖啡", type: "网站设计 / 2025",
-    summary: "从一杯日常咖啡出发，建立温暖、克制又有辨识度的线上品牌体验。",
-    tone: "green", mark: "DAILY\nRITUAL",
-  },
+import { desc, eq } from "drizzle-orm";
+import { getDb } from "../db";
+import { posts as postsTable } from "../db/schema";
+import { ensureDatabaseSchema } from "../db/runtime";
+import { demoPosts } from "../data/demo-posts";
+
+export const dynamic = "force-dynamic";
+
+const topics = [
+  ["废柴日常", "12 篇"], ["学习笔记", "08 篇"], ["折腾记录", "10 篇"], ["校园生活", "16 篇"],
 ];
 
-const notes = [
-  { date: "08.12", title: "好设计，往往从删掉一个答案开始" },
-  { date: "07.28", title: "我如何为一个新项目寻找视觉语气" },
-  { date: "06.09", title: "把灵感变成系统，而不是收藏夹" },
-];
+async function loadPublishedPosts() {
+  try {
+    await ensureDatabaseSchema();
+    const db = await getDb();
+    const rows = await db.select().from(postsTable)
+      .where(eq(postsTable.status, "published"))
+      .orderBy(desc(postsTable.publishedAt), desc(postsTable.id)).limit(8);
+    if (rows.length === 0) return demoPosts;
+    const themes = ["violet", "orange", "lime", "blue"];
+    const symbols = ["✦", "○", "↗", "☁"];
+    return rows.map((post, index) => ({
+      date: (post.publishedAt || post.createdAt).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).replaceAll("/", "."),
+      category: post.category,
+      read: `${Math.max(2, Math.ceil(post.content.length / 500))} 分钟`,
+      title: post.title,
+      excerpt: post.excerpt,
+      theme: themes[index % themes.length],
+      symbol: symbols[index % symbols.length],
+      slug: post.slug,
+    }));
+  } catch {
+    return demoPosts;
+  }
+}
 
-export default function Home() {
+export default async function Home() {
+  const displayPosts = await loadPublishedPosts();
   return (
     <main>
       <nav className="nav shell" aria-label="主导航">
-        <a className="logo" href="#top" aria-label="林屿的个人主页">LY<span>●</span></a>
-        <div className="nav-links"><a href="#work">项目</a><a href="#about">关于</a><a href="#notes">笔记</a></div>
-        <a className="nav-contact" href="mailto:hello@example.com">联系我 <span aria-hidden="true">↗</span></a>
+        <a className="brand" href="#top"><span>RE</span>reshi的日记本</a>
+        <div className="nav-links"><a href="#posts">文章</a><a href="#topics">分类</a><a href="#about">关于</a></div>
+        <a className="admin-link" href="/admin">写日记 ↗</a>
       </nav>
 
       <header className="hero shell" id="top">
-        <div className="availability"><i /> 接受 2026 年秋季合作</div>
-        <h1>设计有温度的<br /><em>数字体验。</em></h1>
-        <div className="hero-foot">
-          <p>你好，我是林屿，一名独立产品设计师与前端开发者。<br />我用设计与代码，把复杂想法变成清晰、好用的产品。</p>
-          <a href="#work" className="scroll-hint"><span>向下探索</span><b aria-hidden="true">↓</b></a>
+        <div className="hero-copy">
+          <p className="kicker"><i /> 一个计算机系废柴学生的个人博客</p>
+          <h1>写点代码，<br />也写点<span>没用的话。</span></h1>
+          <p className="intro">你好，我是 reshi，一名努力不挂科的计算机系废柴学生。这里记下学不会的知识、跑不通的代码和普通生活。</p>
+          <a className="primary" href="#posts">开始阅读 <span>→</span></a>
+        </div>
+
+        <div className="hero-scene" aria-hidden="true">
+          <div className="aura aura-one" /><div className="aura aura-two" />
+          <div className="glass-diary">
+            <div className="diary-top"><span>RESHI / 2026</span><i>✦</i></div>
+            <div className="diary-code"><span>01</span><p><b>const</b> today = <em>&quot;still learning&quot;</em>;</p></div>
+            <div className="diary-code"><span>02</span><p><b>if</b> (bug) keepTrying();</p></div>
+            <h2>普通学生的<br />非标准答案。</h2>
+            <div className="diary-foot"><span>计算机系废柴学生</span><b>↗</b></div>
+          </div>
+          <div className="glass-chip chip-one">⌘</div><div className="glass-chip chip-two">{`{ }`}</div>
         </div>
       </header>
 
-      <section className="projects shell" id="work" aria-labelledby="work-title">
-        <div className="section-heading"><p>精选项目 / SELECTED WORK</p><h2 id="work-title">最近做的事</h2></div>
-        <div className="project-list">
-          {projects.map((project) => (
-            <article className="project" key={project.index}>
-              <div className={`project-visual ${project.tone}`} aria-hidden="true">
-                <span>{project.index}</span>
-                <strong>{project.mark.split("\n").map((line) => <span key={line}>{line}</span>)}</strong>
-                <div className="shape shape-one" /><div className="shape shape-two" />
-              </div>
-              <div className="project-copy">
-                <p>{project.type}</p><h3>{project.title}</h3><span>{project.summary}</span>
-                <a href="#contact" aria-label={`了解${project.title}项目`}>查看项目 <b aria-hidden="true">↗</b></a>
-              </div>
+      <section className="posts shell" id="posts" aria-labelledby="posts-title">
+        <div className="section-head">
+          <div><p>RECENT STORIES / 近期文章</p><h2 id="posts-title">刚刚写下的</h2></div>
+          <a href="#archive">查看全部文章 <span>→</span></a>
+        </div>
+        <div className="post-grid">
+          {displayPosts.map((post, index) => (
+            <article className="post-card" key={post.title}>
+              <a href={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
+                <div className={`post-art ${post.theme}`} aria-hidden="true">
+                  <span className="art-index">0{index + 1}</span>
+                  <b>{post.symbol}</b>
+                  <div className="art-disc" /><div className="art-tile" />
+                </div>
+                <div className="post-meta"><span>{post.category}</span><time>{post.date}</time></div>
+                <h3>{post.title}</h3>
+                <p>{post.excerpt}</p>
+                <div className="read-more"><span>{post.read}</span><b>阅读文章 ↗</b></div>
+              </a>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="about" id="about" aria-labelledby="about-title">
-        <div className="shell about-grid">
-          <p className="eyebrow">关于我 / ABOUT</p>
-          <div className="about-copy">
-            <h2 id="about-title">好的体验不必大声，<br /><em>但应该被记住。</em></h2>
-            <div className="about-columns">
-              <p>过去 8 年，我为初创团队与成熟品牌设计数字产品，工作横跨策略、视觉与前端实现。</p>
-              <p>工作之外，我在记录城市、冲煮咖啡，也持续写下关于设计、技术和独立工作的思考。</p>
-            </div>
-            <dl>
-              <div><dt>现在</dt><dd>独立设计师</dd></div><div><dt>坐标</dt><dd>深圳 / 远程</dd></div><div><dt>专注</dt><dd>品牌 · 产品 · 网站</dd></div>
-            </dl>
+      <section className="topics" id="topics" aria-labelledby="topics-title">
+        <div className="shell topics-wrap">
+          <div className="topics-copy">
+            <p>EXPLORE / 探索主题</p>
+            <h2 id="topics-title">从感兴趣的<br />话题开始。</h2>
+            <div className="topic-orbit" aria-hidden="true"><span>+</span><i /><b>✦</b></div>
+          </div>
+          <div className="topic-list">
+            {topics.map(([name, count], index) => (
+              <a href="#posts" key={name}><span>0{index + 1}</span><h3>{name}</h3><small>{count}</small><b>↗</b></a>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="notes shell" id="notes" aria-labelledby="notes-title">
-        <div className="section-heading notes-title"><p>随手记 / NOTES</p><h2 id="notes-title">偶尔写点东西</h2></div>
-        <div className="note-list">
-          {notes.map((note) => (
-            <a href="#contact" className="note" key={note.date}>
-              <time dateTime={`2026-${note.date.replace(".", "-")}`}>{note.date}</time><h3>{note.title}</h3><span aria-hidden="true">↗</span>
-            </a>
-          ))}
+      <section className="about shell" id="about" aria-labelledby="about-title">
+        <div className="avatar-scene" aria-hidden="true">
+          <div className="avatar-card"><div className="face">墨</div><p>KEEP<br />CURIOUS</p></div>
+          <div className="mini-cube">M</div><div className="mini-sphere" />
+        </div>
+        <div className="about-copy">
+          <p>ABOUT THE AUTHOR / 关于作者</p>
+          <h2 id="about-title">你好，我是 reshi。</h2>
+          <div className="about-text">
+            <p>身份仅为计算机系废柴学生。会写一点代码，又经常被代码教育，目前仍在努力理解这个专业。</p>
+            <p>这个博客是我的线上日记本：记学习、记折腾，也记下那些和计算机没有关系的普通日子。</p>
+          </div>
+          <a href="mailto:hello@example.com">和我聊聊 <span>↗</span></a>
         </div>
       </section>
 
-      <footer id="contact">
-        <div className="shell footer-main"><p>有一个想法？</p><h2>一起做点好东西。</h2><a href="mailto:hello@example.com">hello@example.com <span aria-hidden="true">↗</span></a></div>
-        <div className="shell footer-meta"><p>© 2026 林屿</p><div><a href="#">小红书</a><a href="#">即刻</a><a href="#">GitHub</a></div><a href="#top">回到顶部 ↑</a></div>
+      <section className="subscribe" id="subscribe">
+        <div className="shell subscribe-card">
+          <div><p>RESHI&apos;S LETTER / 日记来信</p><h2>新日记，偶尔送到你的邮箱。</h2><span>更新随缘，内容不一定有用，但保证都是本人写的。</span></div>
+          <form><label className="sr-only" htmlFor="email">邮箱地址</label><input id="email" type="email" placeholder="你的邮箱地址" required /><button type="submit">订阅更新 →</button></form>
+          <div className="mail-object" aria-hidden="true"><span>✦</span></div>
+        </div>
+      </section>
+
+      <footer className="footer" id="archive">
+        <div className="shell footer-top"><a className="brand" href="#top"><span>RE</span>reshi的日记本</a><p>代码不一定跑得通，<br />日子还是要继续过。</p></div>
+        <div className="shell footer-bottom"><p>© 2026 reshi</p><div><a href="#">即刻</a><a href="#">小红书</a><a href="#">GitHub</a></div><a href="#top">回到顶部 ↑</a></div>
       </footer>
     </main>
   );
