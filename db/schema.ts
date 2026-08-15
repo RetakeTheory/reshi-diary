@@ -62,6 +62,36 @@ export const adminSessions = sqliteTable(
   ],
 );
 
+export const adminPasskeys = sqliteTable(
+  "admin_passkeys",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    webauthnUserId: text("webauthn_user_id").notNull(),
+    publicKey: blob("public_key", { mode: "buffer" }).notNull(),
+    counter: integer("counter").notNull().default(0),
+    deviceType: text("device_type").notNull(),
+    backedUp: integer("backed_up", { mode: "boolean" }).notNull().default(false),
+    transports: text("transports").notNull().default("[]"),
+    name: text("name").notNull().default("Passkey"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [index("idx_admin_passkeys_email").on(table.email)],
+);
+
+export const adminPasskeyChallenges = sqliteTable(
+  "admin_passkey_challenges",
+  {
+    flowId: text("flow_id").primaryKey(),
+    purpose: text("purpose", { enum: ["registration", "authentication"] }).notNull(),
+    challenge: text("challenge").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("idx_admin_passkey_challenges_expires_at").on(table.expiresAt)],
+);
+
 export const uploads = sqliteTable(
   "uploads",
   {

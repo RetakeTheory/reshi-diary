@@ -52,6 +52,28 @@ export async function ensureDatabaseSchema() {
     )`),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_sessions_token_hash ON admin_sessions (token_hash)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions (expires_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS admin_passkeys (
+      id TEXT PRIMARY KEY NOT NULL,
+      email TEXT NOT NULL,
+      webauthn_user_id TEXT NOT NULL,
+      public_key BLOB NOT NULL,
+      counter INTEGER DEFAULT 0 NOT NULL,
+      device_type TEXT NOT NULL,
+      backed_up INTEGER DEFAULT 0 NOT NULL,
+      transports TEXT DEFAULT '[]' NOT NULL,
+      name TEXT DEFAULT 'Passkey' NOT NULL,
+      created_at INTEGER NOT NULL,
+      last_used_at INTEGER
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_admin_passkeys_email ON admin_passkeys (email)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS admin_passkey_challenges (
+      flow_id TEXT PRIMARY KEY NOT NULL,
+      purpose TEXT NOT NULL,
+      challenge TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_admin_passkey_challenges_expires_at ON admin_passkey_challenges (expires_at)"),
   ]);
   await db.prepare("PRAGMA optimize").run();
   initialized = true;

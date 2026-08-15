@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "reshi-diary",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "reshi-diary-db",
+      "database_id": "552881a1-f18c-4519-b659-7aa2cd648d8b"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "rettheory.top/*",
+      "zone_name": "rettheory.top"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

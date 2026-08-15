@@ -4,8 +4,8 @@ import ThemeControls from "./ThemeControls";
 import "katex/dist/katex.min.css";
 
 export function generateMetadata(): Metadata {
-  const title = "reshi的日记本｜计算机系废柴学生";
-  const description = "reshi 的个人博客，记录学不会的知识、跑不通的代码和普通生活。";
+  const title = "reshi的日记本｜日常碎片存档中";
+  const description = "reshi 的私人存档点，收集日常、脑洞、喜欢的东西和偶尔触发的支线任务。";
   return {
     title,
     description,
