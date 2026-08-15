@@ -3,6 +3,7 @@ import { getDb } from "../../../../db";
 import { ensureDatabaseSchema } from "../../../../db/runtime";
 import { posts } from "../../../../db/schema";
 import { getApiAdmin } from "../../../admin/admin-auth";
+import { richTextToPlainText, sanitizeRichHtml } from "../../../../lib/rich-content";
 
 function slugify(value: string) {
   const slug = value.toLowerCase().trim()
@@ -28,10 +29,11 @@ export async function POST(request: Request) {
     title: string; slug: string; excerpt: string; content: string; category: string; status: "draft" | "published";
   }>;
   const title = body.title?.trim() ?? "";
-  const content = body.content?.trim() ?? "";
+  const content = sanitizeRichHtml(body.content?.trim() ?? "");
+  const plainContent = richTextToPlainText(content);
   const status = body.status === "published" ? "published" : "draft";
   if (!title) return Response.json({ error: "请填写文章标题" }, { status: 400 });
-  if (!content) return Response.json({ error: "请填写文章正文" }, { status: 400 });
+  if (!plainContent && !/<(img|div)[\s>]/i.test(content)) return Response.json({ error: "请填写文章正文" }, { status: 400 });
 
   await ensureDatabaseSchema();
   const now = new Date();
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
     const [post] = await db.insert(posts).values({
       title,
       slug: slugify(body.slug || title),
-      excerpt: body.excerpt?.trim() || content.slice(0, 90),
+      excerpt: body.excerpt?.trim() || plainContent.slice(0, 90),
       content,
       category: body.category?.trim() || "日常",
       status,

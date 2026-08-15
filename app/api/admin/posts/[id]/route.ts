@@ -3,6 +3,7 @@ import { getDb } from "../../../../../db";
 import { ensureDatabaseSchema } from "../../../../../db/runtime";
 import { posts } from "../../../../../db/schema";
 import { getApiAdmin } from "../../../../admin/admin-auth";
+import { richTextToPlainText, sanitizeRichHtml } from "../../../../../lib/rich-content";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -14,7 +15,9 @@ export async function PUT(request: Request, context: RouteContext) {
   const body = await request.json() as Partial<{
     title: string; slug: string; excerpt: string; content: string; category: string; status: "draft" | "published";
   }>;
-  if (!body.title?.trim() || !body.content?.trim()) return Response.json({ error: "标题和正文不能为空" }, { status: 400 });
+  const content = sanitizeRichHtml(body.content?.trim() || "");
+  const plainContent = richTextToPlainText(content);
+  if (!body.title?.trim() || (!plainContent && !/<(img|div)[\s>]/i.test(content))) return Response.json({ error: "标题和正文不能为空" }, { status: 400 });
 
   await ensureDatabaseSchema();
   const db = await getDb();
@@ -25,8 +28,8 @@ export async function PUT(request: Request, context: RouteContext) {
     const [post] = await db.update(posts).set({
       title: body.title.trim(),
       slug: body.slug?.trim() || current.slug,
-      excerpt: body.excerpt?.trim() || body.content.trim().slice(0, 90),
-      content: body.content.trim(),
+      excerpt: body.excerpt?.trim() || plainContent.slice(0, 90),
+      content,
       category: body.category?.trim() || "日常",
       status,
       updatedAt: new Date(),

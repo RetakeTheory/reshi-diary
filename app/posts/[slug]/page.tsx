@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPublicPost } from "../../../lib/posts";
+import { plainTextToRichHtml, sanitizeRichHtml } from "../../../lib/rich-content";
+import RichPostContent from "./RichPostContent";
 
 export const dynamic = "force-dynamic";
 type PageProps = { params: Promise<{ slug: string }> };
@@ -29,9 +31,7 @@ export default async function PostPage({ params }: PageProps) {
           <h1>{post.title}</h1><p>{post.excerpt}</p>
           <div className="article-object" aria-hidden="true"><span>✦</span><i /></div>
         </header>
-        <div className="article-body">
-          {post.content.split(/\n\s*\n/).map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
-        </div>
+        <div className="article-body"><RichPostContent html={sanitizeRichHtml(post.content.includes("<") ? post.content : plainTextToRichHtml(post.content))} /></div>
         <footer className="article-end"><b>写于 reshi 的日记本</b><a href="/#posts">继续阅读 →</a></footer>
       </article>
     </main>
