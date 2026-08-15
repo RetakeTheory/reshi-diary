@@ -2,6 +2,7 @@
 
 import { MouseEvent, SyntheticEvent, useMemo, useRef, useState } from "react";
 import katex from "katex";
+import ArrowIcon from "../ArrowIcon";
 
 type AdminPost = {
   id: number; title: string; slug: string; excerpt: string; content: string; category: string;
@@ -228,7 +229,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setFormulaOpen((open) => !open); }}>∑ <span>公式</span></button>
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setTableOpen((open) => !open); }}>▦ <span>表格</span></button>
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}>▧ <span>图片</span></button>
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}>↓ <span>文件</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><ArrowIcon direction="down" /> <span>文件</span></button>
               </div>
             </div>
             {formulaOpen && <div className="formula-panel"><label><span>LaTeX 公式</span><input autoFocus value={latex} onChange={(e) => setLatex(e.target.value)} placeholder="例如：\\frac{a}{b}" /></label><label className="formula-mode"><input type="checkbox" checked={displayFormula} onChange={(e) => setDisplayFormula(e.target.checked)} /> 独占一行</label><button type="button" onClick={insertFormula}>插入公式</button></div>}
@@ -242,7 +243,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
           <div className="form-actions">
             {editingId && <button type="button" className="button-quiet" onClick={reset}>取消编辑</button>}
             <button type="button" className="button-draft" disabled={busy} onClick={(event) => save(event, "draft")}>保存草稿</button>
-            <button type="submit" className="button-publish" disabled={busy}>{busy ? "正在保存…" : "发布文章 ↗"}</button>
+            <button type="submit" className="button-publish" disabled={busy}>{busy ? "正在保存…" : <>发布文章 <ArrowIcon direction="up-right" /></>}</button>
           </div>
         </form>
       </section>
@@ -250,7 +251,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
         <div className="manager-head"><p>你的文章</p><span>{items.length} 篇</span></div>
         <div className="manager-list">
           {items.length === 0 && <div className="empty-posts"><b>✦</b><p>还没有文章<br />从左边写下第一篇吧</p></div>}
-          {items.map((post) => <article key={post.id} className="manager-item"><div className="manager-meta"><span className={post.status}>{post.status === "published" ? "已发布" : "草稿"}</span><time>{new Date(post.updatedAt).toLocaleDateString("zh-CN")}</time></div><h2>{post.title}</h2><p>{post.category} · {post.excerpt || "暂无摘要"}</p><div><button type="button" onClick={() => edit(post)}>编辑</button>{post.status === "published" && <a href={`/posts/${post.slug}`}>查看 ↗</a>}<button type="button" className="danger" onClick={() => remove(post.id)}>删除</button></div></article>)}
+          {items.map((post) => <article key={post.id} className="manager-item"><div className="manager-meta"><span className={post.status}>{post.status === "published" ? "已发布" : "草稿"}</span><time>{new Date(post.updatedAt).toLocaleDateString("zh-CN")}</time></div><h2>{post.title}</h2><p>{post.category} · {post.excerpt || "暂无摘要"}</p><div><button type="button" onClick={() => edit(post)}>编辑</button>{post.status === "published" && <a href={`/posts/${post.slug}`}>查看 <ArrowIcon direction="up-right" /></a>}<button type="button" className="danger" onClick={() => remove(post.id)}>删除</button></div></article>)}
         </div>
       </aside>
     </div>
