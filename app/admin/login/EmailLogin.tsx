@@ -164,7 +164,7 @@ export default function EmailLogin({ email }: { email: string }) {
         <button className="login-action" type="button" disabled={busy} onClick={sendCode}>{busy ? "正在发送…" : <>发送邮箱验证码 <ArrowIcon /></>}</button>
         {passkeySupported && <>
           <div className="login-divider"><span>或</span></div>
-          <button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><span className="passkey-symbol" aria-hidden="true">⌁</span> 使用 Passkey 登录</button>
+          <button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><span className="passkey-symbol" aria-hidden="true">🔑</span> 使用 Passkey 登录</button>
         </>}
       </> : <>
         <button className="login-action" type="submit" disabled={busy}>{busy ? "正在验证…" : <>验证并进入后台 <ArrowIcon /></>}</button>
