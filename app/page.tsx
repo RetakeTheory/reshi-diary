@@ -4,7 +4,6 @@ import { posts as postsTable } from "../db/schema";
 import { ensureDatabaseSchema } from "../db/runtime";
 import { demoPosts } from "../data/demo-posts";
 import ArrowIcon from "./ArrowIcon";
-import FoodRoulette from "./FoodRoulette";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +43,13 @@ export default async function Home() {
     <main>
       <nav className="nav shell" aria-label="主导航">
         <a className="brand" href="#top"><span>RE</span>reshi的日记本</a>
-        <div className="nav-links"><a href="#food-roulette">吃什么</a><a href="#posts">文章</a>{topics.length > 0 && <a href="#topics">分类</a>}<a href="#about">关于</a></div>
+        <div className="nav-links">
+          <div className="nav-directory">
+            <a href="/plugins">插件</a>
+            <div className="nav-dropdown"><a href="/plugins/food-roulette"><span>🍱</span><b>今天吃什么</b><small>命运摇奖机</small></a></div>
+          </div>
+          <a href="#posts">文章</a>{topics.length > 0 && <a href="#topics">分类</a>}<a href="#about">关于</a>
+        </div>
         <a className="admin-link" href="/admin/login">写日记 <ArrowIcon direction="up-right" /></a>
       </nav>
 
@@ -68,8 +73,6 @@ export default async function Home() {
           <div className="glass-chip chip-one">✧</div><div className="glass-chip chip-two">…</div>
         </div>
       </header>
-
-      <FoodRoulette />
 
       <section className="posts shell" id="posts" aria-labelledby="posts-title">
         <div className="section-head">
