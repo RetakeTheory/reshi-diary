@@ -6,6 +6,11 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as { email?: string };
   if (body.email?.trim().toLowerCase() !== ADMIN_EMAIL) return Response.json({ error: "管理员邮箱不正确" }, { status: 400 });
 
+  const { env } = await import("cloudflare:workers");
+  const apiKey = env.RESEND_API_KEY;
+  const from = env.RESEND_FROM || "reshi的日记本 <onboarding@resend.dev>";
+  if (!apiKey) return Response.json({ error: "邮件服务尚未配置" }, { status: 503 });
+
   await ensureDatabaseSchema();
   const db = await getD1();
   const now = Date.now();
@@ -25,11 +30,6 @@ export async function POST(request: Request) {
     db.prepare("INSERT INTO admin_login_codes (email, code_hash, salt, attempts, expires_at, created_at) VALUES (?, ?, ?, 0, ?, ?)")
       .bind(ADMIN_EMAIL, codeHash, salt, expiresAt, now),
   ]);
-
-  const { env } = await import("cloudflare:workers");
-  const apiKey = env.RESEND_API_KEY;
-  const from = env.RESEND_FROM || "reshi的日记本 <onboarding@resend.dev>";
-  if (!apiKey) return Response.json({ error: "邮件服务尚未配置" }, { status: 503 });
 
   const emailResponse = await fetch("https://api.resend.com/emails", {
     method: "POST",

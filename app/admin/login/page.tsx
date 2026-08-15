@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { ADMIN_EMAIL, getAdminSession } from "../admin-auth";
 import EmailLogin from "./EmailLogin";
+import ArrowIcon from "../../ArrowIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function AdminLoginPage() {
         <h1>验证码会直接<br />发送到邮箱。</h1>
         <EmailLogin email={ADMIN_EMAIL} />
         <p className="login-note">验证码仅在 10 分钟内有效，验证后立即失效。本网站不会保存邮箱密码。</p>
-        <a className="login-back" href="/">← 返回首页</a>
+        <a className="login-back" href="/"><ArrowIcon direction="left" /> 返回首页</a>
       </section>
     </main>
   );
