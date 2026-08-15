@@ -32,6 +32,19 @@ function FileToolbarIcon() {
   return <svg className="toolbar-flat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h7.4l3.6 3.7v13.3h-11z" /><path d="M13.5 3.8v4h3.8M9.5 12h5M9.5 15.5h5" /></svg>;
 }
 
+function AlignToolbarIcon({ direction }: { direction: "left" | "center" | "right" }) {
+  const middle = direction === "left" ? "M4 12h11" : direction === "center" ? "M7 12h10" : "M9 12h11";
+  const bottom = direction === "left" ? "M4 17h14" : direction === "center" ? "M5.5 17h13" : "M6 17h14";
+  return <svg className="toolbar-flat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d={middle} /><path d={bottom} /></svg>;
+}
+
+function ListToolbarIcon({ ordered = false }: { ordered?: boolean }) {
+  return <svg className="toolbar-flat-icon" viewBox="0 0 24 24" aria-hidden="true">
+    {ordered ? <path d="M4 5.2 5.2 4v4M3.8 11.6c.2-.8 2.5-1.1 2.5.3 0 .9-2.4 1.4-2.4 2.6h2.5M3.9 17.1c.5-.5 2.4-.4 2.4.7 0 .8-.8 1.1-1.6 1.1.8 0 1.7.3 1.7 1.1 0 1.2-2 1.3-2.6.7" /> : <><circle cx="5" cy="6" r="1" /><circle cx="5" cy="12" r="1" /><circle cx="5" cy="18" r="1" /></>}
+    <path d="M10 6h10M10 12h10M10 18h10" />
+  </svg>;
+}
+
 export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[] }) {
   const [items, setItems] = useState(initialPosts);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -241,13 +254,13 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
                 <button type="button" title="倾斜" onMouseDown={(e) => toolbarMouseDown(e, "italic")}><i>I</i></button>
               </div>
               <div className="toolbar-group">
-                <button type="button" title="左对齐" onMouseDown={(e) => toolbarMouseDown(e, "justifyLeft")}>≡</button>
-                <button type="button" title="居中" onMouseDown={(e) => toolbarMouseDown(e, "justifyCenter")}>≣</button>
-                <button type="button" className="align-right" title="右对齐" onMouseDown={(e) => toolbarMouseDown(e, "justifyRight")}>≡</button>
+                <button type="button" title="左对齐" aria-label="左对齐" onMouseDown={(e) => toolbarMouseDown(e, "justifyLeft")}><AlignToolbarIcon direction="left" /></button>
+                <button type="button" title="居中" aria-label="居中" onMouseDown={(e) => toolbarMouseDown(e, "justifyCenter")}><AlignToolbarIcon direction="center" /></button>
+                <button type="button" title="右对齐" aria-label="右对齐" onMouseDown={(e) => toolbarMouseDown(e, "justifyRight")}><AlignToolbarIcon direction="right" /></button>
               </div>
               <div className="toolbar-group">
-                <button type="button" title="无序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertUnorderedList")}>•≡</button>
-                <button type="button" title="有序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertOrderedList")}>1.</button>
+                <button type="button" title="无序列表" aria-label="无序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertUnorderedList")}><ListToolbarIcon /></button>
+                <button type="button" title="有序列表" aria-label="有序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertOrderedList")}><ListToolbarIcon ordered /></button>
                 <button type="button" title="插入代码块" onMouseDown={openCodePanel}>&lt;/&gt;</button>
               </div>
               <div className="toolbar-group toolbar-insert">
