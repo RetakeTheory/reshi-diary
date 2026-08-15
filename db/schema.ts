@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const admins = sqliteTable(
   "admins",
@@ -60,6 +60,20 @@ export const adminSessions = sqliteTable(
     uniqueIndex("idx_admin_sessions_token_hash").on(table.tokenHash),
     index("idx_admin_sessions_expires_at").on(table.expiresAt),
   ],
+);
+
+export const uploads = sqliteTable(
+  "uploads",
+  {
+    key: text("key").primaryKey(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    previewable: integer("previewable", { mode: "boolean" }).notNull().default(false),
+    data: blob("data", { mode: "buffer" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("idx_uploads_created_at").on(table.createdAt)],
 );
 
 export type Post = typeof posts.$inferSelect;
