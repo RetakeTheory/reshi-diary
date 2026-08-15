@@ -49,6 +49,7 @@ export default async function Home() {
             <div className="nav-dropdown">
               <a href="/plugins/food-roulette"><span>🍱</span><b>今天吃什么</b><small>命运摇奖机</small></a>
               <a href="/plugins/random-number"><span>🎲</span><b>随机数</b><small>不重复抽取</small></a>
+              <a href="/plugins/prize-wheel"><span>🎡</span><b>自定义抽奖</b><small>概率与权重</small></a>
             </div>
           </div>
           <a href="#posts">文章</a>{topics.length > 0 && <a href="#topics">分类</a>}<a href="#about">关于</a>
