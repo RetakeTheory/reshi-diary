@@ -1,4 +1,4 @@
-import { getFilesBucket } from "../../../../db/files";
+import { findUpload, uploadBody } from "../../../../db/uploads";
 
 type RouteContext = { params: Promise<{ key: string[] }> };
 
@@ -9,18 +9,17 @@ function contentDisposition(filename: string, inline: boolean) {
 
 export async function GET(request: Request, context: RouteContext) {
   const key = (await context.params).key.join("/");
-  const bucket = await getFilesBucket();
-  const object = await bucket.get(key);
+  const object = await findUpload(key);
   if (!object) return new Response("文件不存在", { status: 404 });
 
-  const filename = object.customMetadata?.filename || key.split("/").at(-1) || "attachment";
-  const allowPreview = object.customMetadata?.previewable === "true";
+  const filename = object.filename || "attachment";
+  const allowPreview = object.previewable === 1;
   const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
   const headers = new Headers();
-  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", object.content_type || "application/octet-stream");
   headers.set("Content-Disposition", contentDisposition(filename, allowPreview && !wantsDownload));
   headers.set("Cache-Control", "public, max-age=3600");
   headers.set("X-Content-Type-Options", "nosniff");
   if (object.size) headers.set("Content-Length", String(object.size));
-  return new Response(object.body, { headers });
+  return new Response(uploadBody(object.data), { headers });
 }
