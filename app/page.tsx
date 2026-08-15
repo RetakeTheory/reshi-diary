@@ -107,7 +107,7 @@ export default async function Home() {
 
       <section className="about shell" id="about" aria-labelledby="about-title">
         <div className="avatar-scene" aria-hidden="true">
-          <div className="avatar-card"><div className="face">墨</div><p>KEEP<br />CURIOUS</p></div>
+          <div className="avatar-card"><div className="face"><span aria-hidden="true">&lt;/&gt;</span></div><p>KEEP<br />CURIOUS</p></div>
           <div className="mini-cube">M</div><div className="mini-sphere" />
         </div>
         <div className="about-copy">

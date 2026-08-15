@@ -15,6 +15,6 @@ export function generateMetadata(): Metadata {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const themeScript = `(function(){try{var c=localStorage.getItem('reshi-theme')||'system';var d=c==='dark'||(c==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.dataset.theme=d?'dark':'light';document.documentElement.dataset.themeChoice=c;document.documentElement.dataset.accent=localStorage.getItem('reshi-accent')||'violet'}catch(e){}})()`;
+  const themeScript = `(function(){try{var e=document.documentElement,c=localStorage.getItem('reshi-theme')||'system',d=c==='dark'||(c==='system'&&matchMedia('(prefers-color-scheme:dark)').matches),a=localStorage.getItem('reshi-accent')||'violet';e.dataset.theme=d?'dark':'light';e.dataset.themeChoice=c;e.dataset.accent=a;if(a==='custom'){var h=(localStorage.getItem('reshi-custom-accent')||'#7657F6').replace('#','');if(/^[0-9a-fA-F]{6}$/.test(h)){var n=parseInt(h,16),r=[n>>16&255,n>>8&255,n&255],s=r.map(function(v){return Math.min(255,Math.round(v+(255-v)*.38))});e.style.setProperty('--accent','#'+h);e.style.setProperty('--accent-rgb',r.join(','));e.style.setProperty('--accent-2','rgb('+s.join(',')+')')}}}catch(x){}})()`;
   return <html lang="zh-CN" suppressHydrationWarning><body><script dangerouslySetInnerHTML={{ __html: themeScript }} />{children}<ThemeControls /></body></html>;
 }
