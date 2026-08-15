@@ -29,6 +29,9 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [formulaOpen, setFormulaOpen] = useState(false);
+  const [tableOpen, setTableOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableColumns, setTableColumns] = useState(3);
   const [latex, setLatex] = useState("E = mc^2");
   const [displayFormula, setDisplayFormula] = useState(true);
   const [attachmentPreview, setAttachmentPreview] = useState(true);
@@ -86,6 +89,41 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
     insertNode(node); katex.render(latex.trim(), node, { throwOnError: false, displayMode: displayFormula });
     if (displayFormula) insertNode(document.createElement("p"));
     setFormulaOpen(false);
+  }
+
+  function insertTable(event: SyntheticEvent) {
+    event.preventDefault();
+    const rows = Math.min(12, Math.max(1, tableRows));
+    const columns = Math.min(8, Math.max(1, tableColumns));
+    const table = document.createElement("table");
+    table.className = "content-table";
+    const body = document.createElement("tbody");
+    for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+      const row = document.createElement("tr");
+      for (let columnIndex = 0; columnIndex < columns; columnIndex += 1) {
+        const cell = document.createElement(rowIndex === 0 ? "th" : "td");
+        cell.textContent = rowIndex === 0 ? `标题 ${columnIndex + 1}` : "内容";
+        row.append(cell);
+      }
+      body.append(row);
+    }
+    table.append(body);
+    insertNode(table);
+    insertNode(document.createElement("p"));
+    setTableOpen(false);
+  }
+
+  function insertCodeBlock(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    restoreSelection();
+    const selection = window.getSelection();
+    const selectedText = selection?.rangeCount ? selection.getRangeAt(0).toString() : "";
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    code.textContent = selectedText || "在这里输入代码";
+    pre.append(code);
+    insertNode(pre);
+    insertNode(document.createElement("p"));
   }
 
   async function upload(file: File, previewable: boolean) {
@@ -173,7 +211,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
           </div>
           <label><span>摘要</span><textarea className="excerpt-field" value={form.excerpt} onChange={(e) => update("excerpt", e.target.value)} placeholder="用一两句话介绍这篇文章（可留空）" /></label>
           <div className="rich-editor-wrap">
-            <div className="rich-editor-label"><span>正文</span><small>支持公式、图片和附件</small></div>
+            <div className="rich-editor-label"><span>正文</span><small>支持排版、公式、表格、代码和附件</small></div>
             <div className="rich-toolbar" role="toolbar" aria-label="文章排版工具">
               <div className="toolbar-group">
                 <button type="button" title="加粗" onMouseDown={(e) => toolbarMouseDown(e, "bold")}><b>B</b></button>
@@ -184,13 +222,20 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
                 <button type="button" title="居中" onMouseDown={(e) => toolbarMouseDown(e, "justifyCenter")}>≣</button>
                 <button type="button" className="align-right" title="右对齐" onMouseDown={(e) => toolbarMouseDown(e, "justifyRight")}>≡</button>
               </div>
+              <div className="toolbar-group">
+                <button type="button" title="无序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertUnorderedList")}>•≡</button>
+                <button type="button" title="有序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertOrderedList")}>1.</button>
+                <button type="button" title="代码块" onMouseDown={insertCodeBlock}>&lt;/&gt;</button>
+              </div>
               <div className="toolbar-group toolbar-insert">
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen((open) => !open); }}>∑ <span>公式</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setFormulaOpen((open) => !open); }}>∑ <span>公式</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setTableOpen((open) => !open); }}>▦ <span>表格</span></button>
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}>▧ <span>图片</span></button>
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}>↓ <span>文件</span></button>
               </div>
             </div>
             {formulaOpen && <div className="formula-panel"><label><span>LaTeX 公式</span><input autoFocus value={latex} onChange={(e) => setLatex(e.target.value)} placeholder="例如：\\frac{a}{b}" /></label><label className="formula-mode"><input type="checkbox" checked={displayFormula} onChange={(e) => setDisplayFormula(e.target.checked)} /> 独占一行</label><button type="button" onClick={insertFormula}>插入公式</button></div>}
+            {tableOpen && <div className="table-panel"><label><span>行数</span><input type="number" min="1" max="12" value={tableRows} onChange={(e) => setTableRows(Number(e.target.value))} /></label><label><span>列数</span><input type="number" min="1" max="8" value={tableColumns} onChange={(e) => setTableColumns(Number(e.target.value))} /></label><button type="button" onClick={insertTable}>插入表格</button></div>}
             <div ref={editorRef} className="rich-editor" contentEditable suppressContentEditableWarning data-placeholder="开始写作……" onKeyUp={rememberSelection} onMouseUp={rememberSelection} />
             <div className="attachment-options"><label><input type="checkbox" checked={attachmentPreview} onChange={(e) => setAttachmentPreview(e.target.checked)} /> 插入文件时允许在线预览</label><span>{uploading || "单个文件不超过 20 MB"}</span></div>
             <input ref={imageInputRef} className="sr-only" type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && addImage(e.target.files[0])} />

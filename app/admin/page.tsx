@@ -24,7 +24,7 @@ export default async function AdminPage() {
     <main className="admin-shell">
       <header className="admin-topbar">
         <a className="brand" href="/"><span>RE</span>reshi 的日记本</a>
-        <div><span>管理员 · {admin.displayName}</span><a href={chatGPTSignOutPath("/")}>退出</a></div>
+        <div><span>管理员 · {admin.displayName}</span><a href={chatGPTSignOutPath("/admin/login")}>退出</a></div>
       </header>
       <AdminEditor initialPosts={initialPosts} />
     </main>

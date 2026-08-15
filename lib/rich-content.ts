@@ -1,6 +1,7 @@
 const allowedTags = new Set([
   "p", "br", "strong", "b", "em", "i", "u", "h2", "h3", "blockquote",
-  "ul", "ol", "li", "a", "img", "figure", "figcaption", "div", "span",
+  "ul", "ol", "li", "pre", "code", "table", "thead", "tbody", "tr", "th", "td",
+  "a", "img", "figure", "figcaption", "div", "span",
 ]);
 
 function escapeAttribute(value: string) {
@@ -51,7 +52,7 @@ export function sanitizeRichHtml(input: string) {
 
 export function richTextToPlainText(input: string) {
   return input.replace(/<br\s*\/?\s*>/gi, " ")
-    .replace(/<\/p>|<\/div>|<\/li>|<\/blockquote>/gi, " ")
+    .replace(/<\/p>|<\/div>|<\/li>|<\/blockquote>|<\/td>|<\/th>|<\/tr>|<\/pre>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")

@@ -1,35 +1,43 @@
 import { eq } from "drizzle-orm";
-import { getChatGPTUser, requireChatGPTUser } from "../chatgpt-auth";
+import { redirect } from "next/navigation";
+import { ChatGPTUser, getChatGPTUser, requireChatGPTUser } from "../chatgpt-auth";
 import { getDb } from "../../db";
 import { ensureDatabaseSchema } from "../../db/runtime";
 import { admins } from "../../db/schema";
 
-export async function requireAdmin(returnTo = "/admin") {
-  const user = await requireChatGPTUser(returnTo);
+export const ADMIN_EMAIL = "reshi1417@163.com";
+
+export async function getAdminAccess(user: ChatGPTUser) {
   await ensureDatabaseSchema();
   const db = await getDb();
-  const existing = await db.select().from(admins).limit(1);
+  const [existing] = await db.select().from(admins).where(eq(admins.userId, user.userId)).limit(1);
+  if (existing) return existing;
+  if (user.email.trim().toLowerCase() !== ADMIN_EMAIL) return null;
 
-  if (existing.length === 0) {
+  try {
     const [admin] = await db.insert(admins).values({
       userId: user.userId,
-      email: user.email,
+      email: ADMIN_EMAIL,
       displayName: "reshi",
       createdAt: new Date(),
     }).returning();
-    return { user, admin };
+    return admin;
+  } catch {
+    const [admin] = await db.select().from(admins).where(eq(admins.userId, user.userId)).limit(1);
+    return admin || null;
   }
+}
 
-  const [admin] = await db.select().from(admins).where(eq(admins.userId, user.userId)).limit(1);
-  if (!admin) throw new Error("你没有访问此后台的权限。");
+export async function requireAdmin(returnTo = "/admin") {
+  const user = await requireChatGPTUser(returnTo);
+  const admin = await getAdminAccess(user);
+  if (!admin) redirect("/admin/login?denied=1");
   return { user, admin };
 }
 
 export async function getApiAdmin() {
   const user = await getChatGPTUser();
   if (!user) return null;
-  await ensureDatabaseSchema();
-  const db = await getDb();
-  const [admin] = await db.select().from(admins).where(eq(admins.userId, user.userId)).limit(1);
+  const admin = await getAdminAccess(user);
   return admin ? { user, admin } : null;
 }

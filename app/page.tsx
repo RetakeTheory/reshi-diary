@@ -6,10 +6,6 @@ import { demoPosts } from "../data/demo-posts";
 
 export const dynamic = "force-dynamic";
 
-const topics = [
-  ["废柴日常", "12 篇"], ["学习笔记", "08 篇"], ["折腾记录", "10 篇"], ["校园生活", "16 篇"],
-];
-
 async function loadPublishedPosts() {
   try {
     await ensureDatabaseSchema();
@@ -17,7 +13,7 @@ async function loadPublishedPosts() {
     const rows = await db.select().from(postsTable)
       .where(eq(postsTable.status, "published"))
       .orderBy(desc(postsTable.publishedAt), desc(postsTable.id)).limit(8);
-    if (rows.length === 0) return demoPosts;
+    if (rows.length === 0) return [];
     const themes = ["violet", "orange", "lime", "blue"];
     const symbols = ["✦", "○", "↗", "☁"];
     return rows.map((post, index) => ({
@@ -37,12 +33,17 @@ async function loadPublishedPosts() {
 
 export default async function Home() {
   const displayPosts = await loadPublishedPosts();
+  const topicCounts = displayPosts.reduce((counts, post) => {
+    counts.set(post.category, (counts.get(post.category) || 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  const topics = Array.from(topicCounts.entries());
   return (
     <main>
       <nav className="nav shell" aria-label="主导航">
         <a className="brand" href="#top"><span>RE</span>reshi的日记本</a>
-        <div className="nav-links"><a href="#posts">文章</a><a href="#topics">分类</a><a href="#about">关于</a></div>
-        <a className="admin-link" href="/admin">写日记 ↗</a>
+        <div className="nav-links"><a href="#posts">文章</a>{topics.length > 0 && <a href="#topics">分类</a>}<a href="#about">关于</a></div>
+        <a className="admin-link" href="/admin/login">写日记 ↗</a>
       </nav>
 
       <header className="hero shell" id="top">
@@ -72,6 +73,7 @@ export default async function Home() {
           <a href="#archive">查看全部文章 <span>→</span></a>
         </div>
         <div className="post-grid">
+          {displayPosts.length === 0 && <div className="homepage-empty"><b>✦</b><h3>日记本还是空白的</h3><p>新文章发布后会出现在这里。</p></div>}
           {displayPosts.map((post, index) => (
             <article className="post-card" key={post.title}>
               <a href={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
@@ -90,7 +92,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="topics" id="topics" aria-labelledby="topics-title">
+      {topics.length > 0 && <section className="topics" id="topics" aria-labelledby="topics-title">
         <div className="shell topics-wrap">
           <div className="topics-copy">
             <p>EXPLORE / 探索主题</p>
@@ -99,11 +101,11 @@ export default async function Home() {
           </div>
           <div className="topic-list">
             {topics.map(([name, count], index) => (
-              <a href="#posts" key={name}><span>0{index + 1}</span><h3>{name}</h3><small>{count}</small><b>↗</b></a>
+              <a href="#posts" key={name}><span>{String(index + 1).padStart(2, "0")}</span><h3>{name}</h3><small>{String(count).padStart(2, "0")} 篇</small><b>↗</b></a>
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
       <section className="about shell" id="about" aria-labelledby="about-title">
         <div className="avatar-scene" aria-hidden="true">
@@ -117,7 +119,7 @@ export default async function Home() {
             <p>身份仅为计算机系废柴学生。会写一点代码，又经常被代码教育，目前仍在努力理解这个专业。</p>
             <p>这个博客是我的线上日记本：记学习、记折腾，也记下那些和计算机没有关系的普通日子。</p>
           </div>
-          <a href="mailto:hello@example.com">和我聊聊 <span>↗</span></a>
+          <div className="contact-links"><span>小红书 · reshi_</span><a href="https://github.com/RetakeTheory" target="_blank" rel="noopener noreferrer">GitHub · RetakeTheory ↗</a><a href="mailto:reshi1417@163.com">reshi1417@163.com ↗</a></div>
         </div>
       </section>
 
@@ -131,7 +133,7 @@ export default async function Home() {
 
       <footer className="footer" id="archive">
         <div className="shell footer-top"><a className="brand" href="#top"><span>RE</span>reshi的日记本</a><p>代码不一定跑得通，<br />日子还是要继续过。</p></div>
-        <div className="shell footer-bottom"><p>© 2026 reshi</p><div><a href="#">即刻</a><a href="#">小红书</a><a href="#">GitHub</a></div><a href="#top">回到顶部 ↑</a></div>
+        <div className="shell footer-bottom"><p>© 2026 reshi</p><div><span>小红书 reshi_</span><a href="https://github.com/RetakeTheory" target="_blank" rel="noopener noreferrer">GitHub</a><a href="mailto:reshi1417@163.com">邮箱</a></div><a href="#top">回到顶部 ↑</a></div>
       </footer>
     </main>
   );
