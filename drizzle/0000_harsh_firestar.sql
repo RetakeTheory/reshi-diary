@@ -22,3 +22,5 @@ CREATE TABLE `posts` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `idx_posts_slug` ON `posts` (`slug`);--> statement-breakpoint
 CREATE INDEX `idx_posts_status_published_at` ON `posts` (`status`,`published_at`);
+--> statement-breakpoint
+INSERT OR IGNORE INTO `posts` (`id`,`title`,`slug`,`excerpt`,`content`,`category`,`status`,`created_at`,`updated_at`,`published_at`) VALUES (1,'我睡了','我睡了','wwww','wwww','日常','published',1786807294600,1786807294600,1786807294600);
