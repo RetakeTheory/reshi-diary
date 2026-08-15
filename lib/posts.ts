@@ -10,11 +10,14 @@ export type PublicPost = {
 };
 
 export const getPublicPost = cache(async (slug: string): Promise<PublicPost | null> => {
+  let normalizedSlug = slug;
+  try { normalizedSlug = decodeURIComponent(slug); } catch { /* Keep malformed input unchanged. */ }
+
   try {
     await ensureDatabaseSchema();
     const db = await getDb();
     const [post] = await db.select().from(posts)
-      .where(and(eq(posts.slug, slug), eq(posts.status, "published"))).limit(1);
+      .where(and(eq(posts.slug, normalizedSlug), eq(posts.status, "published"))).limit(1);
     if (post) return {
       title: post.title,
       slug: post.slug,
@@ -28,6 +31,6 @@ export const getPublicPost = cache(async (slug: string): Promise<PublicPost | nu
     // Local previews without an initialized database still render demo entries.
   }
 
-  const demo = demoPosts.find((post) => post.slug === slug);
+  const demo = demoPosts.find((post) => post.slug === normalizedSlug);
   return demo ? { ...demo } : null;
 });

@@ -4,13 +4,7 @@ import { ensureDatabaseSchema } from "../../../../db/runtime";
 import { posts } from "../../../../db/schema";
 import { getApiAdmin } from "../../../admin/admin-auth";
 import { richTextToPlainText, sanitizeRichHtml } from "../../../../lib/rich-content";
-
-function slugify(value: string) {
-  const slug = value.toLowerCase().trim()
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || `post-${Date.now()}`;
-}
+import { createPostId } from "../../../../lib/post-id";
 
 export async function GET() {
   const auth = await getApiAdmin();
@@ -26,7 +20,7 @@ export async function POST(request: Request) {
   if (!auth) return Response.json({ error: "未登录或没有管理员权限" }, { status: 401 });
 
   const body = await request.json() as Partial<{
-    title: string; slug: string; excerpt: string; content: string; category: string; status: "draft" | "published";
+    title: string; excerpt: string; content: string; category: string; status: "draft" | "published";
   }>;
   const title = body.title?.trim() ?? "";
   const content = sanitizeRichHtml(body.content?.trim() ?? "");
@@ -37,23 +31,27 @@ export async function POST(request: Request) {
 
   await ensureDatabaseSchema();
   const now = new Date();
-  try {
-    const db = await getDb();
-    const [post] = await db.insert(posts).values({
-      title,
-      slug: slugify(body.slug || title),
-      excerpt: body.excerpt?.trim() || plainContent.slice(0, 90),
-      content,
-      category: body.category?.trim() || "日常",
-      status,
-      createdAt: now,
-      updatedAt: now,
-      publishedAt: status === "published" ? now : null,
-    }).returning();
-    return Response.json({ post }, { status: 201 });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "保存失败";
-    const duplicate = message.includes("UNIQUE") || message.includes("unique");
-    return Response.json({ error: duplicate ? "文章链接已存在，请换一个链接名称" : message }, { status: 400 });
+  const db = await getDb();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const [post] = await db.insert(posts).values({
+        title,
+        slug: createPostId(),
+        excerpt: body.excerpt?.trim() || plainContent.slice(0, 90),
+        content,
+        category: body.category?.trim() || "日常",
+        status,
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: status === "published" ? now : null,
+      }).returning();
+      return Response.json({ post }, { status: 201 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "保存失败";
+      const duplicate = message.includes("UNIQUE") || message.includes("unique");
+      if (!duplicate) return Response.json({ error: message }, { status: 400 });
+    }
   }
+
+  return Response.json({ error: "文章 ID 生成失败，请重试" }, { status: 500 });
 }

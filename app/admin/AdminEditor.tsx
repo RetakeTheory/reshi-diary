@@ -7,9 +7,9 @@ type AdminPost = {
   id: number; title: string; slug: string; excerpt: string; content: string; category: string;
   status: "draft" | "published"; createdAt: number; updatedAt: number; publishedAt: number | null;
 };
-type FormState = { title: string; slug: string; excerpt: string; category: string };
+type FormState = { title: string; excerpt: string; category: string };
 type UploadResult = { name: string; url: string; downloadUrl: string; type: string; size: number; previewable: boolean; isImage: boolean };
-const emptyForm: FormState = { title: "", slug: "", excerpt: "", category: "日常" };
+const emptyForm: FormState = { title: "", excerpt: "", category: "日常" };
 
 function looksLikeHtml(value: string) { return /<[a-z][\s\S]*>/i.test(value); }
 function escapeHtml(value: string) { return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -170,7 +170,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
   }
 
   function edit(post: AdminPost) {
-    setEditingId(post.id); setForm({ title: post.title, slug: post.slug, excerpt: post.excerpt, category: post.category });
+    setEditingId(post.id); setForm({ title: post.title, excerpt: post.excerpt, category: post.category });
     if (editorRef.current) { editorRef.current.innerHTML = looksLikeHtml(post.content) ? post.content : legacyContent(post.content); hydrateFormulas(editorRef.current); }
     setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -205,10 +205,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
         <div className="admin-heading"><div><p>EDITOR / 文章编辑器</p><h1>{editingId ? "编辑这篇日记" : "写一篇新日记"}</h1></div><div className="admin-stats"><span>{counts.published} 已发布</span><span>{counts.draft} 草稿</span></div></div>
         <form className="editor-form" onSubmit={(event) => save(event, "published")}>
           <label><span>文章标题</span><input value={form.title} onChange={(e) => update("title", e.target.value)} placeholder="今天想写点什么？" required /></label>
-          <div className="form-row">
-            <label><span>分类</span><input value={form.category} onChange={(e) => update("category", e.target.value)} placeholder="例如：校园生活" /></label>
-            <label><span>链接名称</span><input value={form.slug} onChange={(e) => update("slug", e.target.value)} placeholder="留空则自动生成" /></label>
-          </div>
+          <label><span>分类 · 文章 ID 将在首次保存时自动生成</span><input value={form.category} onChange={(e) => update("category", e.target.value)} placeholder="例如：校园生活" /></label>
           <label><span>摘要</span><textarea className="excerpt-field" value={form.excerpt} onChange={(e) => update("excerpt", e.target.value)} placeholder="用一两句话介绍这篇文章（可留空）" /></label>
           <div className="rich-editor-wrap">
             <div className="rich-editor-label"><span>正文</span><small>支持排版、公式、表格、代码和附件</small></div>

@@ -13,7 +13,7 @@ export async function PUT(request: Request, context: RouteContext) {
   const id = Number((await context.params).id);
   if (!Number.isInteger(id)) return Response.json({ error: "文章编号无效" }, { status: 400 });
   const body = await request.json() as Partial<{
-    title: string; slug: string; excerpt: string; content: string; category: string; status: "draft" | "published";
+    title: string; excerpt: string; content: string; category: string; status: "draft" | "published";
   }>;
   const content = sanitizeRichHtml(body.content?.trim() || "");
   const plainContent = richTextToPlainText(content);
@@ -27,7 +27,7 @@ export async function PUT(request: Request, context: RouteContext) {
   try {
     const [post] = await db.update(posts).set({
       title: body.title.trim(),
-      slug: body.slug?.trim() || current.slug,
+      slug: current.slug,
       excerpt: body.excerpt?.trim() || plainContent.slice(0, 90),
       content,
       category: body.category?.trim() || "日常",
@@ -38,7 +38,7 @@ export async function PUT(request: Request, context: RouteContext) {
     return Response.json({ post });
   } catch (error) {
     const message = error instanceof Error ? error.message : "保存失败";
-    return Response.json({ error: message.includes("UNIQUE") ? "文章链接已存在" : message }, { status: 400 });
+    return Response.json({ error: message }, { status: 400 });
   }
 }
 
