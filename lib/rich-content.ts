@@ -10,7 +10,7 @@ function escapeAttribute(value: string) {
 
 function safeUrl(value: string) {
   const url = value.trim();
-  return /^(https?:\/\/|\/api\/files\/)/i.test(url) ? url : "";
+  return /^(https?:\/\/|\/api\/files\/|\/preview\/)/i.test(url) ? url : "";
 }
 
 export function sanitizeRichHtml(input: string) {
@@ -38,6 +38,10 @@ export function sanitizeRichHtml(input: string) {
       if (name === "data-display" && (tag === "span" || tag === "div")) attributes.push(`data-display="${value === "block" ? "block" : "inline"}"`);
       if (name === "data-language" && (tag === "pre" || tag === "code") && /^[a-z0-9+#-]{1,30}$/i.test(value)) attributes.push(`data-language="${escapeAttribute(value)}"`);
       if (name === "data-previewable" && tag === "div") attributes.push(`data-previewable="${value === "true" ? "true" : "false"}"`);
+      if (name === "data-file-url" && tag === "div") {
+        const url = safeUrl(value);
+        if (url) attributes.push(`data-file-url="${escapeAttribute(url)}"`);
+      }
       if (name === "style") {
         const alignment = value.match(/^\s*text-align\s*:\s*(left|center|right)\s*;?\s*$/i);
         if (alignment) attributes.push(`style="text-align:${alignment[1].toLowerCase()}"`);

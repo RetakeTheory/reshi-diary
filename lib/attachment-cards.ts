@@ -23,10 +23,40 @@ function actionLink(label: string, href: string, kind: "preview" | "download") {
   const link = document.createElement("a");
   link.className = `attachment-action attachment-${kind}`;
   link.href = href;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
   link.textContent = label;
   return link;
+}
+
+function localUrl(parsed: URL) {
+  return parsed.origin === window.location.origin ? `${parsed.pathname}${parsed.search}${parsed.hash}` : parsed.toString();
+}
+
+function rawFileUrlFor(url: string) {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.origin === window.location.origin && parsed.pathname.startsWith("/preview/")) {
+      parsed.pathname = `/api/files/${parsed.pathname.slice("/preview/".length)}`;
+    }
+    parsed.searchParams.delete("from");
+    parsed.searchParams.delete("download");
+    parsed.hash = "";
+    return localUrl(parsed);
+  } catch {
+    return url;
+  }
+}
+
+function readerUrlFor(url: string) {
+  try {
+    const rawUrl = new URL(rawFileUrlFor(url), window.location.origin);
+    if (rawUrl.origin !== window.location.origin || !rawUrl.pathname.startsWith("/api/files/")) return url;
+    const readerUrl = new URL(`/preview/${rawUrl.pathname.slice("/api/files/".length)}`, window.location.origin);
+    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (returnTo.startsWith("/posts/") || returnTo.startsWith("/admin")) readerUrl.searchParams.set("from", returnTo);
+    return localUrl(readerUrl);
+  } catch {
+    return url;
+  }
 }
 
 function downloadUrlFor(url: string) {
@@ -83,13 +113,14 @@ export function hydrateAttachmentCards(container: HTMLElement | null) {
     const previewable = card.dataset.previewable === "true";
     const existingPreview = currentActions?.querySelector<HTMLAnchorElement>(".attachment-preview");
     const existingDownload = currentActions?.querySelector<HTMLAnchorElement>(".attachment-download");
-    const objectUrl = existingPreview?.getAttribute("href") || legacyLink?.getAttribute("href") || existingDownload?.getAttribute("href") || "";
+    const objectUrl = rawFileUrlFor(card.dataset.fileUrl || existingPreview?.getAttribute("href") || legacyLink?.getAttribute("href") || existingDownload?.getAttribute("href") || "");
     if (!objectUrl) return;
+    card.dataset.fileUrl = objectUrl;
     const downloadUrl = existingDownload?.getAttribute("href") || (previewable ? downloadUrlFor(objectUrl) : objectUrl);
     const actions = currentActions || document.createElement("div");
     actions.className = "attachment-actions";
     actions.replaceChildren();
-    if (previewable) actions.append(actionLink("预览", objectUrl, "preview"));
+    if (previewable) actions.append(actionLink("在线阅读", readerUrlFor(objectUrl), "preview"));
     actions.append(actionLink("下载", downloadUrl, "download"));
     if (!currentActions) card.append(actions);
     legacyLink?.remove();
@@ -100,6 +131,7 @@ export function createAttachmentCard(data: AttachmentCardData) {
   const card = document.createElement("div");
   card.className = "attachment-card";
   card.dataset.previewable = data.previewable ? "true" : "false";
+  card.dataset.fileUrl = data.url;
 
   const icon = document.createElement("span");
   icon.className = "attachment-icon";
@@ -110,12 +142,12 @@ export function createAttachmentCard(data: AttachmentCardData) {
   const title = document.createElement("strong");
   title.textContent = data.name;
   const detail = document.createElement("small");
-  detail.textContent = `${data.previewable ? "可在线预览" : "仅下载"} · ${Math.max(1, Math.ceil(data.size / 1024))} KB`;
+  detail.textContent = `${data.previewable ? "可用站内阅读器打开" : "仅下载"} · ${Math.max(1, Math.ceil(data.size / 1024))} KB`;
   meta.append(title, detail);
 
   const actions = document.createElement("div");
   actions.className = "attachment-actions";
-  if (data.previewable) actions.append(actionLink("预览", data.url, "preview"));
+  if (data.previewable) actions.append(actionLink("在线阅读", readerUrlFor(data.url), "preview"));
   actions.append(actionLink("下载", data.downloadUrl, "download"));
   card.append(icon, meta, actions);
   return card;

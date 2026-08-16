@@ -60,6 +60,11 @@ export async function getS3Object(key: string, range?: string | null) {
   return aws.fetch(objectUrl(config.bucket, config.region, key), { headers });
 }
 
+export async function headS3Object(key: string) {
+  const { aws, config } = client(2);
+  return aws.fetch(objectUrl(config.bucket, config.region, key), { method: "HEAD" });
+}
+
 export function decodeS3Filename(value: string | null) {
   if (!value) return "attachment";
   try {
