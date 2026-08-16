@@ -1,4 +1,5 @@
 import { findUpload, uploadBody } from "../../../../db/uploads";
+import { decodeS3Filename, getS3Object } from "../../../../lib/s3-storage";
 
 type RouteContext = { params: Promise<{ key: string[] }> };
 
@@ -9,12 +10,39 @@ function contentDisposition(filename: string, inline: boolean) {
 
 export async function GET(request: Request, context: RouteContext) {
   const key = (await context.params).key.join("/");
+  const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
+  let s3Response: Response | null = null;
+  if (key.startsWith("uploads/")) {
+    try {
+      s3Response = await getS3Object(key, request.headers.get("range"));
+    } catch (error) {
+      console.error(JSON.stringify({ event: "s3_download_error", reason: error instanceof Error ? error.message : "unknown" }));
+    }
+  }
+  if (s3Response?.ok) {
+    const filename = decodeS3Filename(s3Response.headers.get("x-amz-meta-filename"));
+    const allowPreview = s3Response.headers.get("x-amz-meta-previewable") === "1";
+    const headers = new Headers();
+    for (const name of ["accept-ranges", "cache-control", "content-length", "content-range", "content-type", "etag", "last-modified"]) {
+      const value = s3Response.headers.get(name);
+      if (value) headers.set(name, value);
+    }
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/octet-stream");
+    headers.set("Content-Disposition", contentDisposition(filename, allowPreview && !wantsDownload));
+    headers.set("X-Content-Type-Options", "nosniff");
+    return new Response(s3Response.body, { status: s3Response.status, headers });
+  }
+  if (s3Response && s3Response.status !== 404) {
+    console.error(JSON.stringify({ event: "s3_download_failed", status: s3Response.status }));
+    return new Response("暂时无法读取文件", { status: 502 });
+  }
+
+  // Historical uploads remain readable from D1 after switching new files to S3.
   const object = await findUpload(key);
   if (!object) return new Response("文件不存在", { status: 404 });
 
   const filename = object.filename || "attachment";
   const allowPreview = object.previewable === 1;
-  const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
   const headers = new Headers();
   headers.set("Content-Type", object.content_type || "application/octet-stream");
   headers.set("Content-Disposition", contentDisposition(filename, allowPreview && !wantsDownload));
