@@ -1,7 +1,7 @@
 import { findUploadMetadata } from "../db/uploads";
 import { decodeS3Filename, headS3Object } from "./s3-storage";
 
-export type FilePreviewMode = "image" | "pdf" | "text";
+export type FilePreviewMode = "image" | "pdf" | "text" | "browser";
 
 export type FilePreviewMetadata = {
   filename: string;
@@ -58,7 +58,9 @@ export function previewModeFor(contentType: string, filename: string): FilePrevi
   if (type === "application/pdf") return "pdf";
   if (SAFE_IMAGE_TYPES.has(type)) return "image";
   if (SAFE_TEXT_TYPES.has(type) || type.startsWith("text/x-") || SAFE_TEXT_EXTENSIONS.has(extension(filename))) return "text";
-  return null;
+  // Keep the editor's preview choice intact for formats handled natively by the browser.
+  // The sandboxed reader remains safer than navigating directly to an uploaded file.
+  return "browser";
 }
 
 export function storedContentType(contentType: string, filename: string) {
