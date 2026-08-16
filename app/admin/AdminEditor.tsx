@@ -10,7 +10,7 @@ type AdminPost = {
   status: "draft" | "published"; createdAt: number; updatedAt: number; publishedAt: number | null;
 };
 type FormState = { title: string; excerpt: string; category: string };
-type UploadResult = { name: string; url: string };
+type UploadResult = { name: string; url: string; downloadUrl: string; type: string; size: number; previewable: boolean; isImage: boolean };
 const emptyForm: FormState = { title: "", excerpt: "", category: "日常" };
 
 function looksLikeHtml(value: string) { return /<[a-z][\s\S]*>/i.test(value); }
@@ -26,6 +26,10 @@ function hydrateFormulas(container: HTMLElement | null) {
 
 function ImageToolbarIcon() {
   return <svg className="toolbar-flat-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><circle cx="8.5" cy="9" r="1.6" /><path d="m5 17 4.4-4.4 3.3 3.2 2.4-2.4L19 17.3" /></svg>;
+}
+
+function FileToolbarIcon() {
+  return <svg className="toolbar-flat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h7.4l3.6 3.7v13.3h-11z" /><path d="M13.5 3.8v4h3.8M9.5 12h5M9.5 15.5h5" /></svg>;
 }
 
 function AlignToolbarIcon({ direction }: { direction: "left" | "center" | "right" }) {
@@ -87,9 +91,11 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
   const [tableColumns, setTableColumns] = useState(3);
   const [latex, setLatex] = useState("E = mc^2");
   const [displayFormula, setDisplayFormula] = useState(true);
+  const [attachmentPreview, setAttachmentPreview] = useState(true);
   const [uploading, setUploading] = useState("");
   const editorRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
 
   const counts = useMemo(() => ({
@@ -212,9 +218,9 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
     rememberSelection();
   }
 
-  async function upload(file: File) {
+  async function upload(file: File, previewable: boolean) {
     setUploading(`正在上传 ${file.name}…`);
-    const body = new FormData(); body.append("file", file);
+    const body = new FormData(); body.append("file", file); body.append("previewable", previewable ? "true" : "false");
     const response = await fetch("/api/admin/uploads", { method: "POST", body });
     const result = await response.json() as UploadResult & { error?: string };
     if (!response.ok) throw new Error(result.error || "上传失败");
@@ -223,7 +229,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
 
   async function addImage(file: File) {
     try {
-      const result = await upload(file);
+      const result = await upload(file, true);
       const figure = document.createElement("figure"); figure.className = "editor-image";
       const image = document.createElement("img"); image.src = result.url; image.alt = result.name.replace(/\.[^.]+$/, "");
       const caption = document.createElement("figcaption"); caption.textContent = result.name.replace(/\.[^.]+$/, "");
@@ -231,6 +237,21 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
       setMessage("图片已插入，页面会自动适配尺寸");
     } catch (error) { setMessage(error instanceof Error ? error.message : "图片上传失败"); }
     finally { setUploading(""); if (imageInputRef.current) imageInputRef.current.value = ""; }
+  }
+
+  async function addAttachment(file: File) {
+    try {
+      const result = await upload(file, attachmentPreview);
+      const card = document.createElement("div"); card.className = "attachment-card"; card.dataset.previewable = result.previewable ? "true" : "false";
+      const icon = document.createElement("span"); icon.className = "attachment-icon"; icon.textContent = "↓";
+      const copy = document.createElement("div");
+      const title = document.createElement("strong"); title.textContent = result.name;
+      const detail = document.createElement("small"); detail.textContent = `${result.previewable ? "可在线预览 · " : "仅下载 · "}${Math.max(1, Math.ceil(result.size / 1024))} KB`;
+      copy.append(title, detail);
+      const link = document.createElement("a"); link.href = result.previewable ? result.url : result.downloadUrl; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = result.previewable ? "预览 / 下载" : "下载文件";
+      card.append(icon, copy, link); insertNode(card); insertNode(document.createElement("p")); setMessage("附件已插入文章");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "文件上传失败"); }
+    finally { setUploading(""); if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
 
   function editorHtml() {
@@ -279,7 +300,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
           <label><span>分类 · 文章 ID 将在首次保存时自动生成</span><input value={form.category} onChange={(e) => update("category", e.target.value)} placeholder="例如：校园生活" /></label>
           <label><span>摘要</span><textarea className="excerpt-field" value={form.excerpt} onChange={(e) => update("excerpt", e.target.value)} placeholder="用一两句话介绍这篇文章（可留空）" /></label>
           <div className="rich-editor-wrap">
-            <div className="rich-editor-label"><span>正文</span><small>支持排版、公式、表格、代码和图片</small></div>
+            <div className="rich-editor-label"><span>正文</span><small>支持排版、公式、表格、代码、图片和附件</small></div>
             <div className="rich-toolbar" role="toolbar" aria-label="文章排版工具">
               <div className="toolbar-group">
                 <button type="button" title="加粗" onMouseDown={(e) => toolbarMouseDown(e, "bold")}><b>B</b></button>
@@ -299,6 +320,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setCodeOpen(false); setFormulaOpen((open) => !open); }}>∑ <span>公式</span></button>
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setCodeOpen(false); setTableOpen((open) => !open); }}>▦ <span>表格</span></button>
                 <button type="button" title="插入图片" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}><ImageToolbarIcon /> <span>图片</span></button>
+                <button type="button" title="插入文件" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><FileToolbarIcon /> <span>文件</span></button>
               </div>
             </div>
             {codeOpen && <div className="code-panel">
@@ -309,8 +331,9 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
             {formulaOpen && <div className="formula-panel"><label><span>LaTeX 公式</span><input value={latex} onChange={(e) => setLatex(e.target.value)} placeholder="例如：\\frac{a}{b}" /></label><label className="formula-mode"><input type="checkbox" checked={displayFormula} onChange={(e) => setDisplayFormula(e.target.checked)} /> 独占一行</label><button type="button" onClick={insertFormula}>插入公式</button></div>}
             {tableOpen && <div className="table-panel"><label><span>行数</span><input type="number" min="1" max="12" value={tableRows} onChange={(e) => setTableRows(Number(e.target.value))} /></label><label><span>列数</span><input type="number" min="1" max="8" value={tableColumns} onChange={(e) => setTableColumns(Number(e.target.value))} /></label><button type="button" onClick={insertTable}>插入表格</button></div>}
             <div ref={editorRef} className="rich-editor" contentEditable role="textbox" tabIndex={0} aria-multiline="true" suppressContentEditableWarning data-placeholder="开始写作……" onInput={handleEditorInput} onKeyUp={rememberSelection} onMouseUp={rememberSelection} />
-            <div className="attachment-options"><span>{uploading || "图片存储 · 单张不超过 1 MB"}</span></div>
+            <div className="attachment-options"><label><input type="checkbox" checked={attachmentPreview} onChange={(e) => setAttachmentPreview(e.target.checked)} /> 插入文件时允许在线预览</label><span>{uploading || "AWS S3 私有存储 · 单个文件不超过 20 MB"}</span></div>
             <input ref={imageInputRef} className="sr-only" type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && addImage(e.target.files[0])} />
+            <input ref={fileInputRef} className="sr-only" type="file" onChange={(e) => e.target.files?.[0] && addAttachment(e.target.files[0])} />
           </div>
           {message && <p className="form-message" role="status">{message}</p>}
           <div className="form-actions">

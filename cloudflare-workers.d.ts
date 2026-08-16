@@ -24,6 +24,11 @@ interface Fetcher {
 interface ReshiWorkerEnv {
   DB: D1Database;
   ASSETS?: Fetcher;
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
+  AWS_SESSION_TOKEN?: string;
+  AWS_REGION?: string;
+  AWS_S3_BUCKET?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM?: string;
 }
