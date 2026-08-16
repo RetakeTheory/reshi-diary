@@ -7,6 +7,8 @@ type UploadRow = {
   data: ArrayBuffer | number[];
 };
 
+export type UploadMetadata = Omit<UploadRow, "data">;
+
 async function getD1() {
   const { env } = await import("cloudflare:workers");
   if (!env.DB) throw new Error("D1 database binding DB is unavailable");
@@ -46,6 +48,16 @@ export async function findUpload(key: string) {
     )
     .bind(key)
     .first<UploadRow>();
+}
+
+export async function findUploadMetadata(key: string) {
+  const db = await getD1();
+  return db
+    .prepare(
+      "SELECT key, filename, content_type, size, previewable FROM uploads WHERE key = ? LIMIT 1",
+    )
+    .bind(key)
+    .first<UploadMetadata>();
 }
 
 export function uploadBody(data: UploadRow["data"]) {
