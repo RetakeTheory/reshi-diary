@@ -6,6 +6,7 @@ import { ensureDatabaseSchema } from "../../db/runtime";
 import { requireAdmin } from "./admin-auth";
 import AdminEditor from "./AdminEditor";
 import PasskeyManager from "./PasskeyManager";
+import AnnouncementManager from "./AnnouncementManager";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function AdminPage() {
         <div><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
       <PasskeyManager />
+      <AnnouncementManager />
       <AdminEditor initialPosts={initialPosts} />
     </main>
   );
