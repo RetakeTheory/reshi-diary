@@ -4,6 +4,18 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
+  "vars": {
+    "AWS_REGION": "ap-northeast-1",
+    "AWS_S3_BUCKET": "reshi-diary-files"
+  },
+  "secrets": {
+    "required": [
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "RESEND_API_KEY"
+    ]
+  },
   "workers_dev": true,
   "preview_urls": true,
   "d1_databases": [
