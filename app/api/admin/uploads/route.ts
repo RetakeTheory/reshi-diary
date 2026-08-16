@@ -1,5 +1,5 @@
 import { putS3Object } from "../../../../lib/s3-storage";
-import { previewModeFor, storedContentType } from "../../../../lib/file-preview";
+import { storedContentType } from "../../../../lib/file-preview";
 import { getApiAdmin } from "../../../admin/admin-auth";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
@@ -30,8 +30,7 @@ export async function POST(request: Request) {
   if (file.size > MAX_FILE_SIZE) return Response.json({ error: "单个文件不能超过 20 MB" }, { status: 413 });
 
   const filename = safeName(file.name);
-  const previewMode = previewModeFor(file.type, filename);
-  const previewable = previewMode !== null && (previewMode === "image" || form.get("previewable") === "true");
+  const previewable = form.get("previewable") === "true";
   const contentType = previewable ? storedContentType(file.type, filename) : (file.type || "application/octet-stream");
   const key = `uploads/${Date.now()}-${crypto.randomUUID()}`;
   let response: Response;
@@ -61,3 +60,4 @@ export async function POST(request: Request) {
     isImage: file.type.startsWith("image/"),
   }, { status: 201 });
 }
+
