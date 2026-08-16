@@ -4,6 +4,7 @@ import { MouseEvent, SyntheticEvent, useMemo, useRef, useState } from "react";
 import katex from "katex";
 import ArrowIcon from "../ArrowIcon";
 import { codeLanguages, highlightCodeBlocks, highlightSource } from "../../lib/code-highlight";
+import { createAttachmentCard, flattenAttachmentCards, hydrateAttachmentCards } from "../../lib/attachment-cards";
 
 type AdminPost = {
   id: number; title: string; slug: string; excerpt: string; content: string; category: string;
@@ -138,6 +139,34 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
     editor.focus(); rememberSelection();
   }
 
+  function insertTopLevelBlock(node: HTMLElement) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    restoreSelection();
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const trailing = document.createElement("p");
+    trailing.append(document.createElement("br"));
+
+    if (range && editor.contains(range.commonAncestorContainer)) {
+      if (range.startContainer === editor) {
+        const reference = editor.childNodes[range.startOffset] || null;
+        editor.insertBefore(node, reference);
+        editor.insertBefore(trailing, reference);
+      } else {
+        let topLevel = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+        while (topLevel?.parentElement && topLevel.parentElement !== editor) topLevel = topLevel.parentElement;
+        if (topLevel?.parentElement === editor) topLevel.after(node, trailing);
+        else editor.append(node, trailing);
+      }
+    } else editor.append(node, trailing);
+
+    const caret = document.createRange();
+    caret.selectNodeContents(trailing); caret.collapse(true);
+    selection?.removeAllRanges(); selection?.addRange(caret);
+    editor.focus(); rememberSelection();
+  }
+
   function insertFormula(event: SyntheticEvent) {
     event.preventDefault();
     if (!latex.trim()) return;
@@ -197,6 +226,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
   }
 
   function handleEditorInput(event: SyntheticEvent<HTMLDivElement>) {
+    flattenAttachmentCards(editorRef.current);
     const nativeEvent = event.nativeEvent as InputEvent;
     if (nativeEvent.isComposing) return;
     const selection = window.getSelection();
@@ -242,20 +272,15 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
   async function addAttachment(file: File) {
     try {
       const result = await upload(file, attachmentPreview);
-      const card = document.createElement("div"); card.className = "attachment-card"; card.dataset.previewable = result.previewable ? "true" : "false";
-      const icon = document.createElement("span"); icon.className = "attachment-icon"; icon.textContent = "↓";
-      const copy = document.createElement("div");
-      const title = document.createElement("strong"); title.textContent = result.name;
-      const detail = document.createElement("small"); detail.textContent = `${result.previewable ? "可在线预览 · " : "仅下载 · "}${Math.max(1, Math.ceil(result.size / 1024))} KB`;
-      copy.append(title, detail);
-      const link = document.createElement("a"); link.href = result.previewable ? result.url : result.downloadUrl; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = result.previewable ? "预览 / 下载" : "下载文件";
-      card.append(icon, copy, link); insertNode(card); insertNode(document.createElement("p")); setMessage("附件已插入文章");
+      const card = createAttachmentCard(result);
+      insertTopLevelBlock(card); setMessage("附件已插入文章");
     } catch (error) { setMessage(error instanceof Error ? error.message : "文件上传失败"); }
     finally { setUploading(""); if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
 
   function editorHtml() {
     const clone = editorRef.current?.cloneNode(true) as HTMLElement | undefined;
+    if (clone) hydrateAttachmentCards(clone);
     clone?.querySelectorAll<HTMLElement>("[data-latex]").forEach((node) => { node.textContent = node.dataset.latex || ""; });
     clone?.querySelectorAll("p").forEach((node) => { if (!node.textContent && !node.querySelector("img,br")) node.innerHTML = "<br>"; });
     return clone?.innerHTML.trim() || "";
@@ -263,7 +288,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
 
   function edit(post: AdminPost) {
     setEditingId(post.id); setForm({ title: post.title, excerpt: post.excerpt, category: post.category });
-    if (editorRef.current) { editorRef.current.innerHTML = looksLikeHtml(post.content) ? post.content : legacyContent(post.content); hydrateFormulas(editorRef.current); highlightCodeBlocks(editorRef.current); }
+    if (editorRef.current) { editorRef.current.innerHTML = looksLikeHtml(post.content) ? post.content : legacyContent(post.content); hydrateFormulas(editorRef.current); highlightCodeBlocks(editorRef.current); hydrateAttachmentCards(editorRef.current); }
     setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
