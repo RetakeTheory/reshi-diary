@@ -1,8 +1,8 @@
 import { putS3Object } from "../../../../lib/s3-storage";
+import { previewModeFor, storedContentType } from "../../../../lib/file-preview";
 import { getApiAdmin } from "../../../admin/admin-auth";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
-const PREVIEWABLE_TYPES = new Set(["application/pdf", "image/avif", "image/gif", "image/jpeg", "image/png", "image/webp", "text/plain"]);
 
 function safeName(value: string) {
   const withoutControlCharacters = [...value.normalize("NFKC")]
@@ -30,13 +30,15 @@ export async function POST(request: Request) {
   if (file.size > MAX_FILE_SIZE) return Response.json({ error: "单个文件不能超过 20 MB" }, { status: 413 });
 
   const filename = safeName(file.name);
-  const previewable = PREVIEWABLE_TYPES.has(file.type) && (file.type.startsWith("image/") || form.get("previewable") === "true");
+  const previewMode = previewModeFor(file.type, filename);
+  const previewable = previewMode !== null && (previewMode === "image" || form.get("previewable") === "true");
+  const contentType = previewable ? storedContentType(file.type, filename) : (file.type || "application/octet-stream");
   const key = `uploads/${Date.now()}-${crypto.randomUUID()}`;
   let response: Response;
   try {
     response = await putS3Object(key, {
       body: await file.arrayBuffer(),
-      contentType: file.type || "application/octet-stream",
+      contentType,
       filename,
       previewable,
     });
@@ -53,7 +55,7 @@ export async function POST(request: Request) {
     name: filename,
     url,
     downloadUrl: `${url}?download=1`,
-    type: file.type || "application/octet-stream",
+    type: contentType,
     size: file.size,
     previewable,
     isImage: file.type.startsWith("image/"),
