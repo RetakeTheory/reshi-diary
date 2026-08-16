@@ -73,6 +73,9 @@ export default async function FilePreviewPage({ params, searchParams }: PageProp
           {metadata.previewable && metadata.mode === "text" && (
             <iframe src={rawUrl} title={`${metadata.filename} 文本阅读器`} sandbox="" />
           )}
+          {metadata.previewable && metadata.mode === "browser" && (
+            <iframe src={rawUrl} title={`${metadata.filename} 在线阅读器`} sandbox="" />
+          )}
           {(!metadata.previewable || !metadata.mode) && (
             <div className="file-reader-empty">
               <span>FILE</span>
