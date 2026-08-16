@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import katex from "katex";
 import { highlightCodeBlocks } from "../../../lib/code-highlight";
+import { hydrateAttachmentCards } from "../../../lib/attachment-cards";
 
 export default function RichPostContent({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -14,6 +15,7 @@ export default function RichPostContent({ html }: { html: string }) {
       });
     });
     highlightCodeBlocks(ref.current);
+    hydrateAttachmentCards(ref.current);
   }, [html]);
   return <div ref={ref} className="rich-content" dangerouslySetInnerHTML={{ __html: html }} />;
 }

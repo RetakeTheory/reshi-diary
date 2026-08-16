@@ -1,7 +1,7 @@
 const allowedTags = new Set([
   "p", "br", "strong", "b", "em", "i", "u", "h2", "h3", "blockquote",
   "ul", "ol", "li", "pre", "code", "table", "thead", "tbody", "tr", "th", "td",
-  "a", "img", "figure", "figcaption", "div", "span",
+  "a", "img", "figure", "figcaption", "div", "span", "svg", "path",
 ]);
 
 function escapeAttribute(value: string) {
@@ -30,6 +30,9 @@ export function sanitizeRichHtml(input: string) {
       const name = match[1].toLowerCase();
       const value = match[2] ?? match[3] ?? "";
       if (name === "class" && /^[a-z0-9 _-]{1,100}$/i.test(value)) attributes.push(`class="${escapeAttribute(value)}"`);
+      if (name === "viewbox" && tag === "svg" && /^\s*-?\d+(?:\.\d+)?(?:\s+-?\d+(?:\.\d+)?){3}\s*$/.test(value)) attributes.push(`viewBox="${escapeAttribute(value.trim())}"`);
+      if (name === "aria-hidden" && tag === "svg") attributes.push(`aria-hidden="${value === "true" ? "true" : "false"}"`);
+      if (name === "d" && tag === "path" && /^[a-z0-9.,\s-]{1,600}$/i.test(value)) attributes.push(`d="${escapeAttribute(value)}"`);
       if (name === "alt" && tag === "img") attributes.push(`alt="${escapeAttribute(value.slice(0, 180))}"`);
       if (name === "data-latex" && (tag === "span" || tag === "div")) attributes.push(`data-latex="${escapeAttribute(value.slice(0, 1500))}"`);
       if (name === "data-display" && (tag === "span" || tag === "div")) attributes.push(`data-display="${value === "block" ? "block" : "inline"}"`);
