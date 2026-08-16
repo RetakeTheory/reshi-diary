@@ -60,4 +60,3 @@ export async function POST(request: Request) {
     isImage: file.type.startsWith("image/"),
   }, { status: 201 });
 }
-
