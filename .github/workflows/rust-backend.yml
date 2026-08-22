@@ -5,10 +5,18 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/rust-backend.yml"
+      - "app/**"
+      - "lib/**"
+      - "worker/**"
+      - "cloudflare-workers.d.ts"
   push:
     branches: [main]
     paths:
       - "backend/**"
+      - "app/**"
+      - "lib/**"
+      - "worker/**"
+      - "cloudflare-workers.d.ts"
 
 permissions:
   contents: read
@@ -31,4 +39,17 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-features
 
-
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run build
