@@ -69,12 +69,8 @@ impl Config {
             .trim_end_matches('/')
             .to_owned();
         let parsed_origin = Url::parse(&public_origin).context("invalid PUBLIC_ORIGIN")?;
-        let passkey_rp_id = std::env::var("PASSKEY_RP_ID").unwrap_or_else(|_| {
-            parsed_origin
-                .host_str()
-                .unwrap_or("localhost")
-                .to_owned()
-        });
+        let passkey_rp_id = std::env::var("PASSKEY_RP_ID")
+            .unwrap_or_else(|_| parsed_origin.host_str().unwrap_or("localhost").to_owned());
         Ok(Self {
             listen_addr,
             database_url: std::env::var("DATABASE_URL")
@@ -980,4 +976,3 @@ mod tests {
         assert_eq!(html_to_plain_text("<p>A &amp; B</p><p>C</p>"), "A & B C");
     }
 }
-

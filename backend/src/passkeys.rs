@@ -249,9 +249,8 @@ async fn consume_flow<T: for<'de> Deserialize<'de>>(
     .bind(now_ms())
     .fetch_optional(&state.db)
     .await?;
-    let state_json = state_json.ok_or_else(|| {
-        AppError::BadRequest("Passkey challenge 已失效，请重新开始".into())
-    })?;
+    let state_json = state_json
+        .ok_or_else(|| AppError::BadRequest("Passkey challenge 已失效，请重新开始".into()))?;
     serde_json::from_str(&state_json).map_err(|error| {
         warn!(%error, purpose, "invalid stored passkey challenge");
         AppError::Internal
@@ -268,7 +267,12 @@ fn credential_id_string(id: &CredentialID) -> Result<String, AppError> {
 fn credential_id_from_response<T: Serialize>(response: &T) -> Result<String, AppError> {
     serde_json::to_value(response)
         .ok()
-        .and_then(|value| value.get("id").and_then(|id| id.as_str()).map(ToOwned::to_owned))
+        .and_then(|value| {
+            value
+                .get("id")
+                .and_then(|id| id.as_str())
+                .map(ToOwned::to_owned)
+        })
         .ok_or(AppError::Internal)
 }
 
@@ -283,8 +287,8 @@ fn normalized_name(value: Option<&str>) -> String {
 
 fn admin_user_id() -> Uuid {
     Uuid::from_bytes([
-        0x72, 0x65, 0x73, 0x68, 0x69, 0x2d, 0x64, 0x69, 0x61, 0x72, 0x79, 0x2d, 0x61, 0x64,
-        0x6d, 0x69,
+        0x72, 0x65, 0x73, 0x68, 0x69, 0x2d, 0x64, 0x69, 0x61, 0x72, 0x79, 0x2d, 0x61, 0x64, 0x6d,
+        0x69,
     ])
 }
 
@@ -310,4 +314,3 @@ mod tests {
         assert_eq!(normalized_name(Some(&"x".repeat(50))).len(), 40);
     }
 }
-
