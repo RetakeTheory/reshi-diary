@@ -46,25 +46,30 @@ test("renders the reader entry points and separate article directory", async () 
   assert.match(await postsResponse.text(), /STORY INDEX \/ 文章目录/);
 });
 
-test("fails API requests closed when the required Rust origin is missing", async () => {
+test("falls back to the built-in D1 API when Rust origin is missing", async () => {
   const response = await render("/api/auth/me");
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: "Rust 后端尚未配置" });
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "请先登录" });
 });
 
-test("ships Rust community, reader Passkey and notification routes", async () => {
-  const [main, users, community, notifications, nav] = await Promise.all([
+test("ships Rust community, profile, ticket, Passkey and notification routes", async () => {
+  const [main, users, community, account, notifications, nav] = await Promise.all([
     readFile(new URL("../backend/src/main.rs", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/users.rs", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/community.rs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/account.rs", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/notifications.rs", import.meta.url), "utf8"),
     readFile(new URL("../app/SiteNav.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(main, /\/api\/auth\/passkey-options/);
   assert.match(main, /\/api\/posts\/\{slug\}\/comments/);
   assert.match(main, /\/api\/admin\/notification/);
+  assert.match(main, /\/api\/account\/avatar/);
+  assert.match(main, /\/api\/admin\/tickets/);
   assert.match(users, /start_passkey_registration/);
   assert.match(community, /parent_id/);
+  assert.match(account, /award_daily_points/);
+  assert.match(account, /LEVEL_COLORS/);
   assert.match(notifications, /background_color/);
   assert.match(nav, /mobile-menu-trigger/);
 });

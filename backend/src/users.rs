@@ -27,6 +27,10 @@ pub(crate) struct UserRecord {
     pub(crate) id: String,
     pub(crate) email: String,
     pub(crate) display_name: String,
+    #[serde(skip_serializing)]
+    pub(crate) avatar_key: Option<String>,
+    pub(crate) avatar_url: Option<String>,
+    pub(crate) points: i64,
     pub(crate) created_at: i64,
 }
 
@@ -423,7 +427,7 @@ pub(crate) async fn optional_user(
         return Ok(None);
     };
     let user = sqlx::query_as::<_, UserRecord>(
-        "SELECT users.id, users.email, users.display_name, users.created_at FROM user_sessions JOIN users ON users.id = user_sessions.user_id WHERE user_sessions.token_hash = ? AND user_sessions.expires_at > ? LIMIT 1",
+        "SELECT users.id, users.email, users.display_name, users.avatar_key, CASE WHEN users.avatar_key IS NULL THEN NULL ELSE '/api/files/' || users.avatar_key END AS avatar_url, users.points, users.created_at FROM user_sessions JOIN users ON users.id = user_sessions.user_id WHERE user_sessions.token_hash = ? AND user_sessions.expires_at > ? LIMIT 1",
     )
     .bind(hash_value(token))
     .bind(now_ms())
@@ -467,7 +471,7 @@ fn user_cookie(state: &AppState, token: &str, max_age: i64) -> Result<HeaderValu
 
 async fn find_user_by_email(state: &AppState, email: &str) -> Result<Option<UserRecord>, AppError> {
     Ok(sqlx::query_as::<_, UserRecord>(
-        "SELECT id, email, display_name, created_at FROM users WHERE email = ? LIMIT 1",
+        "SELECT id, email, display_name, avatar_key, CASE WHEN avatar_key IS NULL THEN NULL ELSE '/api/files/' || avatar_key END AS avatar_url, points, created_at FROM users WHERE email = ? LIMIT 1",
     )
     .bind(email)
     .fetch_optional(&state.db)
@@ -476,7 +480,7 @@ async fn find_user_by_email(state: &AppState, email: &str) -> Result<Option<User
 
 async fn find_user_by_id(state: &AppState, id: &str) -> Result<UserRecord, AppError> {
     sqlx::query_as::<_, UserRecord>(
-        "SELECT id, email, display_name, created_at FROM users WHERE id = ? LIMIT 1",
+        "SELECT id, email, display_name, avatar_key, CASE WHEN avatar_key IS NULL THEN NULL ELSE '/api/files/' || avatar_key END AS avatar_url, points, created_at FROM users WHERE id = ? LIMIT 1",
     )
     .bind(id)
     .fetch_optional(&state.db)

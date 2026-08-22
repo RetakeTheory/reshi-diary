@@ -3,8 +3,8 @@ const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 const scriptName = process.env.CLOUDFLARE_WORKER_NAME || "reshi-diary";
 const rustBackendOrigin = process.env.RUST_BACKEND_ORIGIN?.trim().replace(/\/$/, "");
 
-if (!accountId || !apiToken || !rustBackendOrigin) {
-  throw new Error("无法验证生产绑定：缺少 Cloudflare 凭据或 RUST_BACKEND_ORIGIN");
+if (!accountId || !apiToken) {
+  throw new Error("无法验证生产绑定：缺少 Cloudflare 凭据");
 }
 
 const response = await fetch(
@@ -23,7 +23,7 @@ const bindings = new Map(
 const required = [
   ["AWS_REGION", "plain_text", process.env.AWS_REGION || "ap-northeast-1"],
   ["AWS_S3_BUCKET", "plain_text", process.env.AWS_S3_BUCKET || "reshi-diary-files"],
-  ["RUST_BACKEND_ORIGIN", "plain_text", rustBackendOrigin],
+  ...(rustBackendOrigin ? [["RUST_BACKEND_ORIGIN", "plain_text", rustBackendOrigin]] : []),
   ["AWS_ACCESS_KEY_ID", "secret_text"],
   ["AWS_SECRET_ACCESS_KEY", "secret_text"],
   ["RESEND_API_KEY", "secret_text"],
@@ -45,4 +45,4 @@ if (problems.length) {
   throw new Error(`生产绑定校验失败：${problems.join("；")}`);
 }
 
-console.log(`Worker ${scriptName} 的 Rust、S3、邮件与 D1 绑定校验通过`);
+console.log(`Worker ${scriptName} 的 S3、邮件与 D1 绑定校验通过${rustBackendOrigin ? "，Rust 代理已启用" : "，当前使用 D1 API"}`);

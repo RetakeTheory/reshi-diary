@@ -10,6 +10,7 @@ import { cookies } from "next/headers";
 import { ADMIN_SESSION_COOKIE } from "../../lib/admin-email-auth";
 import { getRustBackendOrigin, rustBackendFetch } from "../../lib/rust-backend";
 import NotificationManager from "./NotificationManager";
+import TicketManager from "./TicketManager";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export default async function AdminPage() {
       </header>
       <NotificationManager />
       <PasskeyManager />
+      <TicketManager />
       <AdminEditor initialPosts={initialPosts} />
     </main>
   );

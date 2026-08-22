@@ -6,7 +6,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-use crate::{AppError, AppState, now_ms, users, verify_origin};
+use crate::{AppError, AppState, account, now_ms, users, verify_origin};
 
 #[derive(Serialize, FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +17,8 @@ struct CommentItem {
     created_at: i64,
     user_id: String,
     display_name: String,
+    avatar_url: Option<String>,
+    points: i64,
 }
 
 #[derive(Serialize, FromRow)]
@@ -45,7 +47,7 @@ pub(crate) async fn get_community(
     let post_id = public_post_id(&state, &slug).await?;
     let user = users::optional_user(&state, &headers).await?;
     let comments = sqlx::query_as::<_, CommentItem>(
-        "SELECT comments.id, comments.parent_id, comments.body, comments.created_at, users.id AS user_id, users.display_name FROM comments JOIN users ON users.id = comments.user_id WHERE comments.post_id = ? ORDER BY comments.created_at ASC, comments.id ASC",
+        "SELECT comments.id, comments.parent_id, comments.body, comments.created_at, users.id AS user_id, users.display_name, CASE WHEN users.avatar_key IS NULL THEN NULL ELSE '/api/files/' || users.avatar_key END AS avatar_url, users.points FROM comments JOIN users ON users.id = comments.user_id WHERE comments.post_id = ? ORDER BY comments.created_at ASC, comments.id ASC",
     )
     .bind(post_id)
     .fetch_all(&state.db)
@@ -103,14 +105,19 @@ pub(crate) async fn create_comment(
     .execute(&state.db)
     .await?;
     let comment = sqlx::query_as::<_, CommentItem>(
-        "SELECT comments.id, comments.parent_id, comments.body, comments.created_at, users.id AS user_id, users.display_name FROM comments JOIN users ON users.id = comments.user_id WHERE comments.id = ? LIMIT 1",
+        "SELECT comments.id, comments.parent_id, comments.body, comments.created_at, users.id AS user_id, users.display_name, CASE WHEN users.avatar_key IS NULL THEN NULL ELSE '/api/files/' || users.avatar_key END AS avatar_url, users.points FROM comments JOIN users ON users.id = comments.user_id WHERE comments.id = ? LIMIT 1",
     )
     .bind(result.last_insert_rowid())
     .fetch_one(&state.db)
     .await?;
+    let points_awarded = if account::award_daily_points(&state, &user.id, "comment", 3).await? {
+        3
+    } else {
+        0
+    };
     Ok((
         axum::http::StatusCode::CREATED,
-        Json(serde_json::json!({ "comment": comment })),
+        Json(serde_json::json!({ "comment": comment, "pointsAwarded": points_awarded })),
     ))
 }
 
@@ -138,6 +145,7 @@ pub(crate) async fn toggle_reaction(
             .await?
             .rows_affected()
             > 0;
+    let mut points_awarded = 0;
     if !deleted {
         sqlx::query(
             "INSERT INTO post_reactions (post_id, user_id, kind, created_at) VALUES (?, ?, ?, ?)",
@@ -148,10 +156,14 @@ pub(crate) async fn toggle_reaction(
         .bind(now_ms())
         .execute(&state.db)
         .await?;
+        if account::award_daily_points(&state, &user.id, "reaction", 3).await? {
+            points_awarded = 3;
+        }
     }
     Ok(Json(serde_json::json!({
         "active": !deleted,
         "reactions": reaction_counts(&state, post_id).await?,
+        "pointsAwarded": points_awarded,
     })))
 }
 

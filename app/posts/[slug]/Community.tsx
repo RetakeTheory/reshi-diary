@@ -2,9 +2,10 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Icon, { type IconName } from "../../Icon";
+import ReaderAvatar from "../../ReaderAvatar";
 
-type User = { id: string; displayName: string; email: string };
-type Comment = { id: number; parentId: number | null; body: string; createdAt: number; userId: string; displayName: string };
+type User = { id: string; displayName: string; email: string; avatarUrl?: string | null; level?: number; levelColor?: string };
+type Comment = { id: number; parentId: number | null; body: string; createdAt: number; userId: string; displayName: string; avatarUrl?: string | null; points?: number; level?: number; levelColor?: string };
 type Reaction = { kind: "heart" | "spark" | "insight"; count: number };
 const reactionMeta: Array<{ kind: Reaction["kind"]; label: string; icon: IconName }> = [
   { kind: "heart", label: "喜欢", icon: "heart" },
@@ -33,7 +34,12 @@ export default function Community({ slug }: { slug: string }) {
       ]);
       if (!communityResponse.ok) throw new Error("暂时无法加载讨论，请稍后重试。");
       const data = await communityResponse.json() as { comments: Comment[]; reactions: Reaction[]; myReactions: string[] };
-      setComments(data.comments); setReactions(data.reactions); setMine(data.myReactions);
+      setComments(data.comments.map((comment) => {
+        if (comment.level || comment.points === undefined) return comment;
+        const level = Math.min(16, Math.floor(Math.max(0, comment.points) / 100) + 1);
+        const colors = ["#64748B","#2F80ED","#0EA5A4","#16A34A","#65A30D","#CA8A04","#EA580C","#E11D48","#DB2777","#C026D3","#9333EA","#7C3AED","#4F46E5","#2563EB","#0891B2","#B45309"];
+        return { ...comment, level, levelColor: colors[level - 1] };
+      })); setReactions(data.reactions); setMine(data.myReactions);
       if (meResponse.ok) setUser(((await meResponse.json()) as { user: User }).user);
       setLoadState("ready");
     } catch (error) {
@@ -61,9 +67,9 @@ export default function Community({ slug }: { slug: string }) {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ body, parentId: replyTo?.id || null }),
       });
-      const result = await response.json() as { comment?: Comment; error?: string };
+      const result = await response.json() as { comment?: Comment; pointsAwarded?: number; error?: string };
       if (!response.ok || !result.comment) throw new Error(result.error || "评论发布失败");
-      setComments((current) => [...current, result.comment!]); setBody(""); setReplyTo(null); setMessage("评论已发布");
+      setComments((current) => [...current, result.comment!]); setBody(""); setReplyTo(null); setMessage(result.pointsAwarded ? `评论已发布，积分 +${result.pointsAwarded}` : "评论已发布");
     } catch (error) { setMessage(error instanceof Error ? error.message : "评论发布失败"); }
     finally { setBusy(false); }
   }
@@ -75,10 +81,11 @@ export default function Community({ slug }: { slug: string }) {
       const response = await fetch(`/api/posts/${encodeURIComponent(slug)}/reactions`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind }),
       });
-      const result = await response.json() as { active?: boolean; reactions?: Reaction[]; error?: string };
+      const result = await response.json() as { active?: boolean; reactions?: Reaction[]; pointsAwarded?: number; error?: string };
       if (!response.ok || !result.reactions) throw new Error(result.error || "回应失败");
       setReactions(result.reactions);
       setMine((current) => result.active ? [...new Set([...current, kind])] : current.filter((item) => item !== kind));
+      if (result.pointsAwarded) setMessage(`今日回应任务完成，积分 +${result.pointsAwarded}`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "回应失败"); }
     finally { setReactionBusy(null); }
   }
@@ -86,7 +93,7 @@ export default function Community({ slug }: { slug: string }) {
   function count(kind: string) { return reactions.find((item) => item.kind === kind)?.count || 0; }
   function renderComments(parentId: number | null, depth = 0): React.ReactNode {
     return (children.get(parentId) || []).map((comment) => <article className="comment-item" data-depth={Math.min(depth, 2)} key={comment.id}>
-      <header><span className="comment-avatar"><Icon name="user" /></span><div><b>{comment.displayName}</b><time>{new Date(comment.createdAt).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}</time></div></header>
+      <header><ReaderAvatar src={comment.avatarUrl} name={comment.displayName} size={38} /><div><b>{comment.displayName}{comment.level && <span className="comment-level" style={{ backgroundColor: comment.levelColor }}>LV.{comment.level}</span>}</b><time>{new Date(comment.createdAt).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}</time></div></header>
       <p>{comment.body}</p>
       {user && <button type="button" className="comment-reply" onClick={() => setReplyTo(comment)}><Icon name="reply" /> 回复</button>}
       {renderComments(comment.id, depth + 1)}
