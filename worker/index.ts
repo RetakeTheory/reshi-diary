@@ -5,6 +5,7 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  RUST_BACKEND_ORIGIN?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -29,6 +30,14 @@ const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
+    if (env.RUST_BACKEND_ORIGIN && url.pathname.startsWith("/api/")) {
+      const upstream = new URL(`${url.pathname}${url.search}`, env.RUST_BACKEND_ORIGIN);
+      const headers = new Headers(request.headers);
+      headers.set("X-Forwarded-Host", url.host);
+      headers.set("X-Forwarded-Proto", url.protocol.slice(0, -1));
+      return fetch(new Request(upstream, { method: request.method, headers, body: request.body, redirect: "manual" }));
+    }
+
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
       return handleImageOptimization(request, {
@@ -45,3 +54,4 @@ const worker = {
 };
 
 export default worker;
+

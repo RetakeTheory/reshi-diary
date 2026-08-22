@@ -14,3 +14,10 @@
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+
+## Rust 后端
+
+新的 Axum 后端位于 [`backend/`](backend/README.md)，提供邮箱登录、管理员会话、文章 CRUD、公开文章读取和附件上传/下载接口。
+
+默认部署仍使用现有 Cloudflare D1 后端。部署 Rust 服务并设置 Worker 变量 `RUST_BACKEND_ORIGIN` 后，Worker 会把 `/api/*` 请求代理到 Rust 服务，服务端渲染也会改从 Rust API 读取文章。切换前必须迁移 D1 数据，并为 Rust 服务挂载持久化卷。
+

@@ -6,20 +6,37 @@ import { ensureDatabaseSchema } from "../../db/runtime";
 import { requireAdmin } from "./admin-auth";
 import AdminEditor from "./AdminEditor";
 import PasskeyManager from "./PasskeyManager";
+import { cookies } from "next/headers";
+import { ADMIN_SESSION_COOKIE } from "../../lib/admin-email-auth";
+import { getRustBackendOrigin, rustBackendFetch } from "../../lib/rust-backend";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const { admin } = await requireAdmin();
-  await ensureDatabaseSchema();
-  const db = await getDb();
-  const rows = await db.select().from(posts).orderBy(desc(posts.updatedAt), desc(posts.id));
-  const initialPosts = rows.map((post) => ({
-    ...post,
-    createdAt: post.createdAt.getTime(),
-    updatedAt: post.updatedAt.getTime(),
-    publishedAt: post.publishedAt?.getTime() ?? null,
-  }));
+  const rustOrigin = await getRustBackendOrigin();
+  let initialPosts;
+  if (rustOrigin) {
+    const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+    const response = await rustBackendFetch("/api/admin/posts", {
+      headers: token ? { Cookie: `${ADMIN_SESSION_COOKIE}=${token}` } : undefined,
+    });
+    if (!response?.ok) throw new Error("Rust backend failed to load admin posts");
+    initialPosts = ((await response.json()) as { posts: Array<{
+      id: number; title: string; slug: string; excerpt: string; content: string; category: string;
+      status: "draft" | "published"; createdAt: number; updatedAt: number; publishedAt: number | null;
+    }> }).posts;
+  } else {
+    await ensureDatabaseSchema();
+    const db = await getDb();
+    const rows = await db.select().from(posts).orderBy(desc(posts.updatedAt), desc(posts.id));
+    initialPosts = rows.map((post) => ({
+      ...post,
+      createdAt: post.createdAt.getTime(),
+      updatedAt: post.updatedAt.getTime(),
+      publishedAt: post.publishedAt?.getTime() ?? null,
+    }));
+  }
 
   return (
     <main className="admin-shell">
@@ -32,3 +49,4 @@ export default async function AdminPage() {
     </main>
   );
 }
+

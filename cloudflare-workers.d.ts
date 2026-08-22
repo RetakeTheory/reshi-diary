@@ -31,8 +31,10 @@ interface ReshiWorkerEnv {
   AWS_S3_BUCKET?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM?: string;
+  RUST_BACKEND_ORIGIN?: string;
 }
 
 declare module "cloudflare:workers" {
   export const env: ReshiWorkerEnv;
 }
+
