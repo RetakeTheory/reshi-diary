@@ -54,7 +54,9 @@ jobs:
       - name: Lint changed integration files
         run: >-
           pnpm exec eslint
+          app/ThemeControls.tsx
           app/admin/admin-auth.ts
+          app/admin/PasskeyManager.tsx
           app/admin/login/EmailLogin.tsx
           app/admin/login/page.tsx
           app/admin/page.tsx
@@ -64,3 +66,4 @@ jobs:
           worker/index.ts
           cloudflare-workers.d.ts
       - run: pnpm run build
+      - run: node --test tests/rendered-html.test.mjs
