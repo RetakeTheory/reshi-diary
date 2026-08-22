@@ -28,9 +28,9 @@ use tracing::{error, info};
 use uuid::Uuid;
 use webauthn_rs::prelude::{Url, Webauthn, WebauthnBuilder};
 
-mod passkeys;
 mod community;
 mod notifications;
+mod passkeys;
 mod users;
 
 const SESSION_COOKIE: &str = "reshi_admin_session";
@@ -147,10 +147,7 @@ fn routes(state: AppState) -> Router {
         .route("/healthz", get(health))
         .route("/api/posts", get(list_public_posts))
         .route("/api/posts/{slug}", get(get_public_post))
-        .route(
-            "/api/posts/{slug}/community",
-            get(community::get_community),
-        )
+        .route("/api/posts/{slug}/community", get(community::get_community))
         .route(
             "/api/posts/{slug}/comments",
             post(community::create_comment),
@@ -875,7 +872,13 @@ fn stored_content_type(original: &str, filename: &str, previewable: bool) -> Str
 
 fn is_safe_image_type(value: &str) -> bool {
     matches!(
-        value.split(';').next().unwrap_or("").trim().to_ascii_lowercase().as_str(),
+        value
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
         "image/avif" | "image/gif" | "image/jpeg" | "image/png" | "image/webp"
     )
 }

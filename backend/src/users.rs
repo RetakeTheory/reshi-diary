@@ -14,8 +14,8 @@ use webauthn_rs::prelude::{
 };
 
 use crate::{
-    AppError, AppState, CODE_TTL_MS, SEND_COOLDOWN_MS, SESSION_TTL_MS, cookie_value,
-    hash_value, now_ms, verify_origin,
+    AppError, AppState, CODE_TTL_MS, SEND_COOLDOWN_MS, SESSION_TTL_MS, cookie_value, hash_value,
+    now_ms, verify_origin,
 };
 
 pub(crate) const USER_SESSION_COOKIE: &str = "reshi_user_session";
@@ -253,7 +253,10 @@ pub(crate) async fn logout(
     }
     let cookie = expired_user_cookie(&state)?;
     Ok((
-        [(header::SET_COOKIE, cookie), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+        [
+            (header::SET_COOKIE, cookie),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+        ],
         Json(serde_json::json!({ "ok": true })),
     )
         .into_response())
@@ -304,7 +307,9 @@ pub(crate) async fn registration_options(
         )
         .map_err(|error| webauthn_error("start user passkey registration", error))?;
     let flow_id = store_flow(&state, &user.id, "registration", &registration).await?;
-    Ok(Json(serde_json::json!({ "flowId": flow_id, "options": options })))
+    Ok(Json(
+        serde_json::json!({ "flowId": flow_id, "options": options }),
+    ))
 }
 
 pub(crate) async fn verify_registration(
@@ -358,7 +363,9 @@ pub(crate) async fn authentication_options(
         .start_passkey_authentication(&credentials)
         .map_err(|error| webauthn_error("start user passkey authentication", error))?;
     let flow_id = store_flow(&state, &user.id, "authentication", &authentication).await?;
-    Ok(Json(serde_json::json!({ "flowId": flow_id, "options": options })))
+    Ok(Json(
+        serde_json::json!({ "flowId": flow_id, "options": options }),
+    ))
 }
 
 pub(crate) async fn verify_authentication(
@@ -447,17 +454,18 @@ fn expired_user_cookie(state: &AppState) -> Result<HeaderValue, AppError> {
 }
 
 fn user_cookie(state: &AppState, token: &str, max_age: i64) -> Result<HeaderValue, AppError> {
-    let secure = if state.config.session_secure { "; Secure" } else { "" };
+    let secure = if state.config.session_secure {
+        "; Secure"
+    } else {
+        ""
+    };
     HeaderValue::from_str(&format!(
         "{USER_SESSION_COOKIE}={token}; Path=/; HttpOnly{secure}; SameSite=Lax; Max-Age={max_age}"
     ))
     .map_err(|_| AppError::Internal)
 }
 
-async fn find_user_by_email(
-    state: &AppState,
-    email: &str,
-) -> Result<Option<UserRecord>, AppError> {
+async fn find_user_by_email(state: &AppState, email: &str) -> Result<Option<UserRecord>, AppError> {
     Ok(sqlx::query_as::<_, UserRecord>(
         "SELECT id, email, display_name, created_at FROM users WHERE email = ? LIMIT 1",
     )
@@ -568,8 +576,8 @@ async fn consume_flow<T: for<'de> Deserialize<'de>>(
     .bind(now_ms())
     .fetch_optional(&state.db)
     .await?;
-    let state_json = state_json
-        .ok_or_else(|| AppError::BadRequest("Passkey 请求已失效，请重新开始".into()))?;
+    let state_json =
+        state_json.ok_or_else(|| AppError::BadRequest("Passkey 请求已失效，请重新开始".into()))?;
     serde_json::from_str(&state_json).map_err(|_| AppError::Internal)
 }
 
@@ -584,8 +592,8 @@ async fn consume_auth_flow(
     .bind(now_ms())
     .fetch_optional(&state.db)
     .await?;
-    let (user_id, state_json) = row
-        .ok_or_else(|| AppError::BadRequest("Passkey 请求已失效，请重新开始".into()))?;
+    let (user_id, state_json) =
+        row.ok_or_else(|| AppError::BadRequest("Passkey 请求已失效，请重新开始".into()))?;
     let authentication = serde_json::from_str(&state_json).map_err(|_| AppError::Internal)?;
     Ok((user_id, authentication))
 }
@@ -593,9 +601,9 @@ async fn consume_auth_flow(
 fn normalize_email(value: Option<&str>) -> Result<String, AppError> {
     let email = value.unwrap_or_default().trim().to_lowercase();
     let valid = email.len() <= 254
-        && email
-            .split_once('@')
-            .is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.') && !domain.ends_with('.'));
+        && email.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty() && domain.contains('.') && !domain.ends_with('.')
+        });
     if !valid {
         return Err(AppError::BadRequest("请输入有效邮箱地址".into()));
     }
@@ -637,7 +645,12 @@ fn credential_id_string(id: &CredentialID) -> Result<String, AppError> {
 fn credential_id_from_response<T: Serialize>(response: &T) -> Result<String, AppError> {
     serde_json::to_value(response)
         .ok()
-        .and_then(|value| value.get("id").and_then(|id| id.as_str()).map(ToOwned::to_owned))
+        .and_then(|value| {
+            value
+                .get("id")
+                .and_then(|id| id.as_str())
+                .map(ToOwned::to_owned)
+        })
         .ok_or(AppError::Internal)
 }
 
@@ -659,6 +672,9 @@ mod tests {
     #[test]
     fn display_name_is_trimmed_and_limited() {
         assert_eq!(normalize_display_name(Some("  小树  ")).unwrap(), "小树");
-        assert_eq!(normalize_display_name(Some(&"x".repeat(50))).unwrap().len(), 40);
+        assert_eq!(
+            normalize_display_name(Some(&"x".repeat(50))).unwrap().len(),
+            40
+        );
     }
 }

@@ -1,8 +1,4 @@
-use axum::{
-    Json,
-    extract::State,
-    http::HeaderMap,
-};
+use axum::{Json, extract::State, http::HeaderMap};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -68,7 +64,9 @@ pub(crate) async fn save(
         .unwrap_or_else(|| "#7657F6".into())
         .to_uppercase();
     if !valid_hex_color(&color) {
-        return Err(AppError::BadRequest("通知底色必须是六位十六进制颜色".into()));
+        return Err(AppError::BadRequest(
+            "通知底色必须是六位十六进制颜色".into(),
+        ));
     }
     let now = now_ms();
     let mut transaction = state.db.begin().await?;
@@ -125,7 +123,11 @@ fn foreground_for(background: &str) -> &'static str {
         u8::from_str_radix(&background[range], 16).unwrap_or(0) as f32
     };
     let luminance = parse(1..3) * 0.299 + parse(3..5) * 0.587 + parse(5..7) * 0.114;
-    if luminance > 155.0 { "#171326" } else { "#FFFFFF" }
+    if luminance > 155.0 {
+        "#171326"
+    } else {
+        "#FFFFFF"
+    }
 }
 
 #[cfg(test)]

@@ -80,13 +80,12 @@ pub(crate) async fn create_comment(
     let post_id = public_post_id(&state, &slug).await?;
     let body = normalize_comment(input.body.as_deref())?;
     if let Some(parent_id) = input.parent_id {
-        let parent_exists: Option<i64> = sqlx::query_scalar(
-            "SELECT id FROM comments WHERE id = ? AND post_id = ? LIMIT 1",
-        )
-        .bind(parent_id)
-        .bind(post_id)
-        .fetch_optional(&state.db)
-        .await?;
+        let parent_exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM comments WHERE id = ? AND post_id = ? LIMIT 1")
+                .bind(parent_id)
+                .bind(post_id)
+                .fetch_optional(&state.db)
+                .await?;
         if parent_exists.is_none() {
             return Err(AppError::BadRequest("回复的评论不存在".into()));
         }
@@ -130,16 +129,15 @@ pub(crate) async fn toggle_reaction(
         Some("insight") => "insight",
         _ => return Err(AppError::BadRequest("回应类型无效".into())),
     };
-    let deleted = sqlx::query(
-        "DELETE FROM post_reactions WHERE post_id = ? AND user_id = ? AND kind = ?",
-    )
-    .bind(post_id)
-    .bind(&user.id)
-    .bind(kind)
-    .execute(&state.db)
-    .await?
-    .rows_affected()
-        > 0;
+    let deleted =
+        sqlx::query("DELETE FROM post_reactions WHERE post_id = ? AND user_id = ? AND kind = ?")
+            .bind(post_id)
+            .bind(&user.id)
+            .bind(kind)
+            .execute(&state.db)
+            .await?
+            .rows_affected()
+            > 0;
     if !deleted {
         sqlx::query(
             "INSERT INTO post_reactions (post_id, user_id, kind, created_at) VALUES (?, ?, ?, ?)",
