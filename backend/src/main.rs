@@ -941,4 +941,3 @@ mod tests {
         assert_eq!(html_to_plain_text("<p>A &amp; B</p><p>C</p>"), "A & B C");
     }
 }
-
