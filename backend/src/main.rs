@@ -9,18 +9,18 @@ use std::{
 use ammonia::Builder as HtmlSanitizer;
 use anyhow::Context;
 use axum::{
+    Json, Router,
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     FromRow, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 use thiserror::Error;
 use tower_http::trace::TraceLayer;
@@ -129,7 +129,9 @@ fn routes(state: AppState) -> Router {
         .route("/api/admin/posts", get(list_admin_posts).post(create_post))
         .route(
             "/api/admin/posts/{id}",
-            post(method_not_allowed).put(update_post).delete(delete_post),
+            post(method_not_allowed)
+                .put(update_post)
+                .delete(delete_post),
         )
         .route("/api/admin/auth/send-code", post(send_code))
         .route("/api/admin/auth/verify-code", post(verify_code))
@@ -526,11 +528,7 @@ async fn verify_code(
 }
 
 async fn issue_session(state: &AppState) -> Result<HeaderValue, AppError> {
-    let token = format!(
-        "{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    );
+    let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let now = now_ms();
     sqlx::query("DELETE FROM admin_sessions WHERE expires_at <= ?")
         .bind(now)
@@ -571,10 +569,7 @@ async fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), AppE
     }
 }
 
-async fn logout(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Response, AppError> {
+async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
     verify_origin(&state.config, &headers)?;
     if let Some(token) = cookie_value(&headers, SESSION_COOKIE) {
         sqlx::query("DELETE FROM admin_sessions WHERE token_hash = ?")
@@ -694,15 +689,13 @@ async fn download_file(
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::NotFound("文件不存在"))?;
-    let bytes = tokio::fs::read(&row.disk_path)
-        .await
-        .map_err(|err| {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                AppError::NotFound("文件不存在")
-            } else {
-                AppError::Io(err)
-            }
-        })?;
+    let bytes = tokio::fs::read(&row.disk_path).await.map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            AppError::NotFound("文件不存在")
+        } else {
+            AppError::Io(err)
+        }
+    })?;
     let inline = row.previewable == 1 && query.download != Some(1);
     let disposition = content_disposition(&row.filename, inline);
     let mut response = Response::new(Body::from(bytes));
@@ -889,11 +882,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message, retry_after) = match &self {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message.as_str(), None),
-            Self::Unauthorized => (
-                StatusCode::UNAUTHORIZED,
-                "未登录或没有管理员权限",
-                None,
-            ),
+            Self::Unauthorized => (StatusCode::UNAUTHORIZED, "未登录或没有管理员权限", None),
             Self::Forbidden => (StatusCode::FORBIDDEN, "请求来源无效", None),
             Self::NotFound(message) => (StatusCode::NOT_FOUND, *message, None),
             Self::RateLimited(seconds) => (
@@ -949,11 +938,7 @@ mod tests {
 
     #[test]
     fn plain_text_removes_tags_and_decodes_entities() {
-        assert_eq!(
-            html_to_plain_text("<p>A &amp; B</p><p>C</p>"),
-            "A & B C"
-        );
+        assert_eq!(html_to_plain_text("<p>A &amp; B</p><p>C</p>"), "A & B C");
     }
 }
-
 
