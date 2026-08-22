@@ -20,7 +20,7 @@ test("server-renders the reshi diary homepage", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /reshi的日记本/);
-  assert.match(html, /一个计算机系废柴学生的个人博客/);
+  assert.match(html, /欢迎来到 reshi 的私人存档点/);
   assert.match(html, /<path d="M3\.5 12h16\.25M13\.5 5\.75 19\.75 12l-6\.25 6\.25"><\/path>/);
 });
 

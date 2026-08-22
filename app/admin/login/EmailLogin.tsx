@@ -6,6 +6,10 @@ import ArrowIcon from "../../ArrowIcon";
 
 const CODE_LENGTH = 6;
 
+function PasskeyIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="4" /><path d="M12 12h9M17 12v3M20 12v2" /></svg>;
+}
+
 export default function EmailLogin({ email, passkeysEnabled = true }: { email: string; passkeysEnabled?: boolean }) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [code, setCode] = useState<string[]>(() => Array(CODE_LENGTH).fill(""));
@@ -138,7 +142,7 @@ export default function EmailLogin({ email, passkeysEnabled = true }: { email: s
   }
 
   return (
-    <form className="login-form" onSubmit={verify}>
+    <form className="login-form" onSubmit={verify} aria-busy={busy}>
       <label><span>管理员邮箱</span><input value={email} readOnly aria-label="管理员邮箱" /></label>
       {step === "code" && <div className="otp-field">
         <span id="otp-label">6 位验证码</span>
@@ -159,12 +163,12 @@ export default function EmailLogin({ email, passkeysEnabled = true }: { email: s
           />)}
         </div>
       </div>}
-      {message && <div className={`login-status ${message.startsWith("验证码已发送") ? "success" : ""}`} role="status">{message}</div>}
+      {message && <div className={`login-status ${message.startsWith("验证码已发送") ? "success" : ""}`} role="status" aria-live="polite">{message}</div>}
       {step === "email" ? <>
         <button className="login-action" type="button" disabled={busy} onClick={sendCode}>{busy ? "正在发送…" : <>发送邮箱验证码 <ArrowIcon /></>}</button>
         {passkeysEnabled && passkeySupported && <>
           <div className="login-divider"><span>或</span></div>
-          <button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><span className="passkey-symbol" aria-hidden="true">🔑</span> 使用 Passkey 登录</button>
+          <button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><span className="passkey-symbol"><PasskeyIcon /></span> 使用 Passkey 登录</button>
         </>}
       </> : <>
         <button className="login-action" type="submit" disabled={busy}>{busy ? "正在验证…" : <>验证并进入后台 <ArrowIcon /></>}</button>
@@ -173,4 +177,3 @@ export default function EmailLogin({ email, passkeysEnabled = true }: { email: s
     </form>
   );
 }
-
