@@ -11,9 +11,8 @@ use crate::{AppError, AppState, now_ms, require_admin, users, verify_origin};
 
 const AVATAR_MAX_BYTES: usize = 3 * 1024 * 1024;
 const LEVEL_COLORS: [&str; 16] = [
-    "#64748B", "#2F80ED", "#0EA5A4", "#16A34A", "#65A30D", "#CA8A04", "#EA580C",
-    "#E11D48", "#DB2777", "#C026D3", "#9333EA", "#7C3AED", "#4F46E5", "#2563EB",
-    "#0891B2", "#B45309",
+    "#64748B", "#2F80ED", "#0EA5A4", "#16A34A", "#65A30D", "#CA8A04", "#EA580C", "#E11D48",
+    "#DB2777", "#C026D3", "#9333EA", "#7C3AED", "#4F46E5", "#2563EB", "#0891B2", "#B45309",
 ];
 
 #[derive(Serialize)]
@@ -85,7 +84,10 @@ pub(crate) async fn upload_avatar(
             continue;
         }
         let content_type = field.content_type().unwrap_or("").to_owned();
-        if !matches!(content_type.as_str(), "image/jpeg" | "image/png" | "image/webp") {
+        if !matches!(
+            content_type.as_str(),
+            "image/jpeg" | "image/png" | "image/webp"
+        ) {
             return Err(AppError::BadRequest("头像仅支持 JPG、PNG 或 WebP".into()));
         }
         let bytes = field
@@ -216,7 +218,10 @@ pub(crate) async fn create_ticket(
         .execute(&state.db)
         .await?;
     let ticket = ticket_by_id(&state, result.last_insert_rowid()).await?;
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "ticket": ticket }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "ticket": ticket })),
+    ))
 }
 
 pub(crate) async fn list_admin_tickets(
@@ -242,19 +247,25 @@ pub(crate) async fn update_ticket(
         Some(value @ ("open" | "in_progress" | "resolved" | "closed")) => value,
         _ => return Err(AppError::BadRequest("工单状态无效".into())),
     };
-    let reply = input.admin_reply.map(|value| value.trim().chars().take(2_000).collect::<String>()).filter(|value| !value.is_empty());
-    let updated = sqlx::query("UPDATE tickets SET status = ?, admin_reply = ?, updated_at = ? WHERE id = ?")
-        .bind(status)
-        .bind(reply)
-        .bind(now_ms())
-        .bind(id)
-        .execute(&state.db)
-        .await?
-        .rows_affected();
+    let reply = input
+        .admin_reply
+        .map(|value| value.trim().chars().take(2_000).collect::<String>())
+        .filter(|value| !value.is_empty());
+    let updated =
+        sqlx::query("UPDATE tickets SET status = ?, admin_reply = ?, updated_at = ? WHERE id = ?")
+            .bind(status)
+            .bind(reply)
+            .bind(now_ms())
+            .bind(id)
+            .execute(&state.db)
+            .await?
+            .rows_affected();
     if updated == 0 {
         return Err(AppError::NotFound("工单不存在"));
     }
-    Ok(Json(serde_json::json!({ "ticket": ticket_by_id(&state, id).await? })))
+    Ok(Json(
+        serde_json::json!({ "ticket": ticket_by_id(&state, id).await? }),
+    ))
 }
 
 fn user_payload(user: &users::UserRecord) -> serde_json::Value {
@@ -280,15 +291,26 @@ fn day_key(now: i64) -> i64 {
 }
 
 async fn task_state(state: &AppState, user_id: &str) -> Result<Vec<DailyTask>, AppError> {
-    let completed = sqlx::query_scalar::<_, String>("SELECT task FROM point_events WHERE user_id = ? AND day_key = ?")
-        .bind(user_id)
-        .bind(day_key(now_ms()))
-        .fetch_all(&state.db)
-        .await?;
-    Ok([("check_in", "每日签到", 2), ("comment", "发表评论", 3), ("reaction", "添加回应", 3)]
-        .into_iter()
-        .map(|(key, label, points)| DailyTask { key, label, points, completed: completed.iter().any(|value| value == key) })
-        .collect())
+    let completed = sqlx::query_scalar::<_, String>(
+        "SELECT task FROM point_events WHERE user_id = ? AND day_key = ?",
+    )
+    .bind(user_id)
+    .bind(day_key(now_ms()))
+    .fetch_all(&state.db)
+    .await?;
+    Ok([
+        ("check_in", "每日签到", 2),
+        ("comment", "发表评论", 3),
+        ("reaction", "添加回应", 3),
+    ]
+    .into_iter()
+    .map(|(key, label, points)| DailyTask {
+        key,
+        label,
+        points,
+        completed: completed.iter().any(|value| value == key),
+    })
+    .collect())
 }
 
 async fn ticket_by_id(state: &AppState, id: i64) -> Result<TicketItem, AppError> {

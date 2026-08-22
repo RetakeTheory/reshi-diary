@@ -28,10 +28,10 @@ use tracing::{error, info};
 use uuid::Uuid;
 use webauthn_rs::prelude::{Url, Webauthn, WebauthnBuilder};
 
+mod account;
 mod community;
 mod notifications;
 mod passkeys;
-mod account;
 mod users;
 
 const SESSION_COOKIE: &str = "reshi_admin_session";
@@ -174,7 +174,10 @@ fn routes(state: AppState) -> Router {
         .route("/api/account/avatar", post(account::upload_avatar))
         .route("/api/account/tasks", get(account::get_tasks))
         .route("/api/account/check-in", post(account::check_in))
-        .route("/api/account/tickets", get(account::list_tickets).post(account::create_ticket))
+        .route(
+            "/api/account/tickets",
+            get(account::list_tickets).post(account::create_ticket),
+        )
         .route(
             "/api/account/passkeys/options",
             post(users::registration_options),
@@ -204,7 +207,10 @@ fn routes(state: AppState) -> Router {
         .route("/api/admin/auth/logout", post(logout))
         .route("/api/admin/passkeys", get(passkeys::list_passkeys))
         .route("/api/admin/tickets", get(account::list_admin_tickets))
-        .route("/api/admin/tickets/{id}", post(method_not_allowed).put(account::update_ticket))
+        .route(
+            "/api/admin/tickets/{id}",
+            post(method_not_allowed).put(account::update_ticket),
+        )
         .route(
             "/api/admin/passkeys/options",
             post(passkeys::registration_options),
