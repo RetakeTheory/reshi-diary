@@ -396,12 +396,12 @@ async fn send_code(
     .bind(&email)
     .fetch_optional(&state.db)
     .await?;
-    if let Some(created_at) = recent {
-        if now - created_at < SEND_COOLDOWN_MS {
-            return Err(AppError::RateLimited(
-                ((SEND_COOLDOWN_MS - (now - created_at)) / 1_000) + 1,
-            ));
-        }
+    if let Some(created_at) = recent
+        && now - created_at < SEND_COOLDOWN_MS
+    {
+        return Err(AppError::RateLimited(
+            ((SEND_COOLDOWN_MS - (now - created_at)) / 1_000) + 1,
+        ));
     }
     let code = format!("{:06}", rand::random::<u32>() % 1_000_000);
     let salt = Uuid::new_v4().simple().to_string();
@@ -796,10 +796,9 @@ fn verify_origin(config: &Config, headers: &HeaderMap) -> Result<(), AppError> {
     if let Some(origin) = headers
         .get(header::ORIGIN)
         .and_then(|value| value.to_str().ok())
+        && origin.trim_end_matches('/') != config.public_origin
     {
-        if origin.trim_end_matches('/') != config.public_origin {
-            return Err(AppError::Forbidden);
-        }
+        return Err(AppError::Forbidden);
     }
     Ok(())
 }
@@ -918,10 +917,10 @@ impl IntoResponse for AppError {
         response
             .headers_mut()
             .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-        if let Some(seconds) = retry_after {
-            if let Ok(value) = HeaderValue::from_str(&seconds.to_string()) {
-                response.headers_mut().insert(header::RETRY_AFTER, value);
-            }
+        if let Some(seconds) = retry_after
+            && let Ok(value) = HeaderValue::from_str(&seconds.to_string())
+        {
+            response.headers_mut().insert(header::RETRY_AFTER, value);
         }
         response
     }
