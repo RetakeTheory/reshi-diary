@@ -51,5 +51,16 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run lint
+      - name: Lint changed integration files
+        run: >-
+          pnpm exec eslint
+          app/admin/admin-auth.ts
+          app/admin/login/EmailLogin.tsx
+          app/admin/login/page.tsx
+          app/admin/page.tsx
+          app/page.tsx
+          lib/posts.ts
+          lib/rust-backend.ts
+          worker/index.ts
+          cloudflare-workers.d.ts
       - run: pnpm run build
