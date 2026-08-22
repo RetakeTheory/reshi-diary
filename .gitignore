@@ -44,4 +44,3 @@ yarn-error.log*
 # rust backend
 /backend/target/
 /backend/data/
-

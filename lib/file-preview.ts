@@ -76,7 +76,7 @@ export async function getFilePreviewMetadata(key: string): Promise<FilePreviewMe
       if (response.ok) {
         const filename = decodeS3Filename(response.headers.get("x-amz-meta-filename"));
         const contentType = response.headers.get("content-type") || "application/octet-stream";
-        const previewable = response.headers.get("x-amz-meta-previewable") === "1";
+        const previewable = response.headers.get("x-amz-meta-previewable") === "1" || previewModeFor(contentType, filename) === "image";
         return {
           filename,
           contentType,
@@ -98,7 +98,7 @@ export async function getFilePreviewMetadata(key: string): Promise<FilePreviewMe
 
   const object = await findUploadMetadata(key);
   if (!object) return null;
-  const previewable = object.previewable === 1;
+  const previewable = object.previewable === 1 || previewModeFor(object.content_type, object.filename) === "image";
   return {
     filename: object.filename || "attachment",
     contentType: object.content_type || "application/octet-stream",

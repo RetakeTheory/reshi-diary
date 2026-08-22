@@ -17,7 +17,8 @@
 
 ## Rust 后端
 
-新的 Axum 后端位于 [`backend/`](backend/README.md)，提供邮箱登录、管理员会话、文章 CRUD、公开文章读取和附件上传/下载接口。
+新的 Axum 后端位于 [`backend/`](backend/README.md)，提供管理员与普通读者邮箱登录、双角色 Passkey、文章 CRUD、评论/回复/回应、全站通知和附件上传/下载接口。
 
-默认部署仍使用现有 Cloudflare D1 后端。部署 Rust 服务并设置 Worker 变量 `RUST_BACKEND_ORIGIN` 后，Worker 会把 `/api/*` 请求代理到 Rust 服务，服务端渲染也会改从 Rust API 读取文章。切换前必须迁移 D1 数据，并为 Rust 服务挂载持久化卷。
+Rust 服务是正式后端。先部署服务并挂载持久化卷，再在 GitHub **Settings → Secrets and variables → Actions → Variables** 中设置必需变量 `RUST_BACKEND_ORIGIN`；Worker 会把全部 `/api/*` 请求代理到该服务。变量缺失时 API 会明确返回 503，部署工作流也会中止。切换前必须迁移现有 D1 数据。
 
+普通读者采用无密码邮箱验证码注册/登录。Passkey 在读者账户页登记；评论、回复与文章回应需要读者会话。管理员可在后台发布一条当前生效的通知，通知会显示为全站顶部 Banner。

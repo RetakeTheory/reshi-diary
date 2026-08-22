@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import ArrowIcon from "../../ArrowIcon";
+import SiteNav from "../../SiteNav";
 import { getFilePreviewMetadata } from "../../../lib/file-preview";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ type PageProps = {
 
 function safeReturnPath(value: string | string[] | undefined) {
   const candidate = Array.isArray(value) ? value[0] : value;
-  return candidate?.startsWith("/") && !candidate.startsWith("//") ? candidate : "/#posts";
+  return candidate?.startsWith("/") && !candidate.startsWith("//") ? candidate : "/posts";
 }
 
 function encodeKey(key: string[]) {
@@ -38,12 +38,7 @@ export default async function FilePreviewPage({ params, searchParams }: PageProp
 
   return (
     <main className="file-preview-page">
-      <nav className="nav shell file-preview-nav">
-        <Link className="brand" href="/"><span>RE</span>reshi的日记本</Link>
-        <a className="article-back" href={returnTo}>
-          <ArrowIcon direction="left" /> {fromArticle ? "返回原文章" : "返回上一页"}
-        </a>
-      </nav>
+      <SiteNav backHref={returnTo} backLabel={fromArticle ? "返回原文章" : "返回上一页"} />
 
       <section className="file-reader shell">
         <header className="file-reader-head">

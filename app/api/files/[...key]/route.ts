@@ -1,4 +1,5 @@
 import { findUpload, uploadBody } from "../../../../db/uploads";
+import { previewModeFor } from "../../../../lib/file-preview";
 import { decodeS3Filename, getS3Object } from "../../../../lib/s3-storage";
 
 type RouteContext = { params: Promise<{ key: string[] }> };
@@ -21,7 +22,8 @@ export async function GET(request: Request, context: RouteContext) {
   }
   if (s3Response?.ok) {
     const filename = decodeS3Filename(s3Response.headers.get("x-amz-meta-filename"));
-    const allowPreview = s3Response.headers.get("x-amz-meta-previewable") === "1";
+    const contentType = s3Response.headers.get("content-type") || "application/octet-stream";
+    const allowPreview = s3Response.headers.get("x-amz-meta-previewable") === "1" || previewModeFor(contentType, filename) === "image";
     const headers = new Headers();
     for (const name of ["accept-ranges", "cache-control", "content-length", "content-range", "content-type", "etag", "last-modified"]) {
       const value = s3Response.headers.get(name);
@@ -42,7 +44,7 @@ export async function GET(request: Request, context: RouteContext) {
   if (!object) return new Response("文件不存在", { status: 404 });
 
   const filename = object.filename || "attachment";
-  const allowPreview = object.previewable === 1;
+  const allowPreview = object.previewable === 1 || previewModeFor(object.content_type, filename) === "image";
   const headers = new Headers();
   headers.set("Content-Type", object.content_type || "application/octet-stream");
   headers.set("Content-Disposition", contentDisposition(filename, allowPreview && !wantsDownload));

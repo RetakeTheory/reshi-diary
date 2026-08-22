@@ -1,0 +1,34 @@
+export type IconName =
+  | "spark" | "food" | "dice" | "wheel" | "menu" | "close" | "user" | "key"
+  | "heart" | "insight" | "reply" | "comment" | "zoom-in" | "zoom-out" | "reset"
+  | "plus" | "minus" | "trash" | "formula" | "table" | "code" | "image" | "file" | "check";
+
+export default function Icon({ name, className }: { name: IconName; className?: string }) {
+  const common = { className, viewBox: "0 0 24 24", "aria-hidden": true } as const;
+  switch (name) {
+    case "spark": return <svg {...common}><path d="M12 2.8c.7 5.3 3.1 7.7 8.4 8.4-5.3.7-7.7 3.1-8.4 8.4-.7-5.3-3.1-7.7-8.4-8.4 5.3-.7 7.7-3.1 8.4-8.4Z" /></svg>;
+    case "food": return <svg {...common}><path d="M5 10.5h14v1.2a7 7 0 0 1-14 0v-1.2Z" /><path d="M3.5 10.5h17M8 7.5c0-1 1-1.4 1-2.5M12 7.5c0-1 1-1.4 1-2.5M16 7.5c0-1 1-1.4 1-2.5M8 19h8" /></svg>;
+    case "dice": return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="3" /><circle cx="8.5" cy="8.5" r="1" /><circle cx="15.5" cy="8.5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="8.5" cy="15.5" r="1" /><circle cx="15.5" cy="15.5" r="1" /></svg>;
+    case "wheel": return <svg {...common}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2" /><path d="M12 4v6M12 14v6M4 12h6M14 12h6M6.3 6.3l4.2 4.2M13.5 13.5l4.2 4.2M17.7 6.3l-4.2 4.2M10.5 13.5l-4.2 4.2" /></svg>;
+    case "menu": return <svg {...common}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
+    case "close": return <svg {...common}><path d="m6 6 12 12M18 6 6 18" /></svg>;
+    case "user": return <svg {...common}><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.5-4 3-6 7-6s6.5 2 7 6" /></svg>;
+    case "key": return <svg {...common}><circle cx="8.5" cy="12" r="4" /><path d="M12.5 12H21M17 12v3M20 12v2" /></svg>;
+    case "heart": return <svg {...common}><path d="M20.8 8.9c0 5.2-8.8 10.1-8.8 10.1S3.2 14.1 3.2 8.9A4.7 4.7 0 0 1 12 6.6a4.7 4.7 0 0 1 8.8 2.3Z" /></svg>;
+    case "insight": return <svg {...common}><path d="M9 18h6M9.5 21h5M8.2 14.8a7 7 0 1 1 7.6 0c-.8.6-.8 1.2-.8 2.2H9c0-1-.1-1.6-.8-2.2Z" /></svg>;
+    case "reply": return <svg {...common}><path d="m9 7-5 5 5 5M5 12h8c4 0 6 2 6 6" /></svg>;
+    case "comment": return <svg {...common}><path d="M5 5h14v11H9l-4 3V5Z" /><path d="M8 9h8M8 12h5" /></svg>;
+    case "zoom-in": return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 4.5 4.5M7.5 10.5h6M10.5 7.5v6" /></svg>;
+    case "zoom-out": return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 4.5 4.5M7.5 10.5h6" /></svg>;
+    case "reset": return <svg {...common}><path d="M5 8V4m0 0h4M5 4a9 9 0 1 1-1.2 10" /></svg>;
+    case "plus": return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>;
+    case "minus": return <svg {...common}><path d="M5 12h14" /></svg>;
+    case "trash": return <svg {...common}><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13M10 10v6M14 10v6" /></svg>;
+    case "formula": return <svg {...common}><path d="M17.5 5H8l5 7-5 7h9.5M15 9h4M15 15h4" /></svg>;
+    case "table": return <svg {...common}><rect x="4" y="5" width="16" height="14" rx="1.5" /><path d="M4 10h16M10 5v14M15 5v14" /></svg>;
+    case "code": return <svg {...common}><path d="m9 7-5 5 5 5M15 7l5 5-5 5M13.5 4 10.5 20" /></svg>;
+    case "image": return <svg {...common}><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><circle cx="8.5" cy="9" r="1.6" /><path d="m5 17 4.4-4.4 3.3 3.2 2.4-2.4L19 17.3" /></svg>;
+    case "file": return <svg {...common}><path d="M6.5 3.5h7.4l3.6 3.7v13.3h-11z" /><path d="M13.5 3.8v4h3.8M9.5 12h5M9.5 15.5h5" /></svg>;
+    case "check": return <svg {...common}><path d="m5 12.5 4.2 4.2L19 7" /></svg>;
+  }
+}

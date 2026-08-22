@@ -17,5 +17,3 @@ export async function rustBackendFetch(path: string, init?: RequestInit) {
     cache: "no-store",
   });
 }
-
-

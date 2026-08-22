@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Icon from "./Icon";
 
 type Food = { name: string; description: string; tags: [string, string]; image: string; position: string; backgroundSize: string };
 type FoodCopy = [string, string, string, string];
@@ -114,8 +115,8 @@ export default function FoodRoulette() {
         <div className="food-visual-wrap">
           <div className="food-visual" key={selectedIndex} role="img" aria-label={`${selected.name}的美食插画`} style={{ backgroundImage: `url(${selected.image})`, backgroundPosition: selected.position, backgroundSize: selected.backgroundSize }} />
           <span className="food-drop-label">TODAY&apos;S DROP</span>
-          <i className="food-spark spark-one" aria-hidden="true">✦</i>
-          <i className="food-spark spark-two" aria-hidden="true">○</i>
+          <i className="food-spark spark-one" aria-hidden="true"><Icon name="spark" /></i>
+          <i className="food-spark spark-two" aria-hidden="true"><Icon name="food" /></i>
         </div>
         <div className="food-roulette-copy">
           <p>DAILY QUEST / 今天吃什么</p>
@@ -126,7 +127,7 @@ export default function FoodRoulette() {
           <h2 id="food-roulette-title" aria-live="polite">{rolling ? "命运读取中…" : selected.name}</h2>
           <p className="food-description">{rolling ? "菜单正在高速旋转，请稍等一下下。" : selected.description}</p>
           <div className="food-tags" aria-label="推荐特点">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
-          <button type="button" onClick={rollFood} disabled={rolling}><span aria-hidden="true">✦</span>{rolling ? "正在摇奖…" : "摇一摇，换一个"}</button>
+          <button type="button" onClick={rollFood} disabled={rolling}><span aria-hidden="true"><Icon name="spark" /></span>{rolling ? "正在摇奖…" : "摇一摇，换一个"}</button>
           <small className="food-hint">58 道候选待命，选择困难就交给命运之骰。</small>
         </div>
       </div>

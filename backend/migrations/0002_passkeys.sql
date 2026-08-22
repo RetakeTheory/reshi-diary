@@ -21,4 +21,3 @@ CREATE TABLE IF NOT EXISTS admin_passkey_challenges (
 
 CREATE INDEX IF NOT EXISTS idx_admin_passkey_challenges_expires_at
   ON admin_passkey_challenges (expires_at);
-

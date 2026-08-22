@@ -9,6 +9,7 @@ import PasskeyManager from "./PasskeyManager";
 import { cookies } from "next/headers";
 import { ADMIN_SESSION_COOKIE } from "../../lib/admin-email-auth";
 import { getRustBackendOrigin, rustBackendFetch } from "../../lib/rust-backend";
+import NotificationManager from "./NotificationManager";
 
 export const dynamic = "force-dynamic";
 
@@ -44,9 +45,9 @@ export default async function AdminPage() {
         <Link className="brand" href="/"><span>RE</span>reshi 的日记本</Link>
         <div><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
+      <NotificationManager />
       <PasskeyManager />
       <AdminEditor initialPosts={initialPosts} />
     </main>
   );
 }
-

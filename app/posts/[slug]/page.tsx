@@ -4,6 +4,10 @@ import { getPublicPost } from "../../../lib/posts";
 import { plainTextToRichHtml, sanitizeRichHtml } from "../../../lib/rich-content";
 import RichPostContent from "./RichPostContent";
 import ArrowIcon from "../../ArrowIcon";
+import Community from "./Community";
+import Icon from "../../Icon";
+import SiteNav from "../../SiteNav";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 type PageProps = { params: Promise<{ slug: string }> };
@@ -25,15 +29,16 @@ export default async function PostPage({ params }: PageProps) {
   if (!post) notFound();
   return (
     <main className="article-page">
-      <nav className="nav shell"><a className="brand" href="/"><span>RE</span>reshi的日记本</a><a className="article-back" href="/#posts"><ArrowIcon direction="left" /> 返回文章</a></nav>
+      <SiteNav backHref="/posts" backLabel="返回文章" />
       <article className="article-shell">
         <header className="article-head">
           <div className="article-meta"><span>{post.category}</span><time>{post.date}</time><span>{post.read}</span></div>
           <h1>{post.title}</h1><p>{post.excerpt}</p>
-          <div className="article-object" aria-hidden="true"><span>✦</span><i /></div>
+          <div className="article-object" aria-hidden="true"><span><Icon name="spark" /></span><i /></div>
         </header>
         <div className="article-body"><RichPostContent html={sanitizeRichHtml(post.content.includes("<") ? post.content : plainTextToRichHtml(post.content))} /></div>
-        <footer className="article-end"><b>写于 reshi 的日记本</b><a href="/#posts">继续阅读 <ArrowIcon /></a></footer>
+        <Community slug={post.slug} />
+        <footer className="article-end"><b>写于 reshi 的日记本</b><Link href="/posts">继续阅读 <ArrowIcon /></Link></footer>
       </article>
     </main>
   );
