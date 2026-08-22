@@ -17,5 +17,7 @@ Build `backend/Dockerfile`, attach a persistent volume at `/app/data`, set `PUBL
 
 The existing D1 backend remains active when `RUST_BACKEND_ORIGIN` is absent. This makes the migration opt-in and rollback-safe. Existing D1 posts are not copied automatically; export/import them before switching production traffic.
 
-Passkey endpoints are disabled after enabling the Rust origin. Email login is the supported auth path. Before enabling Rust in production, migrate D1 content and verify the new persistent volume.
+Passkey registration and login are implemented by `webauthn-rs`. `PASSKEY_RP_ID` must be the public site's registrable domain (for example `rettheory.top`) and `PUBLIC_ORIGIN` must exactly match the browser origin. Challenges and credential counters are stored server-side in SQLite.
+
+Passkeys previously registered in the D1/TypeScript backend are not copied automatically. Register a new passkey once after switching to Rust; email login remains available as the recovery path. Before enabling Rust in production, migrate D1 content and verify the new persistent volume.
 

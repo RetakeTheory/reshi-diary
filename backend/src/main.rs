@@ -26,6 +26,9 @@ use thiserror::Error;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 use uuid::Uuid;
+use webauthn_rs::prelude::{Url, Webauthn, WebauthnBuilder};
+
+mod passkeys;
 
 const SESSION_COOKIE: &str = "reshi_admin_session";
 const CODE_TTL_MS: i64 = 10 * 60 * 1_000;
@@ -38,6 +41,7 @@ struct AppState {
     db: SqlitePool,
     config: Config,
     http: reqwest::Client,
+    webauthn: std::sync::Arc<Webauthn>,
 }
 
 #[derive(Clone)]
@@ -50,6 +54,8 @@ struct Config {
     session_secure: bool,
     resend_api_key: Option<String>,
     resend_from_email: String,
+    passkey_rp_id: String,
+    passkey_rp_name: String,
 }
 
 impl Config {
@@ -58,6 +64,17 @@ impl Config {
             .unwrap_or_else(|_| "0.0.0.0:8788".into())
             .parse()
             .context("invalid LISTEN_ADDR")?;
+        let public_origin = std::env::var("PUBLIC_ORIGIN")
+            .unwrap_or_else(|_| "http://localhost:3000".into())
+            .trim_end_matches('/')
+            .to_owned();
+        let parsed_origin = Url::parse(&public_origin).context("invalid PUBLIC_ORIGIN")?;
+        let passkey_rp_id = std::env::var("PASSKEY_RP_ID").unwrap_or_else(|_| {
+            parsed_origin
+                .host_str()
+                .unwrap_or("localhost")
+                .to_owned()
+        });
         Ok(Self {
             listen_addr,
             database_url: std::env::var("DATABASE_URL")
@@ -65,10 +82,7 @@ impl Config {
             upload_dir: std::env::var("UPLOAD_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| PathBuf::from("data/uploads")),
-            public_origin: std::env::var("PUBLIC_ORIGIN")
-                .unwrap_or_else(|_| "http://localhost:3000".into())
-                .trim_end_matches('/')
-                .to_owned(),
+            public_origin,
             admin_email: std::env::var("ADMIN_EMAIL")
                 .unwrap_or_else(|_| "reshi1417@163.com".into())
                 .to_lowercase(),
@@ -80,6 +94,9 @@ impl Config {
                 .filter(|value| !value.is_empty()),
             resend_from_email: std::env::var("RESEND_FROM_EMAIL")
                 .unwrap_or_else(|_| "reshi diary <noreply@example.com>".into()),
+            passkey_rp_id,
+            passkey_rp_name: std::env::var("PASSKEY_RP_NAME")
+                .unwrap_or_else(|_| "reshi diary".into()),
         })
     }
 }
@@ -106,11 +123,17 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     sqlx::migrate!().run(&db).await?;
 
+    let passkey_origin = Url::parse(&config.public_origin).context("invalid PUBLIC_ORIGIN")?;
+    let webauthn = WebauthnBuilder::new(&config.passkey_rp_id, &passkey_origin)?
+        .rp_name(&config.passkey_rp_name)
+        .build()?;
+
     let listen_addr = config.listen_addr;
     let state = AppState {
         db,
         config,
         http: reqwest::Client::new(),
+        webauthn: std::sync::Arc::new(webauthn),
     };
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
     info!(%listen_addr, "reshi diary backend listening");
@@ -135,7 +158,24 @@ fn routes(state: AppState) -> Router {
         )
         .route("/api/admin/auth/send-code", post(send_code))
         .route("/api/admin/auth/verify-code", post(verify_code))
+        .route(
+            "/api/admin/auth/passkey-options",
+            post(passkeys::authentication_options),
+        )
+        .route(
+            "/api/admin/auth/passkey-verify",
+            post(passkeys::verify_authentication),
+        )
         .route("/api/admin/auth/logout", post(logout))
+        .route("/api/admin/passkeys", get(passkeys::list_passkeys))
+        .route(
+            "/api/admin/passkeys/options",
+            post(passkeys::registration_options),
+        )
+        .route(
+            "/api/admin/passkeys/verify",
+            post(passkeys::verify_registration),
+        )
         .route("/api/admin/uploads", post(upload_file))
         .route("/api/files/{*key}", get(download_file))
         .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES + 1024 * 1024))
@@ -940,3 +980,4 @@ mod tests {
         assert_eq!(html_to_plain_text("<p>A &amp; B</p><p>C</p>"), "A & B C");
     }
 }
+

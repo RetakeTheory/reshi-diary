@@ -44,7 +44,7 @@ export default async function AdminPage() {
         <Link className="brand" href="/"><span>RE</span>reshi 的日记本</Link>
         <div><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
-      {!rustOrigin && <PasskeyManager />}
+      <PasskeyManager />
       <AdminEditor initialPosts={initialPosts} />
     </main>
   );
