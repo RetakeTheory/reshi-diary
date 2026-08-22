@@ -5,7 +5,7 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
-  RUST_BACKEND_ORIGIN: string;
+  RUST_BACKEND_ORIGIN?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -32,12 +32,13 @@ const worker = {
 
     if (url.pathname.startsWith("/api/")) {
       const origin = env?.RUST_BACKEND_ORIGIN?.trim();
-      if (!origin) return Response.json({ error: "Rust 后端尚未配置" }, { status: 503 });
-      const upstream = new URL(`${url.pathname}${url.search}`, origin);
-      const headers = new Headers(request.headers);
-      headers.set("X-Forwarded-Host", url.host);
-      headers.set("X-Forwarded-Proto", url.protocol.slice(0, -1));
-      return fetch(new Request(upstream, { method: request.method, headers, body: request.body, redirect: "manual" }));
+      if (origin) {
+        const upstream = new URL(`${url.pathname}${url.search}`, origin);
+        const headers = new Headers(request.headers);
+        headers.set("X-Forwarded-Host", url.host);
+        headers.set("X-Forwarded-Proto", url.protocol.slice(0, -1));
+        return fetch(new Request(upstream, { method: request.method, headers, body: request.body, redirect: "manual" }));
+      }
     }
 
     if (url.pathname === "/_vinext/image") {

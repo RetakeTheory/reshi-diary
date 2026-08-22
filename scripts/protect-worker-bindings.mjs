@@ -3,13 +3,10 @@ import { resolve } from "node:path";
 
 const configPath = resolve(process.argv[2] || "dist/server/wrangler.json");
 const rustBackendOrigin = process.env.RUST_BACKEND_ORIGIN?.trim();
-if (!rustBackendOrigin) {
-  throw new Error("部署已中止：GitHub Repository variable RUST_BACKEND_ORIGIN 未配置");
-}
 const requiredVars = {
   AWS_REGION: process.env.AWS_REGION || "ap-northeast-1",
   AWS_S3_BUCKET: process.env.AWS_S3_BUCKET || "reshi-diary-files",
-  RUST_BACKEND_ORIGIN: rustBackendOrigin.replace(/\/$/, ""),
+  ...(rustBackendOrigin ? { RUST_BACKEND_ORIGIN: rustBackendOrigin.replace(/\/$/, "") } : {}),
 };
 const requiredSecrets = [
   "AWS_ACCESS_KEY_ID",
