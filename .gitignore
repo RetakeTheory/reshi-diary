@@ -40,3 +40,8 @@ yarn-error.log*
 /outputs/
 /work/
 *.tsbuildinfo
+
+# rust backend
+/backend/target/
+/backend/data/
+

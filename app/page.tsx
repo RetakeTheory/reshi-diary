@@ -4,11 +4,32 @@ import { posts as postsTable } from "../db/schema";
 import { ensureDatabaseSchema } from "../db/runtime";
 import { demoPosts } from "../data/demo-posts";
 import ArrowIcon from "./ArrowIcon";
+import { rustBackendFetch } from "../lib/rust-backend";
 
 export const dynamic = "force-dynamic";
 
 async function loadPublishedPosts() {
   try {
+    const rustResponse = await rustBackendFetch("/api/posts?limit=8");
+    if (rustResponse) {
+      if (!rustResponse.ok) throw new Error("Rust backend failed to load posts");
+      const payload = await rustResponse.json() as { posts: Array<{
+        title: string; slug: string; excerpt: string; content: string; category: string;
+        createdAt: number; publishedAt: number | null;
+      }> };
+      const themes = ["violet", "orange", "lime", "blue"];
+      const symbols = ["✦", "●", "↗", "★"];
+      return payload.posts.map((post, index) => ({
+        date: new Date(post.publishedAt || post.createdAt).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).replaceAll("/", "."),
+        category: post.category,
+        read: `${Math.max(2, Math.ceil(post.content.length / 500))} 分钟`,
+        title: post.title,
+        excerpt: post.excerpt,
+        theme: themes[index % themes.length],
+        symbol: symbols[index % symbols.length],
+        slug: post.slug,
+      }));
+    }
     await ensureDatabaseSchema();
     const db = await getDb();
     const rows = await db.select().from(postsTable)
@@ -149,3 +170,4 @@ export default async function Home() {
     </main>
   );
 }
+

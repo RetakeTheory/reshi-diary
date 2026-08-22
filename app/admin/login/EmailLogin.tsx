@@ -6,7 +6,7 @@ import ArrowIcon from "../../ArrowIcon";
 
 const CODE_LENGTH = 6;
 
-export default function EmailLogin({ email }: { email: string }) {
+export default function EmailLogin({ email, passkeysEnabled = true }: { email: string; passkeysEnabled?: boolean }) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [code, setCode] = useState<string[]>(() => Array(CODE_LENGTH).fill(""));
   const [busy, setBusy] = useState(false);
@@ -162,7 +162,7 @@ export default function EmailLogin({ email }: { email: string }) {
       {message && <div className={`login-status ${message.startsWith("验证码已发送") ? "success" : ""}`} role="status">{message}</div>}
       {step === "email" ? <>
         <button className="login-action" type="button" disabled={busy} onClick={sendCode}>{busy ? "正在发送…" : <>发送邮箱验证码 <ArrowIcon /></>}</button>
-        {passkeySupported && <>
+        {passkeysEnabled && passkeySupported && <>
           <div className="login-divider"><span>或</span></div>
           <button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><span className="passkey-symbol" aria-hidden="true">🔑</span> 使用 Passkey 登录</button>
         </>}
@@ -173,3 +173,4 @@ export default function EmailLogin({ email }: { email: string }) {
     </form>
   );
 }
+

@@ -3,12 +3,22 @@ import { redirect } from "next/navigation";
 import { getD1 } from "../../db/runtime";
 import { ensureDatabaseSchema } from "../../db/runtime";
 import { ADMIN_EMAIL, ADMIN_SESSION_COOKIE, hashValue } from "../../lib/admin-email-auth";
+import { rustBackendFetch } from "../../lib/rust-backend";
 
 export { ADMIN_EMAIL } from "../../lib/admin-email-auth";
 
 export async function getAdminSession() {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   if (!token) return null;
+  const rustResponse = await rustBackendFetch("/api/admin/me", {
+    headers: { Cookie: `${ADMIN_SESSION_COOKIE}=${token}` },
+  });
+  if (rustResponse) {
+    if (!rustResponse.ok) return null;
+    const payload = await rustResponse.json() as { admin?: { email?: string; displayName?: string } };
+    if (payload.admin?.email !== ADMIN_EMAIL) return null;
+    return { email: ADMIN_EMAIL, displayName: payload.admin.displayName || "reshi", tokenHash: await hashValue(token) };
+  }
   await ensureDatabaseSchema();
   const db = await getD1();
   const tokenHash = await hashValue(token);
@@ -31,3 +41,4 @@ export async function getApiAdmin() {
   const admin = await getAdminSession();
   return admin ? { admin } : null;
 }
+
