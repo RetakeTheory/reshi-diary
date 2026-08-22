@@ -37,3 +37,34 @@ test("keeps email and Passkey admin login available", async () => {
   assert.match(passkey, /requireUserVerification:\s*true/);
   assert.match(passkey, /issueAdminSession/);
 });
+
+test("renders the reader entry points and separate article directory", async () => {
+  const [loginResponse, postsResponse] = await Promise.all([render("/login"), render("/posts")]);
+  assert.equal(loginResponse.status, 200);
+  assert.equal(postsResponse.status, 200);
+  assert.match(await loginResponse.text(), /邮箱验证码无需密码/);
+  assert.match(await postsResponse.text(), /STORY INDEX \/ 文章目录/);
+});
+
+test("fails API requests closed when the required Rust origin is missing", async () => {
+  const response = await render("/api/auth/me");
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "Rust 后端尚未配置" });
+});
+
+test("ships Rust community, reader Passkey and notification routes", async () => {
+  const [main, users, community, notifications, nav] = await Promise.all([
+    readFile(new URL("../backend/src/main.rs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/users.rs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/community.rs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/notifications.rs", import.meta.url), "utf8"),
+    readFile(new URL("../app/SiteNav.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(main, /\/api\/auth\/passkey-options/);
+  assert.match(main, /\/api\/posts\/\{slug\}\/comments/);
+  assert.match(main, /\/api\/admin\/notification/);
+  assert.match(users, /start_passkey_registration/);
+  assert.match(community, /parent_id/);
+  assert.match(notifications, /background_color/);
+  assert.match(nav, /mobile-menu-trigger/);
+});

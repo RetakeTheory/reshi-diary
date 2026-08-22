@@ -29,6 +29,9 @@ use uuid::Uuid;
 use webauthn_rs::prelude::{Url, Webauthn, WebauthnBuilder};
 
 mod passkeys;
+mod community;
+mod notifications;
+mod users;
 
 const SESSION_COOKIE: &str = "reshi_admin_session";
 const CODE_TTL_MS: i64 = 10 * 60 * 1_000;
@@ -144,6 +147,40 @@ fn routes(state: AppState) -> Router {
         .route("/healthz", get(health))
         .route("/api/posts", get(list_public_posts))
         .route("/api/posts/{slug}", get(get_public_post))
+        .route(
+            "/api/posts/{slug}/community",
+            get(community::get_community),
+        )
+        .route(
+            "/api/posts/{slug}/comments",
+            post(community::create_comment),
+        )
+        .route(
+            "/api/posts/{slug}/reactions",
+            post(community::toggle_reaction),
+        )
+        .route("/api/notifications/active", get(notifications::get_active))
+        .route("/api/auth/send-code", post(users::send_code))
+        .route("/api/auth/verify-code", post(users::verify_code))
+        .route("/api/auth/me", get(users::me))
+        .route("/api/auth/logout", post(users::logout))
+        .route(
+            "/api/auth/passkey-options",
+            post(users::authentication_options),
+        )
+        .route(
+            "/api/auth/passkey-verify",
+            post(users::verify_authentication),
+        )
+        .route("/api/account/passkeys", get(users::list_passkeys))
+        .route(
+            "/api/account/passkeys/options",
+            post(users::registration_options),
+        )
+        .route(
+            "/api/account/passkeys/verify",
+            post(users::verify_registration),
+        )
         .route("/api/admin/me", get(admin_me))
         .route("/api/admin/posts", get(list_admin_posts).post(create_post))
         .route(
@@ -173,6 +210,12 @@ fn routes(state: AppState) -> Router {
             post(passkeys::verify_registration),
         )
         .route("/api/admin/uploads", post(upload_file))
+        .route(
+            "/api/admin/notification",
+            get(notifications::get_admin)
+                .put(notifications::save)
+                .delete(notifications::remove),
+        )
         .route("/api/files/{*key}", get(download_file))
         .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES + 1024 * 1024))
         .layer(TraceLayer::new_for_http())
@@ -669,6 +712,7 @@ async fn upload_file(
     }
     let (filename, original_type, bytes) =
         upload.ok_or_else(|| AppError::BadRequest("请选择要上传的文件".into()))?;
+    let previewable = previewable || is_safe_image_type(&original_type);
     let content_type = stored_content_type(&original_type, &filename, previewable);
     let object_id = Uuid::new_v4().simple().to_string();
     let key = format!("uploads/{object_id}");
@@ -732,7 +776,8 @@ async fn download_file(
             AppError::Io(err)
         }
     })?;
-    let inline = row.previewable == 1 && query.download != Some(1);
+    let inline = (row.previewable == 1 || is_safe_image_type(&row.content_type))
+        && query.download != Some(1);
     let disposition = content_disposition(&row.filename, inline);
     let mut response = Response::new(Body::from(bytes));
     let headers = response.headers_mut();
@@ -828,6 +873,13 @@ fn stored_content_type(original: &str, filename: &str, previewable: bool) -> Str
     .into()
 }
 
+fn is_safe_image_type(value: &str) -> bool {
+    matches!(
+        value.split(';').next().unwrap_or("").trim().to_ascii_lowercase().as_str(),
+        "image/avif" | "image/gif" | "image/jpeg" | "image/png" | "image/webp"
+    )
+}
+
 fn verify_origin(config: &Config, headers: &HeaderMap) -> Result<(), AppError> {
     if let Some(origin) = headers
         .get(header::ORIGIN)
@@ -896,6 +948,8 @@ enum AppError {
     #[error("forbidden")]
     Forbidden,
     #[error("{0}")]
+    Conflict(&'static str),
+    #[error("{0}")]
     NotFound(&'static str),
     #[error("rate limited")]
     RateLimited(i64),
@@ -919,6 +973,7 @@ impl IntoResponse for AppError {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message.as_str(), None),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "未登录或没有管理员权限", None),
             Self::Forbidden => (StatusCode::FORBIDDEN, "请求来源无效", None),
+            Self::Conflict(message) => (StatusCode::CONFLICT, *message, None),
             Self::NotFound(message) => (StatusCode::NOT_FOUND, *message, None),
             Self::RateLimited(seconds) => (
                 StatusCode::TOO_MANY_REQUESTS,

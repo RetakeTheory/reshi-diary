@@ -14,4 +14,3 @@ ENV LISTEN_ADDR=0.0.0.0:8788 DATABASE_URL=sqlite://data/reshi-diary.db UPLOAD_DI
 EXPOSE 8788
 VOLUME ["/app/data"]
 CMD ["reshi-diary-backend"]
-

@@ -51,4 +51,3 @@ CREATE TABLE IF NOT EXISTS uploads (
 
 CREATE INDEX IF NOT EXISTS idx_uploads_created_at ON uploads (created_at DESC);
 
-

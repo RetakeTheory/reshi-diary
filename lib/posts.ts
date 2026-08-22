@@ -53,4 +53,3 @@ export const getPublicPost = cache(async (slug: string): Promise<PublicPost | nu
   const demo = demoPosts.find((post) => post.slug === normalizedSlug);
   return demo ? { ...demo } : null;
 });
-

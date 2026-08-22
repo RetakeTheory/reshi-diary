@@ -5,6 +5,7 @@ import katex from "katex";
 import ArrowIcon from "../ArrowIcon";
 import { codeLanguages, highlightCodeBlocks, highlightSource } from "../../lib/code-highlight";
 import { createAttachmentCard, flattenAttachmentCards, hydrateAttachmentCards } from "../../lib/attachment-cards";
+import Icon from "../Icon";
 
 type AdminPost = {
   id: number; title: string; slug: string; excerpt: string; content: string; category: string;
@@ -339,11 +340,11 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
               <div className="toolbar-group">
                 <button type="button" title="无序列表" aria-label="无序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertUnorderedList")}><ListToolbarIcon /></button>
                 <button type="button" title="有序列表" aria-label="有序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertOrderedList")}><ListToolbarIcon ordered /></button>
-                <button type="button" title="插入代码块" onMouseDown={openCodePanel}>&lt;/&gt;</button>
+                <button type="button" title="插入代码块" aria-label="插入代码块" onMouseDown={openCodePanel}><Icon name="code" /></button>
               </div>
               <div className="toolbar-group toolbar-insert">
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setCodeOpen(false); setFormulaOpen((open) => !open); }}>∑ <span>公式</span></button>
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setCodeOpen(false); setTableOpen((open) => !open); }}>▦ <span>表格</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setCodeOpen(false); setFormulaOpen((open) => !open); }}><Icon name="formula" /> <span>公式</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setCodeOpen(false); setTableOpen((open) => !open); }}><Icon name="table" /> <span>表格</span></button>
                 <button type="button" title="插入图片" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}><ImageToolbarIcon /> <span>图片</span></button>
                 <button type="button" title="插入文件" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><FileToolbarIcon /> <span>文件</span></button>
               </div>
@@ -371,7 +372,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
       <aside className="post-manager">
         <div className="manager-head"><p>你的文章</p><span>{items.length} 篇</span></div>
         <div className="manager-list">
-          {items.length === 0 && <div className="empty-posts"><b>✦</b><p>还没有文章<br />从左边写下第一篇吧</p></div>}
+          {items.length === 0 && <div className="empty-posts"><b><Icon name="file" /></b><p>还没有文章<br />从左边写下第一篇吧</p></div>}
           {items.map((post) => <article key={post.id} className="manager-item"><div className="manager-meta"><span className={post.status}>{post.status === "published" ? "已发布" : "草稿"}</span><time>{new Date(post.updatedAt).toLocaleDateString("zh-CN")}</time></div><h2>{post.title}</h2><p>{post.category} · {post.excerpt || "暂无摘要"}</p><div><button type="button" onClick={() => edit(post)}>编辑</button>{post.status === "published" && <a href={`/posts/${post.slug}`}>查看 <ArrowIcon direction="up-right" /></a>}<button type="button" className="danger" onClick={() => remove(post.id)}>删除</button></div></article>)}
         </div>
       </aside>

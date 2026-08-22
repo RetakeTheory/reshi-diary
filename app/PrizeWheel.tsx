@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Icon from "./Icon";
 
 type Prize = { id: number; name: string; weight: string };
 type ProbabilityMode = "equal" | "weighted";
@@ -94,7 +95,7 @@ export default function PrizeWheel() {
               const angle = (segment.center - 90) * Math.PI / 180;
               return <span key={segment.id} style={{ left: `${50 + Math.cos(angle) * 34}%`, top: `${50 + Math.sin(angle) * 34}%`, transform: `translate(-50%, -50%) rotate(${segment.center}deg)` }}>{segment.name.trim() || "未命名"}</span>;
             })}
-            <i aria-hidden="true">✦</i>
+            <i aria-hidden="true"><Icon name="spark" /></i>
           </div>
           <div className={`wheel-result${result ? " has-result" : ""}`} aria-live="polite"><small>{spinning ? "命运正在结算" : result ? "本次抽中" : "LUCKY DRAW"}</small><b>{spinning ? "转盘高速旋转中…" : result || "奖品还藏着"}</b></div>
         </div>
@@ -112,11 +113,11 @@ export default function PrizeWheel() {
                 <i style={{ background: colors[index % colors.length] }} aria-hidden="true" />
                 <input value={prize.name} disabled={spinning} maxLength={24} onChange={(event) => updatePrize(prize.id, "name", event.target.value)} aria-label={`奖项 ${index + 1} 名称`} />
                 {mode === "weighted" ? <label><span>权重</span><input value={prize.weight} disabled={spinning} inputMode="decimal" onChange={(event) => updatePrize(prize.id, "weight", event.target.value)} aria-label={`${prize.name || `奖项 ${index + 1}`}的权重`} /></label> : <small>{segmentProbability(segments[index]?.probability)}</small>}
-                <button type="button" disabled={spinning || prizes.length <= 2} onClick={() => removePrize(prize.id)} aria-label={`删除${prize.name || `奖项 ${index + 1}`}`}>×</button>
+                <button type="button" disabled={spinning || prizes.length <= 2} onClick={() => removePrize(prize.id)} aria-label={`删除${prize.name || `奖项 ${index + 1}`}`}><Icon name="trash" /></button>
               </div>)}
             </div>
-            <button className="add-prize" type="button" disabled={spinning || prizes.length >= 12} onClick={addPrize}>＋ 添加奖项</button>
-            <button className="spin-wheel" type="submit" disabled={spinning}><span aria-hidden="true">✦</span>{spinning ? "正在转动…" : "转起来！"}</button>
+            <button className="add-prize" type="button" disabled={spinning || prizes.length >= 12} onClick={addPrize}><Icon name="plus" /> 添加奖项</button>
+            <button className="spin-wheel" type="submit" disabled={spinning}><span aria-hidden="true"><Icon name="spark" /></span>{spinning ? "正在转动…" : "转起来！"}</button>
             <p className={`wheel-error${error ? " is-visible" : ""}`} role="alert">{error || (mode === "equal" ? "当前每个奖项概率完全相同。" : "权重越大越容易被抽中，不要求权重加起来等于 100。")}</p>
           </form>
         </div>

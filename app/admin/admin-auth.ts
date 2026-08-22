@@ -41,4 +41,3 @@ export async function getApiAdmin() {
   const admin = await getAdminSession();
   return admin ? { admin } : null;
 }
-

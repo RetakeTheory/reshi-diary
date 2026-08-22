@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import Icon from "./Icon";
 
 const MAX_RESULT_COUNT = 10000;
 
@@ -89,7 +90,7 @@ export default function RandomNumberPicker() {
                 <small>每个数字只会出现一次</small>
               </label>
             </div>
-            <button type="submit" disabled={rolling}><span aria-hidden="true">✦</span>{rolling ? "数字正在乱跑…" : "开始抽取"}</button>
+            <button type="submit" disabled={rolling}><span aria-hidden="true"><Icon name="spark" /></span>{rolling ? "数字正在乱跑…" : "开始抽取"}</button>
             <p className={`number-error${error ? " is-visible" : ""}`} id="number-error" role="alert">{error || "请输入两个正整数，然后把剩下的交给随机数。"}</p>
           </form>
 
