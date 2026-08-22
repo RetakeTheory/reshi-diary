@@ -2,8 +2,12 @@ import ArrowIcon from "./ArrowIcon";
 import Icon from "./Icon";
 import SiteNav from "./SiteNav";
 import Link from "next/link";
+import homeContent from "../src/content/home.json";
 
 export default function Home() {
+  const [heroTitleLead, ...heroTitleRest] = homeContent.hero.title.split("\n");
+  const heroTitleAccent = heroTitleRest.join("\n");
+
   return (
     <main>
       <SiteNav />
@@ -11,9 +15,12 @@ export default function Home() {
       <header className="hero shell" id="top">
         <div className="hero-copy">
           <p className="kicker"><i /> 欢迎来到 reshi 的私人存档点</p>
-          <h1>记录日常，<br />也收集<span>奇怪脑洞。</span></h1>
-          <p className="intro">你好，我是 reshi。这里会掉落一点日常、喜欢的东西、偶尔的碎碎念，以及不定期触发的支线任务。</p>
-          <Link className="primary" href="/posts">翻翻存档 <ArrowIcon /></Link>
+          <h1>
+            {heroTitleLead}
+            {heroTitleAccent ? <><br /><span>{heroTitleAccent}</span></> : null}
+          </h1>
+          <p className="intro">{homeContent.hero.subtitle}</p>
+          <Link className="primary" href="/posts">{homeContent.hero.cta} <ArrowIcon /></Link>
         </div>
 
         <div className="hero-scene" aria-hidden="true">

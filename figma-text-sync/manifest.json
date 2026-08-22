@@ -1,0 +1,13 @@
+{
+  "name": "reshi 文字同步",
+  "id": "1549503210937890048",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "devAllowedDomains": ["http://localhost:3789"]
+  }
+}
