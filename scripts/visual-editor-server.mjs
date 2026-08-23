@@ -220,7 +220,15 @@ async function prepareGitHubPublish() {
   }
   await assertOnlyPageContentChanged();
   await run("git", ["fetch", "--quiet", publishRemote, publishBranch]);
-  const sync = parseAheadBehind((await run("git", ["rev-list", "--left-right", "--count", `refs/remotes/${publishRemote}/${publishBranch}...HEAD`])).output);
+  const remoteRef = `refs/remotes/${publishRemote}/${publishBranch}`;
+  let sync = parseAheadBehind((await run("git", ["rev-list", "--left-right", "--count", `${remoteRef}...HEAD`])).output);
+  if (sync.behind) {
+    const committedDifferences = await run("git", ["diff", "--name-only", remoteRef, "HEAD"]);
+    if (!committedDifferences.output) {
+      await run("git", ["reset", "--soft", remoteRef]);
+      sync = { ahead: 0, behind: 0 };
+    }
+  }
   if (sync.behind) throw new Error(`本地 ${publishBranch} 落后 GitHub ${sync.behind} 个提交，请先拉取更新`);
   if (sync.ahead) {
     await assertPendingCommitsAreEditorPublishes();
