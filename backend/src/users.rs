@@ -4,10 +4,10 @@ use axum::{
     http::{HeaderMap, HeaderValue, header},
     response::{IntoResponse, Response},
 };
-use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
 use pbkdf2::pbkdf2_hmac;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use sqlx::FromRow;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 use webauthn_rs::prelude::{
@@ -106,14 +106,24 @@ pub(crate) struct AuthenticationVerifyBody {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct PasswordLoginBody { identifier: Option<String>, password: Option<String> }
+pub(crate) struct PasswordLoginBody {
+    identifier: Option<String>,
+    password: Option<String>,
+}
 
 #[derive(Deserialize)]
-pub(crate) struct PasswordResetBody { email: Option<String>, code: Option<String>, password: Option<String>, intent: Option<String> }
+pub(crate) struct PasswordResetBody {
+    email: Option<String>,
+    code: Option<String>,
+    password: Option<String>,
+    intent: Option<String>,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ProfileBody { display_name: Option<String> }
+pub(crate) struct ProfileBody {
+    display_name: Option<String>,
+}
 
 pub(crate) async fn send_code(
     State(state): State<AppState>,
@@ -124,7 +134,9 @@ pub(crate) async fn send_code(
     let email = normalize_email(body.email.as_deref())?;
     let intent = normalize_intent(body.intent.as_deref())?;
     let existing = find_user_by_email(&state, &email).await?;
-    if existing.as_ref().is_some_and(|user| user.is_banned) { return Err(AppError::Forbidden); }
+    if existing.as_ref().is_some_and(|user| user.is_banned) {
+        return Err(AppError::Forbidden);
+    }
     let display_name = match intent {
         "register" => {
             if existing.is_some() {
@@ -132,7 +144,16 @@ pub(crate) async fn send_code(
             }
             let name = normalize_display_name(body.display_name.as_deref())?;
             let key = display_name_key(&name);
-            if sqlx::query_scalar::<_, i64>("SELECT 1 FROM users WHERE display_name_key = ? LIMIT 1").bind(key).fetch_optional(&state.db).await?.is_some() { return Err(AppError::Conflict("该昵称已被使用")); }
+            if sqlx::query_scalar::<_, i64>(
+                "SELECT 1 FROM users WHERE display_name_key = ? LIMIT 1",
+            )
+            .bind(key)
+            .fetch_optional(&state.db)
+            .await?
+            .is_some()
+            {
+                return Err(AppError::Conflict("该昵称已被使用"));
+            }
             Some(name)
         }
         "login" | "reset_password" => {
@@ -143,7 +164,9 @@ pub(crate) async fn send_code(
         }
         "set_password" => {
             let current = require_user(&state, &headers).await?;
-            if existing.as_ref().is_none_or(|user| user.id != current.id) { return Err(AppError::Unauthorized); }
+            if existing.as_ref().is_none_or(|user| user.id != current.id) {
+                return Err(AppError::Unauthorized);
+            }
             None
         }
         _ => unreachable!(),
@@ -202,7 +225,9 @@ pub(crate) async fn verify_code(
     verify_origin(&state.config, &headers)?;
     let email = normalize_email(body.email.as_deref())?;
     let intent = normalize_intent(body.intent.as_deref())?;
-    if !matches!(intent, "login" | "register") { return Err(AppError::BadRequest("登录类型无效".into())); }
+    if !matches!(intent, "login" | "register") {
+        return Err(AppError::BadRequest("登录类型无效".into()));
+    }
     let code = body.code.unwrap_or_default().trim().to_owned();
     if code.len() != 6 || !code.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(AppError::BadRequest("请输入 6 位验证码".into()));
@@ -296,51 +321,129 @@ pub(crate) async fn logout(
 }
 
 pub(crate) async fn password_login(
-    State(state): State<AppState>, headers: HeaderMap, Json(body): Json<PasswordLoginBody>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PasswordLoginBody>,
 ) -> Result<Response, AppError> {
     verify_origin(&state.config, &headers)?;
     let identifier = body.identifier.unwrap_or_default().trim().to_lowercase();
     let password = body.password.unwrap_or_default();
-    if identifier.is_empty() || !(8..=128).contains(&password.len()) { return Err(AppError::Unauthorized); }
-    let row: Option<(String, Option<String>, bool)> = sqlx::query_as("SELECT id, password_hash, is_banned FROM users WHERE email = ? OR uid = ? LIMIT 1")
-        .bind(&identifier).bind(&identifier).fetch_optional(&state.db).await?;
-    let Some((id, Some(stored), banned)) = row else { return Err(AppError::Unauthorized); };
-    if !verify_password_hash(&password, &stored) { return Err(AppError::Unauthorized); }
-    if banned { return Err(AppError::Forbidden); }
+    if identifier.is_empty() || !(8..=128).contains(&password.len()) {
+        return Err(AppError::Unauthorized);
+    }
+    let row: Option<(String, Option<String>, bool)> = sqlx::query_as(
+        "SELECT id, password_hash, is_banned FROM users WHERE email = ? OR uid = ? LIMIT 1",
+    )
+    .bind(&identifier)
+    .bind(&identifier)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some((id, Some(stored), banned)) = row else {
+        return Err(AppError::Unauthorized);
+    };
+    if !verify_password_hash(&password, &stored) {
+        return Err(AppError::Unauthorized);
+    }
+    if banned {
+        return Err(AppError::Forbidden);
+    }
     let cookie = issue_user_session(&state, &id).await?;
-    Ok(([(header::SET_COOKIE, cookie), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))], Json(serde_json::json!({"ok":true}))).into_response())
+    Ok((
+        [
+            (header::SET_COOKIE, cookie),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+        ],
+        Json(serde_json::json!({"ok":true})),
+    )
+        .into_response())
 }
 
 pub(crate) async fn password_reset(
-    State(state): State<AppState>, headers: HeaderMap, Json(body): Json<PasswordResetBody>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PasswordResetBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     verify_origin(&state.config, &headers)?;
     let email = normalize_email(body.email.as_deref())?;
-    let intent = match body.intent.as_deref() { Some("set_password") => "set_password", _ => "reset_password" };
-    let code = body.code.unwrap_or_default().trim().to_owned(); let password = body.password.unwrap_or_default();
-    if code.len() != 6 || !code.bytes().all(|value| value.is_ascii_digit()) || !(8..=128).contains(&password.len()) { return Err(AppError::BadRequest("请输入 6 位验证码及 8–128 位新密码".into())); }
-    let user = find_user_by_email(&state, &email).await?.ok_or(AppError::NotFound("账户不存在"))?;
-    if user.is_banned { return Err(AppError::Forbidden); }
-    if intent == "set_password" && require_user(&state, &headers).await?.id != user.id { return Err(AppError::Unauthorized); }
+    let intent = match body.intent.as_deref() {
+        Some("set_password") => "set_password",
+        _ => "reset_password",
+    };
+    let code = body.code.unwrap_or_default().trim().to_owned();
+    let password = body.password.unwrap_or_default();
+    if code.len() != 6
+        || !code.bytes().all(|value| value.is_ascii_digit())
+        || !(8..=128).contains(&password.len())
+    {
+        return Err(AppError::BadRequest(
+            "请输入 6 位验证码及 8–128 位新密码".into(),
+        ));
+    }
+    let user = find_user_by_email(&state, &email)
+        .await?
+        .ok_or(AppError::NotFound("账户不存在"))?;
+    if user.is_banned {
+        return Err(AppError::Forbidden);
+    }
+    if intent == "set_password" && require_user(&state, &headers).await?.id != user.id {
+        return Err(AppError::Unauthorized);
+    }
     let row = sqlx::query_as::<_, LoginCode>("SELECT id, code_hash, salt, attempts, expires_at, display_name FROM user_login_codes WHERE email = ? AND intent = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1")
         .bind(&email).bind(intent).fetch_optional(&state.db).await?.ok_or_else(|| AppError::BadRequest("验证码已过期，请重新发送".into()))?;
-    let now = now_ms(); if row.expires_at <= now || row.attempts >= 5 { return Err(AppError::BadRequest("验证码已过期，请重新发送".into())); }
-    if hash_value(&format!("{}:{}:{}", email, code, row.salt)) != row.code_hash { sqlx::query("UPDATE user_login_codes SET attempts = attempts + 1 WHERE id = ?").bind(row.id).execute(&state.db).await?; return Err(AppError::BadRequest("验证码不正确".into())); }
+    let now = now_ms();
+    if row.expires_at <= now || row.attempts >= 5 {
+        return Err(AppError::BadRequest("验证码已过期，请重新发送".into()));
+    }
+    if hash_value(&format!("{}:{}:{}", email, code, row.salt)) != row.code_hash {
+        sqlx::query("UPDATE user_login_codes SET attempts = attempts + 1 WHERE id = ?")
+            .bind(row.id)
+            .execute(&state.db)
+            .await?;
+        return Err(AppError::BadRequest("验证码不正确".into()));
+    }
     let password_hash = make_password_hash(&password);
     let mut transaction = state.db.begin().await?;
-    sqlx::query("UPDATE user_login_codes SET used_at = ? WHERE id = ?").bind(now).bind(row.id).execute(&mut *transaction).await?;
-    sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?").bind(password_hash).bind(now).bind(&user.id).execute(&mut *transaction).await?;
+    sqlx::query("UPDATE user_login_codes SET used_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(row.id)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+        .bind(password_hash)
+        .bind(now)
+        .bind(&user.id)
+        .execute(&mut *transaction)
+        .await?;
     transaction.commit().await?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
 pub(crate) async fn update_profile(
-    State(state): State<AppState>, headers: HeaderMap, Json(body): Json<ProfileBody>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ProfileBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    verify_origin(&state.config, &headers)?; let user = require_user(&state, &headers).await?; let name = normalize_display_name(body.display_name.as_deref())?;
-    let result = sqlx::query("UPDATE users SET display_name = ?, display_name_key = ?, updated_at = ? WHERE id = ?").bind(&name).bind(display_name_key(&name)).bind(now_ms()).bind(&user.id).execute(&state.db).await;
-    if let Err(error) = result { if error.to_string().contains("UNIQUE") { return Err(AppError::Conflict("该昵称已被使用")); } return Err(error.into()); }
-    Ok(Json(serde_json::json!({"user":find_user_by_id(&state, &user.id).await?})))
+    verify_origin(&state.config, &headers)?;
+    let user = require_user(&state, &headers).await?;
+    let name = normalize_display_name(body.display_name.as_deref())?;
+    let result = sqlx::query(
+        "UPDATE users SET display_name = ?, display_name_key = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(&name)
+    .bind(display_name_key(&name))
+    .bind(now_ms())
+    .bind(&user.id)
+    .execute(&state.db)
+    .await;
+    if let Err(error) = result {
+        if error.to_string().contains("UNIQUE") {
+            return Err(AppError::Conflict("该昵称已被使用"));
+        }
+        return Err(error.into());
+    }
+    Ok(Json(
+        serde_json::json!({"user":find_user_by_id(&state, &user.id).await?}),
+    ))
 }
 
 pub(crate) async fn list_passkeys(
@@ -431,7 +534,9 @@ pub(crate) async fn authentication_options(
     let user = find_user_by_email(&state, &email)
         .await?
         .ok_or(AppError::NotFound("该邮箱尚未注册"))?;
-    if user.is_banned { return Err(AppError::Forbidden); }
+    if user.is_banned {
+        return Err(AppError::Forbidden);
+    }
     let passkeys = load_passkeys(&state, &user.id).await?;
     if passkeys.is_empty() {
         return Err(AppError::NotFound("该账户尚未登记 Passkey"));
@@ -515,7 +620,14 @@ pub(crate) async fn optional_user(
 }
 
 async fn issue_user_session(state: &AppState, user_id: &str) -> Result<HeaderValue, AppError> {
-    if sqlx::query_scalar::<_, bool>("SELECT is_banned FROM users WHERE id = ?").bind(user_id).fetch_optional(&state.db).await?.unwrap_or(true) { return Err(AppError::Forbidden); }
+    if sqlx::query_scalar::<_, bool>("SELECT is_banned FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .unwrap_or(true)
+    {
+        return Err(AppError::Forbidden);
+    }
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let now = now_ms();
     sqlx::query("DELETE FROM user_sessions WHERE expires_at <= ?")
@@ -711,15 +823,68 @@ fn normalize_display_name(value: Option<&str>) -> Result<String, AppError> {
     Ok(value.chars().take(40).collect())
 }
 
-fn display_name_key(value: &str) -> String { value.trim().to_lowercase() }
+fn display_name_key(value: &str) -> String {
+    value.trim().to_lowercase()
+}
 
-fn hex_bytes(value: &[u8]) -> String { value.iter().map(|byte| format!("{byte:02x}")).collect() }
-fn decode_hex(value: &str) -> Option<Vec<u8>> { if value.len() % 2 != 0 { return None; } (0..value.len()).step_by(2).map(|index| u8::from_str_radix(&value[index..index+2],16).ok()).collect() }
-fn make_password_hash(password: &str) -> String { let salt = *Uuid::new_v4().as_bytes(); let mut output=[0u8;32]; pbkdf2_hmac::<Sha256>(password.as_bytes(),&salt,600_000,&mut output); format!("pbkdf2-sha256$600000${}${}",hex_bytes(&salt),format!("${}",hex_bytes(&output))) }
-fn verify_password_hash(password: &str, stored: &str) -> bool { let parts:Vec<&str>=stored.split('$').collect(); if parts.len()!=4 || parts[0]!="pbkdf2-sha256" { return false; } let Ok(iterations)=parts[1].parse::<u32>() else{return false}; let Some(salt)=decode_hex(parts[2]) else{return false}; let Some(expected)=decode_hex(parts[3]) else{return false}; let mut output=vec![0u8;expected.len()]; pbkdf2_hmac::<Sha256>(password.as_bytes(),&salt,iterations,&mut output); output.len()==expected.len() && output.iter().zip(expected).fold(0u8,|difference,(left,right)|difference|(left^right))==0 }
+fn hex_bytes(value: &[u8]) -> String {
+    value.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+fn decode_hex(value: &str) -> Option<Vec<u8>> {
+    if value.len() % 2 != 0 {
+        return None;
+    }
+    (0..value.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&value[index..index + 2], 16).ok())
+        .collect()
+}
+fn make_password_hash(password: &str) -> String {
+    let salt = *Uuid::new_v4().as_bytes();
+    let mut output = [0u8; 32];
+    pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, 600_000, &mut output);
+    format!(
+        "pbkdf2-sha256$600000${}${}",
+        hex_bytes(&salt),
+        format!("${}", hex_bytes(&output))
+    )
+}
+fn verify_password_hash(password: &str, stored: &str) -> bool {
+    let parts: Vec<&str> = stored.split('$').collect();
+    if parts.len() != 4 || parts[0] != "pbkdf2-sha256" {
+        return false;
+    }
+    let Ok(iterations) = parts[1].parse::<u32>() else {
+        return false;
+    };
+    let Some(salt) = decode_hex(parts[2]) else {
+        return false;
+    };
+    let Some(expected) = decode_hex(parts[3]) else {
+        return false;
+    };
+    let mut output = vec![0u8; expected.len()];
+    pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, iterations, &mut output);
+    output.len() == expected.len()
+        && output
+            .iter()
+            .zip(expected)
+            .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+            == 0
+}
 
 async fn unique_uid(state: &AppState) -> Result<String, AppError> {
-    for _ in 0..20 { let uid = format!("{:08}", rand::random::<u32>() % 100_000_000); if sqlx::query_scalar::<_, i64>("SELECT 1 FROM users WHERE uid = ? LIMIT 1").bind(&uid).fetch_optional(&state.db).await?.is_none() { return Ok(uid); } }
+    for _ in 0..20 {
+        let uid = format!("{:08}", rand::random::<u32>() % 100_000_000);
+        if sqlx::query_scalar::<_, i64>("SELECT 1 FROM users WHERE uid = ? LIMIT 1")
+            .bind(&uid)
+            .fetch_optional(&state.db)
+            .await?
+            .is_none()
+        {
+            return Ok(uid);
+        }
+    }
     Err(AppError::Internal)
 }
 
