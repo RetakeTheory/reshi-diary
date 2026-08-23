@@ -221,12 +221,12 @@
           "canMove": true,
           "canHide": true,
           "fields": {
-            "reactionEyebrow": "REACTIONS / 添加回应",
-            "reactionTitle": "这篇文章让你想到什么？",
-            "commentsEyebrow": "COMMENTS / 评论",
+            "reactionEyebrow": "添加回应",
+            "reactionTitle": "回应一个~",
+            "commentsEyebrow": "评论",
             "commentsTitle": "一起聊聊",
             "loginTitle": "登录后参与讨论",
-            "loginDescription": "支持邮箱验证码和 Passkey。",
+            "loginDescription": "快来注册吧",
             "loginCta": "登录 / 注册",
             "empty": "还没有评论，来写第一条吧。"
           },
