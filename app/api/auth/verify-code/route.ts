@@ -1,6 +1,6 @@
 import { ensureDatabaseSchema, getD1 } from "../../../../db/runtime";
 import { hashValue, sameOrigin } from "../../../../lib/admin-email-auth";
-import { issueReaderSession, normalizeReaderEmail } from "../../../../lib/reader-auth";
+import { displayNameKey, issueReaderSession, normalizeReaderEmail, uniqueReaderUid } from "../../../../lib/reader-auth";
 
 type LoginCode = { id: number; intent: string; display_name: string | null; code_hash: string; salt: string; attempts: number; expires_at: number };
 
@@ -28,8 +28,9 @@ export async function POST(request: Request) {
   let user = await db.prepare("SELECT id FROM users WHERE email = ? LIMIT 1").bind(email).first<{ id: string }>();
   if (!user && intent === "register") {
     user = { id: crypto.randomUUID() };
-    await db.prepare("INSERT INTO users (id, email, display_name, points, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)")
-      .bind(user.id, email, row.display_name || email.split("@")[0], now, now).run();
+    const displayName = row.display_name || email.split("@")[0];
+    await db.prepare("INSERT INTO users (id, uid, email, display_name, display_name_key, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)")
+      .bind(user.id, await uniqueReaderUid(db), email, displayName, displayNameKey(displayName), now, now).run();
   }
   if (!user) return Response.json({ error: "账户不存在，请先注册" }, { status: 404 });
   return Response.json({ ok: true }, { headers: { "Set-Cookie": await issueReaderSession(user.id), "Cache-Control": "no-store" } });

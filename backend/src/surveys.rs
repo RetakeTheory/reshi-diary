@@ -1,17 +1,20 @@
+use ammonia::Builder as HtmlSanitizer;
 use axum::{
     Json,
-    body::Body,
+    body::{Body, to_bytes},
     extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::Response,
 };
-use ammonia::Builder as HtmlSanitizer;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::{AppError, AppState, content_disposition, hash_value, now_ms, require_admin, users, verify_origin};
+use crate::{
+    AppError, AppState, content_disposition, hash_value, now_ms, require_admin, users,
+    verify_origin,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ChoiceItem {
@@ -82,20 +85,38 @@ enum SurveyQuestion {
         #[serde(rename = "fixedDigits", default = "one")]
         fixed_digits: usize,
     },
+    #[serde(rename = "file")]
+    File {
+        id: String,
+        title: String,
+        #[serde(default)]
+        description: String,
+        required: bool,
+        #[serde(rename = "maxSizeMb")]
+        max_size_mb: usize,
+    },
 }
 
 impl SurveyQuestion {
     fn id(&self) -> &str {
         match self {
-            Self::Single { id, .. } | Self::Multiple { id, .. } | Self::MatrixSingle { id, .. }
-            | Self::MatrixMultiple { id, .. } | Self::ShortText { id, .. } => id,
+            Self::Single { id, .. }
+            | Self::Multiple { id, .. }
+            | Self::MatrixSingle { id, .. }
+            | Self::MatrixMultiple { id, .. }
+            | Self::ShortText { id, .. }
+            | Self::File { id, .. } => id,
         }
     }
 
     fn title(&self) -> &str {
         match self {
-            Self::Single { title, .. } | Self::Multiple { title, .. } | Self::MatrixSingle { title, .. }
-            | Self::MatrixMultiple { title, .. } | Self::ShortText { title, .. } => title,
+            Self::Single { title, .. }
+            | Self::Multiple { title, .. }
+            | Self::MatrixSingle { title, .. }
+            | Self::MatrixMultiple { title, .. }
+            | Self::ShortText { title, .. }
+            | Self::File { title, .. } => title,
         }
     }
 }
@@ -125,6 +146,16 @@ pub(crate) struct SurveyInput {
 #[derive(Deserialize)]
 pub(crate) struct SubmissionInput {
     answers: Value,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FileUploadInit {
+    question_id: String,
+    name: String,
+    size: i64,
+    #[serde(rename = "type")]
+    content_type: String,
 }
 
 #[derive(FromRow)]
@@ -160,9 +191,13 @@ pub(crate) async fn list_admin(
     headers: HeaderMap,
 ) -> Result<Json<Value>, AppError> {
     require_admin(&state, &headers).await?;
-    let rows = sqlx::query_as::<_, SurveyRecord>(&format!("{SURVEY_SELECT} ORDER BY s.updated_at DESC"))
-        .fetch_all(&state.db).await?;
-    Ok(Json(json!({ "surveys": rows.iter().map(survey_json).collect::<Result<Vec<_>, _>>()? })))
+    let rows =
+        sqlx::query_as::<_, SurveyRecord>(&format!("{SURVEY_SELECT} ORDER BY s.updated_at DESC"))
+            .fetch_all(&state.db)
+            .await?;
+    Ok(Json(
+        json!({ "surveys": rows.iter().map(survey_json).collect::<Result<Vec<_>, _>>()? }),
+    ))
 }
 
 pub(crate) async fn create_admin(
@@ -186,8 +221,13 @@ pub(crate) async fn create_admin(
         }
         return Err(error.into());
     }
-    let row = find_survey(&state, "id", &id).await?.ok_or(AppError::Internal)?;
-    Ok((StatusCode::CREATED, Json(json!({ "survey": survey_json(&row)? }))))
+    let row = find_survey(&state, "id", &id)
+        .await?
+        .ok_or(AppError::Internal)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "survey": survey_json(&row)? })),
+    ))
 }
 
 pub(crate) async fn update_admin(
@@ -206,12 +246,18 @@ pub(crate) async fn update_admin(
         .bind(&input.success_content).bind(&input.success_redirect_url).bind(questions).bind(now_ms()).bind(&id).execute(&state.db).await;
     let result = match result {
         Ok(result) => result,
-        Err(error) if error.to_string().to_ascii_lowercase().contains("unique") => return Err(AppError::BadRequest("公开地址已被使用".into())),
+        Err(error) if error.to_string().to_ascii_lowercase().contains("unique") => {
+            return Err(AppError::BadRequest("公开地址已被使用".into()));
+        }
         Err(error) => return Err(error.into()),
     };
-    if result.rows_affected() == 0 { return Err(AppError::NotFound("问卷不存在")); }
-    let row = find_survey(&state, "id", &id).await?.ok_or(AppError::NotFound("问卷不存在"))?;
-    Ok(Json(json!({ "survey": public_survey_json(&row)? })))
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("问卷不存在"));
+    }
+    let row = find_survey(&state, "id", &id)
+        .await?
+        .ok_or(AppError::NotFound("问卷不存在"))?;
+    Ok(Json(json!({ "survey": survey_json(&row)? })))
 }
 
 pub(crate) async fn delete_admin(
@@ -221,10 +267,30 @@ pub(crate) async fn delete_admin(
 ) -> Result<Json<Value>, AppError> {
     verify_origin(&state.config, &headers)?;
     require_admin(&state, &headers).await?;
+    let paths = sqlx::query_scalar::<_, String>(
+        "SELECT disk_path FROM survey_file_uploads WHERE survey_id = ? AND disk_path IS NOT NULL",
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await?;
     let mut transaction = state.db.begin().await?;
-    sqlx::query("DELETE FROM survey_responses WHERE survey_id = ?").bind(&id).execute(&mut *transaction).await?;
-    sqlx::query("DELETE FROM surveys WHERE id = ?").bind(&id).execute(&mut *transaction).await?;
+    sqlx::query("DELETE FROM uploads WHERE key IN (SELECT key FROM survey_file_uploads WHERE survey_id = ?)").bind(&id).execute(&mut *transaction).await?;
+    sqlx::query("DELETE FROM survey_file_uploads WHERE survey_id = ?")
+        .bind(&id)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM survey_responses WHERE survey_id = ?")
+        .bind(&id)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM surveys WHERE id = ?")
+        .bind(&id)
+        .execute(&mut *transaction)
+        .await?;
     transaction.commit().await?;
+    for path in paths {
+        let _ = tokio::fs::remove_file(path).await;
+    }
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -233,10 +299,113 @@ pub(crate) async fn get_public(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let row = find_survey(&state, "slug", &slug).await?.filter(|item| matches!(item.status.as_str(), "published" | "closed"))
+    let row = find_survey(&state, "slug", &slug)
+        .await?
+        .filter(|item| matches!(item.status.as_str(), "published" | "closed"))
         .ok_or(AppError::NotFound("问卷不存在或尚未发布"))?;
-    if row.access == "registered" && users::optional_user(&state, &headers).await?.is_none() { return Err(AppError::Unauthorized); }
-    Ok(Json(json!({ "survey": survey_json(&row)? })))
+    if row.access == "registered" && users::optional_user(&state, &headers).await?.is_none() {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(Json(json!({ "survey": public_survey_json(&row)? })))
+}
+
+pub(crate) async fn init_file_upload(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+    Json(input): Json<FileUploadInit>,
+) -> Result<(StatusCode, Json<Value>), AppError> {
+    verify_origin(&state.config, &headers)?;
+    let survey = find_survey(&state, "slug", &slug)
+        .await?
+        .filter(|item| item.status == "published")
+        .ok_or(AppError::NotFound("问卷不存在或未开放"))?;
+    if survey.access == "registered" {
+        users::require_user(&state, &headers).await?;
+    }
+    let questions: Vec<SurveyQuestion> =
+        serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
+    let limit = questions
+        .iter()
+        .find_map(|question| match question {
+            SurveyQuestion::File {
+                id, max_size_mb, ..
+            } if id == &input.question_id => Some(*max_size_mb as i64 * 1024 * 1024),
+            _ => None,
+        })
+        .ok_or_else(|| AppError::BadRequest("文件题不存在".into()))?;
+    if input.size <= 0 || input.size > limit || input.size > 100 * 1024 * 1024 {
+        return Err(AppError::PayloadTooLarge);
+    }
+    let filename: String = input
+        .name
+        .chars()
+        .map(|character| {
+            if character.is_control() || "\\/:*?\"<>|".contains(character) {
+                '-'
+            } else {
+                character
+            }
+        })
+        .take(180)
+        .collect();
+    if filename.is_empty() {
+        return Err(AppError::BadRequest("文件名无效".into()));
+    }
+    let upload_id = Uuid::new_v4().to_string();
+    let key = format!("survey-files/{}/{}", survey.id, upload_id);
+    let ip_hash = hash_value(&format!("{}:{}", survey.id, client_ip(&headers)));
+    let content_type = if input.content_type.trim().is_empty() {
+        "application/octet-stream"
+    } else {
+        input.content_type.trim()
+    };
+    sqlx::query("INSERT INTO survey_file_uploads (key, survey_id, question_id, filename, content_type, size, ip_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&key).bind(&survey.id).bind(&input.question_id).bind(&filename).bind(content_type).bind(input.size).bind(ip_hash).bind(now_ms()).execute(&state.db).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(
+            json!({"key":key,"name":filename,"size":input.size,"type":content_type,"uploadUrl":format!("/api/surveys/{slug}/files/{upload_id}"),"headers":{"content-type":content_type},"expiresAt":now_ms()+900_000}),
+        ),
+    ))
+}
+
+pub(crate) async fn upload_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((slug, upload_id)): Path<(String, String)>,
+    body: Body,
+) -> Result<Json<Value>, AppError> {
+    verify_origin(&state.config, &headers)?;
+    let survey = find_survey(&state, "slug", &slug)
+        .await?
+        .filter(|item| item.status == "published")
+        .ok_or(AppError::NotFound("问卷不存在或未开放"))?;
+    let key = format!("survey-files/{}/{}", survey.id, upload_id);
+    let ip_hash = hash_value(&format!("{}:{}", survey.id, client_ip(&headers)));
+    let reservation: Option<(String, String, i64)> = sqlx::query_as("SELECT filename, content_type, size FROM survey_file_uploads WHERE key = ? AND ip_hash = ? AND used_at IS NULL AND created_at > ?")
+        .bind(&key).bind(ip_hash).bind(now_ms()-3_600_000).fetch_optional(&state.db).await?;
+    let (filename, content_type, expected_size) =
+        reservation.ok_or_else(|| AppError::BadRequest("上传任务无效或已过期".into()))?;
+    let bytes = to_bytes(body, 100 * 1024 * 1024)
+        .await
+        .map_err(|_| AppError::PayloadTooLarge)?;
+    if bytes.len() as i64 != expected_size {
+        return Err(AppError::BadRequest("文件大小与上传任务不一致".into()));
+    }
+    let object_id = Uuid::new_v4().simple().to_string();
+    let disk_path = state.config.upload_dir.join(&object_id);
+    tokio::fs::write(&disk_path, &bytes).await?;
+    let now = now_ms();
+    let mut transaction = state.db.begin().await?;
+    sqlx::query("INSERT INTO uploads (key, filename, content_type, size, previewable, disk_path, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)").bind(&key).bind(filename).bind(content_type).bind(expected_size).bind(disk_path.to_string_lossy().as_ref()).bind(now).execute(&mut *transaction).await?;
+    sqlx::query("UPDATE survey_file_uploads SET disk_path = ? WHERE key = ?")
+        .bind(disk_path.to_string_lossy().as_ref())
+        .bind(&key)
+        .execute(&mut *transaction)
+        .await?;
+    transaction.commit().await?;
+    Ok(Json(json!({"ok":true})))
 }
 
 pub(crate) async fn submit_public(
@@ -246,30 +415,66 @@ pub(crate) async fn submit_public(
     Json(input): Json<SubmissionInput>,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
     verify_origin(&state.config, &headers)?;
-    let row = find_survey(&state, "slug", &slug).await?.filter(|item| item.status == "published")
+    let row = find_survey(&state, "slug", &slug)
+        .await?
+        .filter(|item| item.status == "published")
         .ok_or(AppError::NotFound("问卷不存在、未发布或已结束"))?;
-    if row.access == "registered" && users::optional_user(&state, &headers).await?.is_none() { return Err(AppError::Unauthorized); }
-    let questions: Vec<SurveyQuestion> = serde_json::from_str(&row.questions_json).map_err(|_| AppError::Internal)?;
+    if row.access == "registered" && users::optional_user(&state, &headers).await?.is_none() {
+        return Err(AppError::Unauthorized);
+    }
+    let questions: Vec<SurveyQuestion> =
+        serde_json::from_str(&row.questions_json).map_err(|_| AppError::Internal)?;
     let answers = validate_answers(&questions, &input.answers)?;
     let serialized = serde_json::to_string(&answers).map_err(|_| AppError::Internal)?;
-    if serialized.len() > 100_000 { return Err(AppError::PayloadTooLarge); }
+    if serialized.len() > 100_000 {
+        return Err(AppError::PayloadTooLarge);
+    }
     let ip = client_ip(&headers);
     let ip_hash = hash_value(&format!("{}:{ip}", row.id));
     let id = Uuid::new_v4().to_string();
+    let file_keys: Vec<String> = questions
+        .iter()
+        .filter_map(|question| match question {
+            SurveyQuestion::File { id, .. } => answers
+                .get(id)
+                .and_then(|value| value.get("key"))
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            _ => None,
+        })
+        .collect();
+    for key in &file_keys {
+        let valid: Option<i64> = sqlx::query_scalar("SELECT 1 FROM survey_file_uploads WHERE key = ? AND survey_id = ? AND ip_hash = ? AND disk_path IS NOT NULL AND used_at IS NULL AND created_at > ?").bind(key).bind(&row.id).bind(&ip_hash).bind(now_ms()-3_600_000).fetch_optional(&state.db).await?;
+        if valid.is_none() {
+            return Err(AppError::BadRequest("文件上传记录无效或未完成".into()));
+        }
+    }
+    let now = now_ms();
+    let mut transaction = state.db.begin().await?;
     let result = sqlx::query("INSERT INTO survey_responses (id, survey_id, ip_hash, answers_json, created_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(&id).bind(&row.id).bind(ip_hash).bind(serialized).bind(now_ms()).execute(&state.db).await;
+        .bind(&id).bind(&row.id).bind(&ip_hash).bind(serialized).bind(now).execute(&mut *transaction).await;
     if let Err(error) = result {
         if error.to_string().contains("survey_ip_limit") {
-            return Err(AppError::SurveyLimit(format!("此 IP 最多可提交 {} 次", row.ip_limit)));
+            return Err(AppError::SurveyLimit(format!(
+                "此 IP 最多可提交 {} 次",
+                row.ip_limit
+            )));
         }
         return Err(error.into());
     }
+    for key in file_keys {
+        sqlx::query("UPDATE survey_file_uploads SET used_at = ?, response_id = ? WHERE key = ? AND used_at IS NULL").bind(now).bind(&id).bind(key).execute(&mut *transaction).await?;
+    }
+    transaction.commit().await?;
     let completion = if row.success_mode == "redirect" {
         json!({ "mode": "redirect", "redirectUrl": row.success_redirect_url })
     } else {
         json!({ "mode": "message", "content": row.success_content })
     };
-    Ok((StatusCode::CREATED, Json(json!({ "ok": true, "responseId": id, "completion": completion }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "ok": true, "responseId": id, "completion": completion })),
+    ))
 }
 
 pub(crate) async fn report_admin(
@@ -278,27 +483,82 @@ pub(crate) async fn report_admin(
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     require_admin(&state, &headers).await?;
-    let survey = find_survey(&state, "id", &id).await?.ok_or(AppError::NotFound("问卷不存在"))?;
-    let questions: Vec<SurveyQuestion> = serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
+    let survey = find_survey(&state, "id", &id)
+        .await?
+        .ok_or(AppError::NotFound("问卷不存在"))?;
+    let questions: Vec<SurveyQuestion> =
+        serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
     let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, created_at FROM survey_responses WHERE survey_id = ? ORDER BY created_at ASC")
         .bind(&id).fetch_all(&state.db).await?;
     let csv = build_csv(&questions, &rows)?;
     let filename = safe_filename(&format!("{}-答卷.csv", survey.title));
     let mut response = Response::new(Body::from(format!("\u{feff}{csv}")));
-    response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv; charset=utf-8"));
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response.headers_mut().insert(header::CONTENT_DISPOSITION, HeaderValue::from_str(&content_disposition(&filename, false)).map_err(|_| AppError::Internal)?);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/csv; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&content_disposition(&filename, false))
+            .map_err(|_| AppError::Internal)?,
+    );
     Ok(response)
 }
 
-async fn find_survey(state: &AppState, field: &str, value: &str) -> Result<Option<SurveyRecord>, AppError> {
+pub(crate) async fn results_admin(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    require_admin(&state, &headers).await?;
+    let survey = find_survey(&state, "id", &id)
+        .await?
+        .ok_or(AppError::NotFound("问卷不存在"))?;
+    let questions: Vec<SurveyQuestion> =
+        serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
+    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, created_at FROM survey_responses WHERE survey_id = ? ORDER BY created_at DESC LIMIT 5000").bind(&id).fetch_all(&state.db).await?;
+    let responses: Vec<Value> = rows.iter().map(|row| Ok(json!({"id":row.id,"answers":serde_json::from_str::<Value>(&row.answers_json).map_err(|_| AppError::Internal)?,"createdAt":row.created_at}))).collect::<Result<_,AppError>>()?;
+    Ok(Json(
+        json!({"survey":survey_json(&survey)?,"reports":build_question_reports(&questions,&responses),"responses":responses.into_iter().take(100).collect::<Vec<_>>(),"total":rows.len(),"page":1,"pageSize":100,"truncated":survey.response_count>5000}),
+    ))
+}
+
+fn build_question_reports(questions: &[SurveyQuestion], responses: &[Value]) -> Vec<Value> {
+    questions.iter().map(|question| {
+        let values: Vec<(&str,&Value)> = responses.iter().filter_map(|response| { let value=response.get("answers")?.get(question.id())?; Some((response.get("id")?.as_str()?,value)) }).collect();
+        let mut report = json!({"id":question.id(),"title":question.title(),"type":match question { SurveyQuestion::Single{..}=>"single",SurveyQuestion::Multiple{..}=>"multiple",SurveyQuestion::MatrixSingle{..}=>"matrix_single",SurveyQuestion::MatrixMultiple{..}=>"matrix_multiple",SurveyQuestion::ShortText{..}=>"short_text",SurveyQuestion::File{..}=>"file" },"answered":values.len(),"total":responses.len()});
+        match question {
+            SurveyQuestion::Single { options, allow_other, .. } | SurveyQuestion::Multiple { options, allow_other, .. } => { let mut choices=options.iter().map(|item|(item.id.clone(),item.label.clone())).collect::<Vec<_>>(); if *allow_other { choices.push(("__other".into(),"其他".into())); } report["options"]=json!(choices.into_iter().map(|(id,label)| { let count=values.iter().filter(|(_,value)| { let selected=value.get("selected"); selected.and_then(Value::as_str)==Some(id.as_str()) || selected.and_then(Value::as_array).is_some_and(|items|items.iter().any(|item|item.as_str()==Some(id.as_str()))) }).count(); json!({"id":id,"label":label,"count":count}) }).collect::<Vec<_>>()); }
+            SurveyQuestion::MatrixSingle { rows, columns, .. } | SurveyQuestion::MatrixMultiple { rows, columns, .. } => { report["rows"]=json!(rows.iter().map(|row| json!({"id":row.id,"label":row.label,"options":columns.iter().map(|column| { let count=values.iter().filter(|(_,value)| { let selected=value.get(&row.id); selected.and_then(Value::as_str)==Some(column.id.as_str()) || selected.and_then(Value::as_array).is_some_and(|items|items.iter().any(|item|item.as_str()==Some(column.id.as_str()))) }).count(); json!({"id":column.id,"label":column.label,"count":count}) }).collect::<Vec<_>>() })).collect::<Vec<_>>()); }
+            SurveyQuestion::ShortText { .. } => report["textAnswers"]=json!(values.iter().filter_map(|(id,value)|value.as_str().map(|text|json!({"responseId":id,"value":text}))).collect::<Vec<_>>()),
+            SurveyQuestion::File { .. } => report["fileAnswers"]=json!(values.iter().map(|(id,value)|json!({"responseId":id,"key":value.get("key"),"name":value.get("name"),"size":value.get("size"),"type":value.get("type")})).collect::<Vec<_>>()),
+        }
+        report
+    }).collect()
+}
+
+async fn find_survey(
+    state: &AppState,
+    field: &str,
+    value: &str,
+) -> Result<Option<SurveyRecord>, AppError> {
     let condition = if field == "slug" { "s.slug" } else { "s.id" };
-    Ok(sqlx::query_as::<_, SurveyRecord>(&format!("{SURVEY_SELECT} WHERE {condition} = ? LIMIT 1"))
-        .bind(value).fetch_optional(&state.db).await?)
+    Ok(
+        sqlx::query_as::<_, SurveyRecord>(&format!(
+            "{SURVEY_SELECT} WHERE {condition} = ? LIMIT 1"
+        ))
+        .bind(value)
+        .fetch_optional(&state.db)
+        .await?,
+    )
 }
 
 fn survey_json(row: &SurveyRecord) -> Result<Value, AppError> {
-    let questions: Value = serde_json::from_str(&row.questions_json).map_err(|_| AppError::Internal)?;
+    let questions: Value =
+        serde_json::from_str(&row.questions_json).map_err(|_| AppError::Internal)?;
     Ok(json!({
         "id": row.id, "slug": row.slug, "title": row.title, "description": row.description,
         "status": row.status, "access": row.access, "ipLimit": row.ip_limit,
@@ -326,110 +586,433 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
     input.submit_label = input.submit_label.trim().to_owned();
     input.success_mode = input.success_mode.trim().to_owned();
     input.success_redirect_url = input.success_redirect_url.trim().to_owned();
-    input.success_content = HtmlSanitizer::default().clean(&input.success_content).to_string();
-    let slug_valid = (3..=64).contains(&input.slug.len()) && input.slug.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-        && !input.slug.starts_with('-') && !input.slug.ends_with('-');
-    if !slug_valid { return Err(AppError::BadRequest("公开地址需为 3–64 位小写字母、数字或连字符".into())); }
-    if input.title.is_empty() || input.title.chars().count() > 120 { return Err(AppError::BadRequest("请填写 1–120 字问卷标题".into())); }
-    if input.description.chars().count() > 2000 { return Err(AppError::BadRequest("问卷说明不能超过 2000 字".into())); }
-    if !matches!(input.status.as_str(), "draft" | "published" | "closed") { return Err(AppError::BadRequest("问卷状态无效".into())); }
-    if !matches!(input.access.as_str(), "public" | "registered") { return Err(AppError::BadRequest("访问权限无效".into())); }
-    if input.submit_label.is_empty() || input.submit_label.chars().count() > 40 { return Err(AppError::BadRequest("提交按钮文字需为 1–40 字".into())); }
-    if !matches!(input.success_mode.as_str(), "message" | "redirect") { return Err(AppError::BadRequest("提交后动作无效".into())); }
-    if input.success_content.len() > 100_000 || input.success_mode == "message" && input.success_content.trim().is_empty() { return Err(AppError::BadRequest("请填写有效的提交后提示内容".into())); }
-    if input.success_mode == "redirect" && !safe_redirect(&input.success_redirect_url) { return Err(AppError::BadRequest("跳转网址需为站内路径或 HTTPS 网址".into())); }
-    if !(1..=1000).contains(&input.ip_limit) { return Err(AppError::BadRequest("单 IP 作答次数需为 1–1000".into())); }
-    if !(1..=200).contains(&input.questions.len()) { return Err(AppError::BadRequest("问卷需包含 1–200 道题".into())); }
+    input.success_content = HtmlSanitizer::default()
+        .clean(&input.success_content)
+        .to_string();
+    let slug_valid = (3..=64).contains(&input.slug.len())
+        && input
+            .slug
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !input.slug.starts_with('-')
+        && !input.slug.ends_with('-');
+    if !slug_valid {
+        return Err(AppError::BadRequest(
+            "公开地址需为 3–64 位小写字母、数字或连字符".into(),
+        ));
+    }
+    if input.title.is_empty() || input.title.chars().count() > 120 {
+        return Err(AppError::BadRequest("请填写 1–120 字问卷标题".into()));
+    }
+    if input.description.chars().count() > 2000 {
+        return Err(AppError::BadRequest("问卷说明不能超过 2000 字".into()));
+    }
+    if !matches!(input.status.as_str(), "draft" | "published" | "closed") {
+        return Err(AppError::BadRequest("问卷状态无效".into()));
+    }
+    if !matches!(input.access.as_str(), "public" | "registered") {
+        return Err(AppError::BadRequest("访问权限无效".into()));
+    }
+    if input.submit_label.is_empty() || input.submit_label.chars().count() > 40 {
+        return Err(AppError::BadRequest("提交按钮文字需为 1–40 字".into()));
+    }
+    if !matches!(input.success_mode.as_str(), "message" | "redirect") {
+        return Err(AppError::BadRequest("提交后动作无效".into()));
+    }
+    if input.success_content.len() > 100_000
+        || input.success_mode == "message" && input.success_content.trim().is_empty()
+    {
+        return Err(AppError::BadRequest("请填写有效的提交后提示内容".into()));
+    }
+    if input.success_mode == "redirect" && !safe_redirect(&input.success_redirect_url) {
+        return Err(AppError::BadRequest(
+            "跳转网址需为站内路径或 HTTPS 网址".into(),
+        ));
+    }
+    if !(1..=1000).contains(&input.ip_limit) {
+        return Err(AppError::BadRequest("单 IP 作答次数需为 1–1000".into()));
+    }
+    if !(1..=200).contains(&input.questions.len()) {
+        return Err(AppError::BadRequest("问卷需包含 1–200 道题".into()));
+    }
     let mut ids = std::collections::HashSet::new();
     for (index, question) in input.questions.iter().enumerate() {
-        if !valid_id(question.id()) || !ids.insert(question.id().to_owned()) { return Err(AppError::BadRequest(format!("第 {} 题编号无效或重复", index + 1))); }
-        if question.title().trim().is_empty() || question.title().chars().count() > 300 { return Err(AppError::BadRequest(format!("请完善第 {} 题", index + 1))); }
+        if !valid_id(question.id()) || !ids.insert(question.id().to_owned()) {
+            return Err(AppError::BadRequest(format!(
+                "第 {} 题编号无效或重复",
+                index + 1
+            )));
+        }
+        if question.title().trim().is_empty() || question.title().chars().count() > 300 {
+            return Err(AppError::BadRequest(format!("请完善第 {} 题", index + 1)));
+        }
         match question {
-            SurveyQuestion::Single { options, .. } | SurveyQuestion::Multiple { options, .. } => validate_items(options, 2, 50, index)?,
-            SurveyQuestion::MatrixSingle { rows, columns, .. } | SurveyQuestion::MatrixMultiple { rows, columns, .. } => {
-                validate_items(rows, 1, 50, index)?; validate_items(columns, 2, 30, index)?;
+            SurveyQuestion::Single { options, .. } | SurveyQuestion::Multiple { options, .. } => {
+                validate_items(options, 2, 50, index)?
             }
-            SurveyQuestion::ShortText { max_length, text_type, fixed_digits, .. } => {
-                if !(1..=5000).contains(max_length) { return Err(AppError::BadRequest(format!("第 {} 题字数限制需为 1–5000", index + 1))); }
-                if !matches!(text_type.as_str(), "text" | "digits_fixed" | "id_card" | "name" | "english") { return Err(AppError::BadRequest(format!("第 {} 题字段类型无效", index + 1))); }
-                if text_type == "digits_fixed" && !(1..=64).contains(fixed_digits) { return Err(AppError::BadRequest(format!("第 {} 题固定位数需为 1–64", index + 1))); }
+            SurveyQuestion::MatrixSingle { rows, columns, .. }
+            | SurveyQuestion::MatrixMultiple { rows, columns, .. } => {
+                validate_items(rows, 1, 50, index)?;
+                validate_items(columns, 2, 30, index)?;
+            }
+            SurveyQuestion::ShortText {
+                max_length,
+                text_type,
+                fixed_digits,
+                ..
+            } => {
+                if !(1..=5000).contains(max_length) {
+                    return Err(AppError::BadRequest(format!(
+                        "第 {} 题字数限制需为 1–5000",
+                        index + 1
+                    )));
+                }
+                if !matches!(
+                    text_type.as_str(),
+                    "text" | "digits_fixed" | "id_card" | "name" | "english"
+                ) {
+                    return Err(AppError::BadRequest(format!(
+                        "第 {} 题字段类型无效",
+                        index + 1
+                    )));
+                }
+                if text_type == "digits_fixed" && !(1..=64).contains(fixed_digits) {
+                    return Err(AppError::BadRequest(format!(
+                        "第 {} 题固定位数需为 1–64",
+                        index + 1
+                    )));
+                }
+            }
+            SurveyQuestion::File { max_size_mb, .. } => {
+                if !(1..=100).contains(max_size_mb) {
+                    return Err(AppError::BadRequest(format!(
+                        "第 {} 题文件上限需为 1–100 MB",
+                        index + 1
+                    )));
+                }
             }
         }
     }
     Ok(())
 }
 
-fn validate_items(items: &[ChoiceItem], min: usize, max: usize, question_index: usize) -> Result<(), AppError> {
-    if !(min..=max).contains(&items.len()) { return Err(AppError::BadRequest(format!("第 {} 题选项数量无效", question_index + 1))); }
+fn validate_items(
+    items: &[ChoiceItem],
+    min: usize,
+    max: usize,
+    question_index: usize,
+) -> Result<(), AppError> {
+    if !(min..=max).contains(&items.len()) {
+        return Err(AppError::BadRequest(format!(
+            "第 {} 题选项数量无效",
+            question_index + 1
+        )));
+    }
     let mut ids = std::collections::HashSet::new();
-    if items.iter().any(|item| !valid_id(&item.id) || !ids.insert(&item.id) || item.label.trim().is_empty() || item.label.chars().count() > 120) {
-        return Err(AppError::BadRequest(format!("第 {} 题选项无效或重复", question_index + 1)));
+    if items.iter().any(|item| {
+        !valid_id(&item.id)
+            || !ids.insert(&item.id)
+            || item.label.trim().is_empty()
+            || item.label.chars().count() > 120
+    }) {
+        return Err(AppError::BadRequest(format!(
+            "第 {} 题选项无效或重复",
+            question_index + 1
+        )));
     }
     Ok(())
 }
 
 fn valid_id(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 80 && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    !value.is_empty()
+        && value.len() <= 80
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 fn safe_redirect(value: &str) -> bool {
-    if value.starts_with('/') && !value.starts_with("//") { return true; }
-    let Some(rest) = value.strip_prefix("https://") else { return false; };
+    if value.starts_with('/') && !value.starts_with("//") {
+        return true;
+    }
+    let Some(rest) = value.strip_prefix("https://") else {
+        return false;
+    };
     let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-    !host.is_empty() && !host.chars().any(char::is_whitespace) && (host.contains('.') || host == "localhost" || host.starts_with('['))
+    !host.is_empty()
+        && !host.chars().any(char::is_whitespace)
+        && (host.contains('.') || host == "localhost" || host.starts_with('['))
 }
 
-fn default_access() -> String { "public".into() }
-fn default_submit_label() -> String { "提交答卷".into() }
-fn default_success_mode() -> String { "message".into() }
-fn default_success_content() -> String { "<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>".into() }
+fn default_access() -> String {
+    "public".into()
+}
+fn default_submit_label() -> String {
+    "提交答卷".into()
+}
+fn default_success_mode() -> String {
+    "message".into()
+}
+fn default_success_content() -> String {
+    "<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>".into()
+}
 
 fn validate_answers(questions: &[SurveyQuestion], raw: &Value) -> Result<Value, AppError> {
-    let input = raw.as_object().ok_or_else(|| AppError::BadRequest("答卷内容无效".into()))?;
+    let input = raw
+        .as_object()
+        .ok_or_else(|| AppError::BadRequest("答卷内容无效".into()))?;
     let mut answers = Map::new();
     for (index, question) in questions.iter().enumerate() {
         let value = input.get(question.id()).unwrap_or(&Value::Null);
         let prefix = format!("第 {} 题", index + 1);
         match question {
-            SurveyQuestion::Single { id, required, options, allow_other, other_required, .. } => {
+            SurveyQuestion::Single {
+                id,
+                required,
+                options,
+                allow_other,
+                other_required,
+                ..
+            } => {
                 let object = value.as_object();
-                let selected = object.and_then(|item| item.get("selected")).and_then(Value::as_str).unwrap_or("").trim();
-                let other = object.and_then(|item| item.get("otherText")).and_then(Value::as_str).unwrap_or("").trim();
-                if selected.is_empty() { if *required { return Err(AppError::BadRequest(format!("{prefix}为必答题"))); } continue; }
-                if selected == "__other" { if !*allow_other { return Err(AppError::BadRequest(format!("{prefix}不允许其他选项"))); } if *other_required && other.is_empty() { return Err(AppError::BadRequest(format!("{prefix}请填写其他选项"))); } }
-                else if !options.iter().any(|item| item.id == selected) { return Err(AppError::BadRequest(format!("{prefix}选项无效"))); }
+                let selected = object
+                    .and_then(|item| item.get("selected"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                let other = object
+                    .and_then(|item| item.get("otherText"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                if selected.is_empty() {
+                    if *required {
+                        return Err(AppError::BadRequest(format!("{prefix}为必答题")));
+                    }
+                    continue;
+                }
+                if selected == "__other" {
+                    if !*allow_other {
+                        return Err(AppError::BadRequest(format!("{prefix}不允许其他选项")));
+                    }
+                    if *other_required && other.is_empty() {
+                        return Err(AppError::BadRequest(format!("{prefix}请填写其他选项")));
+                    }
+                } else if !options.iter().any(|item| item.id == selected) {
+                    return Err(AppError::BadRequest(format!("{prefix}选项无效")));
+                }
                 answers.insert(id.clone(), json!({ "selected": selected, "otherText": if selected == "__other" { other } else { "" } }));
             }
-            SurveyQuestion::Multiple { id, required, options, allow_other, other_required, .. } => {
+            SurveyQuestion::Multiple {
+                id,
+                required,
+                options,
+                allow_other,
+                other_required,
+                ..
+            } => {
                 let object = value.as_object();
-                let selected: Vec<&str> = object.and_then(|item| item.get("selected")).and_then(Value::as_array).map(|items| items.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
-                if selected.is_empty() { if *required { return Err(AppError::BadRequest(format!("{prefix}为必答题"))); } continue; }
-                if selected.len() > options.len() + usize::from(*allow_other) || selected.iter().any(|choice| *choice != "__other" && !options.iter().any(|item| item.id == *choice) || *choice == "__other" && !*allow_other) { return Err(AppError::BadRequest(format!("{prefix}选项无效"))); }
+                let selected: Vec<&str> = object
+                    .and_then(|item| item.get("selected"))
+                    .and_then(Value::as_array)
+                    .map(|items| items.iter().filter_map(Value::as_str).collect())
+                    .unwrap_or_default();
+                if selected.is_empty() {
+                    if *required {
+                        return Err(AppError::BadRequest(format!("{prefix}为必答题")));
+                    }
+                    continue;
+                }
+                if selected.len() > options.len() + usize::from(*allow_other)
+                    || selected.iter().any(|choice| {
+                        *choice != "__other" && !options.iter().any(|item| item.id == *choice)
+                            || *choice == "__other" && !*allow_other
+                    })
+                {
+                    return Err(AppError::BadRequest(format!("{prefix}选项无效")));
+                }
                 let mut unique = std::collections::HashSet::new();
-                if selected.iter().any(|choice| !unique.insert(*choice)) { return Err(AppError::BadRequest(format!("{prefix}选项重复"))); }
-                let other = object.and_then(|item| item.get("otherText")).and_then(Value::as_str).unwrap_or("").trim();
-                if selected.contains(&"__other") && *other_required && other.is_empty() { return Err(AppError::BadRequest(format!("{prefix}请填写其他选项"))); }
-                answers.insert(id.clone(), json!({ "selected": selected, "otherText": other }));
+                if selected.iter().any(|choice| !unique.insert(*choice)) {
+                    return Err(AppError::BadRequest(format!("{prefix}选项重复")));
+                }
+                let other = object
+                    .and_then(|item| item.get("otherText"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                if selected.contains(&"__other") && *other_required && other.is_empty() {
+                    return Err(AppError::BadRequest(format!("{prefix}请填写其他选项")));
+                }
+                answers.insert(
+                    id.clone(),
+                    json!({ "selected": selected, "otherText": other }),
+                );
             }
-            SurveyQuestion::MatrixSingle { id, required, rows, columns, .. } => {
-                let object = value.as_object(); let mut normalized = Map::new();
-                for row in rows { let selected = object.and_then(|item| item.get(&row.id)).and_then(Value::as_str).unwrap_or(""); if selected.is_empty() { if *required { return Err(AppError::BadRequest(format!("{prefix}的“{}”未作答", row.label))); } continue; } if !columns.iter().any(|column| column.id == selected) { return Err(AppError::BadRequest(format!("{prefix}选项无效"))); } normalized.insert(row.id.clone(), json!(selected)); }
-                if object.is_some_and(|item| item.keys().any(|key| !rows.iter().any(|row| row.id == *key))) { return Err(AppError::BadRequest(format!("{prefix}矩阵行无效"))); }
-                if !normalized.is_empty() { answers.insert(id.clone(), Value::Object(normalized)); }
+            SurveyQuestion::MatrixSingle {
+                id,
+                required,
+                rows,
+                columns,
+                ..
+            } => {
+                let object = value.as_object();
+                let mut normalized = Map::new();
+                for row in rows {
+                    let selected = object
+                        .and_then(|item| item.get(&row.id))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    if selected.is_empty() {
+                        if *required {
+                            return Err(AppError::BadRequest(format!(
+                                "{prefix}的“{}”未作答",
+                                row.label
+                            )));
+                        }
+                        continue;
+                    }
+                    if !columns.iter().any(|column| column.id == selected) {
+                        return Err(AppError::BadRequest(format!("{prefix}选项无效")));
+                    }
+                    normalized.insert(row.id.clone(), json!(selected));
+                }
+                if object.is_some_and(|item| {
+                    item.keys()
+                        .any(|key| !rows.iter().any(|row| row.id == *key))
+                }) {
+                    return Err(AppError::BadRequest(format!("{prefix}矩阵行无效")));
+                }
+                if !normalized.is_empty() {
+                    answers.insert(id.clone(), Value::Object(normalized));
+                }
             }
-            SurveyQuestion::MatrixMultiple { id, required, rows, columns, .. } => {
-                let object = value.as_object(); let mut normalized = Map::new();
-                for row in rows { let selected = object.and_then(|item| item.get(&row.id)).and_then(Value::as_array).cloned().unwrap_or_default(); if selected.is_empty() { if *required { return Err(AppError::BadRequest(format!("{prefix}的“{}”未作答", row.label))); } continue; } if selected.iter().any(|choice| choice.as_str().is_none_or(|choice| !columns.iter().any(|column| column.id == choice))) { return Err(AppError::BadRequest(format!("{prefix}选项无效"))); } normalized.insert(row.id.clone(), Value::Array(selected)); }
-                if object.is_some_and(|item| item.keys().any(|key| !rows.iter().any(|row| row.id == *key))) { return Err(AppError::BadRequest(format!("{prefix}矩阵行无效"))); }
-                if !normalized.is_empty() { answers.insert(id.clone(), Value::Object(normalized)); }
+            SurveyQuestion::MatrixMultiple {
+                id,
+                required,
+                rows,
+                columns,
+                ..
+            } => {
+                let object = value.as_object();
+                let mut normalized = Map::new();
+                for row in rows {
+                    let selected = object
+                        .and_then(|item| item.get(&row.id))
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    if selected.is_empty() {
+                        if *required {
+                            return Err(AppError::BadRequest(format!(
+                                "{prefix}的“{}”未作答",
+                                row.label
+                            )));
+                        }
+                        continue;
+                    }
+                    if selected.iter().any(|choice| {
+                        choice
+                            .as_str()
+                            .is_none_or(|choice| !columns.iter().any(|column| column.id == choice))
+                    }) {
+                        return Err(AppError::BadRequest(format!("{prefix}选项无效")));
+                    }
+                    normalized.insert(row.id.clone(), Value::Array(selected));
+                }
+                if object.is_some_and(|item| {
+                    item.keys()
+                        .any(|key| !rows.iter().any(|row| row.id == *key))
+                }) {
+                    return Err(AppError::BadRequest(format!("{prefix}矩阵行无效")));
+                }
+                if !normalized.is_empty() {
+                    answers.insert(id.clone(), Value::Object(normalized));
+                }
             }
-            SurveyQuestion::ShortText { id, required, max_length, text_type, fixed_digits, .. } => {
+            SurveyQuestion::ShortText {
+                id,
+                required,
+                max_length,
+                text_type,
+                fixed_digits,
+                ..
+            } => {
                 let answer = value.as_str().unwrap_or("").trim();
-                if answer.is_empty() { if *required { return Err(AppError::BadRequest(format!("{prefix}为必答题"))); } continue; }
-                if answer.chars().count() > *max_length { return Err(AppError::BadRequest(format!("{prefix}不能超过 {max_length} 字"))); }
-                let valid = match text_type.as_str() { "digits_fixed" => answer.len() == *fixed_digits && answer.bytes().all(|byte| byte.is_ascii_digit()), "id_card" => valid_id_card(answer), "name" => (2..=50).contains(&answer.chars().count()) && answer.chars().all(|character| character.is_ascii_alphabetic() || ('\u{4e00}'..='\u{9fff}').contains(&character) || matches!(character, '·' | '.' | ' ')), "english" => answer.chars().next().is_some_and(|character| character.is_ascii_alphabetic()) && answer.chars().all(|character| character.is_ascii_alphabetic() || matches!(character, ' ' | '.' | '\'' | '-')), _ => true };
-                if !valid { return Err(AppError::BadRequest(format!("{prefix}格式无效"))); }
+                if answer.is_empty() {
+                    if *required {
+                        return Err(AppError::BadRequest(format!("{prefix}为必答题")));
+                    }
+                    continue;
+                }
+                if answer.chars().count() > *max_length {
+                    return Err(AppError::BadRequest(format!(
+                        "{prefix}不能超过 {max_length} 字"
+                    )));
+                }
+                let valid = match text_type.as_str() {
+                    "digits_fixed" => {
+                        answer.len() == *fixed_digits
+                            && answer.bytes().all(|byte| byte.is_ascii_digit())
+                    }
+                    "id_card" => valid_id_card(answer),
+                    "name" => {
+                        (2..=50).contains(&answer.chars().count())
+                            && answer.chars().all(|character| {
+                                character.is_ascii_alphabetic()
+                                    || ('\u{4e00}'..='\u{9fff}').contains(&character)
+                                    || matches!(character, '·' | '.' | ' ')
+                            })
+                    }
+                    "english" => {
+                        answer
+                            .chars()
+                            .next()
+                            .is_some_and(|character| character.is_ascii_alphabetic())
+                            && answer.chars().all(|character| {
+                                character.is_ascii_alphabetic()
+                                    || matches!(character, ' ' | '.' | '\'' | '-')
+                            })
+                    }
+                    _ => true,
+                };
+                if !valid {
+                    return Err(AppError::BadRequest(format!("{prefix}格式无效")));
+                }
                 answers.insert(id.clone(), json!(answer));
+            }
+            SurveyQuestion::File {
+                id,
+                required,
+                max_size_mb,
+                ..
+            } => {
+                if value.is_null() {
+                    if *required {
+                        return Err(AppError::BadRequest(format!("{prefix}为必答题")));
+                    }
+                    continue;
+                }
+                let object = value
+                    .as_object()
+                    .ok_or_else(|| AppError::BadRequest(format!("{prefix}文件无效")))?;
+                let key = object.get("key").and_then(Value::as_str).unwrap_or("");
+                let name = object.get("name").and_then(Value::as_str).unwrap_or("");
+                let size = object.get("size").and_then(Value::as_i64).unwrap_or(0);
+                let content_type = object
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or("application/octet-stream");
+                if !key.starts_with("survey-files/")
+                    || name.is_empty()
+                    || size <= 0
+                    || size > (*max_size_mb as i64) * 1024 * 1024
+                {
+                    return Err(AppError::BadRequest(format!("{prefix}文件无效或过大")));
+                }
+                answers.insert(
+                    id.clone(),
+                    json!({"key":key,"name":name,"size":size,"type":content_type}),
+                );
             }
         }
     }
@@ -438,38 +1021,102 @@ fn validate_answers(questions: &[SurveyQuestion], raw: &Value) -> Result<Value, 
 
 fn valid_id_card(value: &str) -> bool {
     let bytes = value.as_bytes();
-    if bytes.len() != 18 || !bytes[..17].iter().all(u8::is_ascii_digit) { return false; }
-    if &bytes[..6] == b"000000" { return false; }
-    let number = |range: std::ops::Range<usize>| bytes[range].iter().fold(0usize, |total, byte| total * 10 + (*byte - b'0') as usize);
-    let year = number(6..10); let month = number(10..12); let day = number(12..14);
+    if bytes.len() != 18 || !bytes[..17].iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    if &bytes[..6] == b"000000" {
+        return false;
+    }
+    let number = |range: std::ops::Range<usize>| {
+        bytes[range]
+            .iter()
+            .fold(0usize, |total, byte| total * 10 + (*byte - b'0') as usize)
+    };
+    let year = number(6..10);
+    let month = number(10..12);
+    let day = number(12..14);
     let leap = year % 400 == 0 || year % 4 == 0 && year % 100 != 0;
-    let days = match month { 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31, 4 | 6 | 9 | 11 => 30, 2 if leap => 29, 2 => 28, _ => 0 };
-    if day == 0 || day > days { return false; }
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => 0,
+    };
+    if day == 0 || day > days {
+        return false;
+    }
     let weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
     let checks = b"10X98765432";
-    let sum: usize = value.bytes().take(17).zip(weights).map(|(byte, weight)| (byte - b'0') as usize * weight).sum();
+    let sum: usize = value
+        .bytes()
+        .take(17)
+        .zip(weights)
+        .map(|(byte, weight)| (byte - b'0') as usize * weight)
+        .sum();
     checks[sum % 11] == bytes[17].to_ascii_uppercase()
 }
 
 fn client_ip(headers: &HeaderMap) -> &str {
-    headers.get("cf-connecting-ip").or_else(|| headers.get("x-forwarded-for")).or_else(|| headers.get("x-real-ip"))
-        .and_then(|value| value.to_str().ok()).and_then(|value| value.split(',').next()).map(str::trim).filter(|value| !value.is_empty()).unwrap_or("unknown")
+    headers
+        .get("cf-connecting-ip")
+        .or_else(|| headers.get("x-forwarded-for"))
+        .or_else(|| headers.get("x-real-ip"))
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown")
 }
 
 fn build_csv(questions: &[SurveyQuestion], rows: &[ResponseRecord]) -> Result<String, AppError> {
     let mut headings = vec!["答卷编号".to_owned(), "提交时间".to_owned()];
     for (index, question) in questions.iter().enumerate() {
-        match question { SurveyQuestion::MatrixSingle { rows, .. } | SurveyQuestion::MatrixMultiple { rows, .. } => for row in rows { headings.push(format!("{}. {} / {}", index + 1, question.title(), row.label)); }, _ => headings.push(format!("{}. {}", index + 1, question.title())) }
+        match question {
+            SurveyQuestion::MatrixSingle { rows, .. }
+            | SurveyQuestion::MatrixMultiple { rows, .. } => {
+                for row in rows {
+                    headings.push(format!(
+                        "{}. {} / {}",
+                        index + 1,
+                        question.title(),
+                        row.label
+                    ));
+                }
+            }
+            _ => headings.push(format!("{}. {}", index + 1, question.title())),
+        }
     }
-    let mut lines = vec![headings.iter().map(|value| csv_cell(value)).collect::<Vec<_>>().join(",")];
+    let mut lines = vec![
+        headings
+            .iter()
+            .map(|value| csv_cell(value))
+            .collect::<Vec<_>>()
+            .join(","),
+    ];
     for row in rows {
-        let answers: Value = serde_json::from_str(&row.answers_json).map_err(|_| AppError::Internal)?;
+        let answers: Value =
+            serde_json::from_str(&row.answers_json).map_err(|_| AppError::Internal)?;
         let mut cells = vec![row.id.clone(), row.created_at.to_string()];
         for question in questions {
             let value = answers.get(question.id()).unwrap_or(&Value::Null);
-            match question { SurveyQuestion::MatrixSingle { rows, .. } | SurveyQuestion::MatrixMultiple { rows, .. } => for matrix_row in rows { cells.push(display_answer(question, value, Some(&matrix_row.id))); }, _ => cells.push(display_answer(question, value, None)) }
+            match question {
+                SurveyQuestion::MatrixSingle { rows, .. }
+                | SurveyQuestion::MatrixMultiple { rows, .. } => {
+                    for matrix_row in rows {
+                        cells.push(display_answer(question, value, Some(&matrix_row.id)));
+                    }
+                }
+                _ => cells.push(display_answer(question, value, None)),
+            }
         }
-        lines.push(cells.iter().map(|value| csv_cell(value)).collect::<Vec<_>>().join(","));
+        lines.push(
+            cells
+                .iter()
+                .map(|value| csv_cell(value))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
     }
     Ok(lines.join("\r\n"))
 }
@@ -477,18 +1124,89 @@ fn build_csv(questions: &[SurveyQuestion], rows: &[ResponseRecord]) -> Result<St
 fn display_answer(question: &SurveyQuestion, value: &Value, row: Option<&str>) -> String {
     match question {
         SurveyQuestion::ShortText { .. } => value.as_str().unwrap_or("").to_owned(),
+        SurveyQuestion::File { .. } => value
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned(),
         SurveyQuestion::Single { options, .. } | SurveyQuestion::Multiple { options, .. } => {
-            let object = value.as_object(); let selected = object.and_then(|item| item.get("selected")); let ids: Vec<&str> = selected.and_then(Value::as_array).map(|items| items.iter().filter_map(Value::as_str).collect()).or_else(|| selected.and_then(Value::as_str).map(|item| vec![item])).unwrap_or_default(); let other = object.and_then(|item| item.get("otherText")).and_then(Value::as_str).unwrap_or(""); ids.iter().map(|id| if *id == "__other" { format!("其他：{other}") } else { options.iter().find(|item| item.id == *id).map(|item| item.label.clone()).unwrap_or_else(|| (*id).to_owned()) }).collect::<Vec<_>>().join("；")
+            let object = value.as_object();
+            let selected = object.and_then(|item| item.get("selected"));
+            let ids: Vec<&str> = selected
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).collect())
+                .or_else(|| selected.and_then(Value::as_str).map(|item| vec![item]))
+                .unwrap_or_default();
+            let other = object
+                .and_then(|item| item.get("otherText"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            ids.iter()
+                .map(|id| {
+                    if *id == "__other" {
+                        format!("其他：{other}")
+                    } else {
+                        options
+                            .iter()
+                            .find(|item| item.id == *id)
+                            .map(|item| item.label.clone())
+                            .unwrap_or_else(|| (*id).to_owned())
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("；")
         }
-        SurveyQuestion::MatrixSingle { columns, .. } | SurveyQuestion::MatrixMultiple { columns, .. } => {
-            let selected = row.and_then(|row| value.get(row)); let ids: Vec<&str> = selected.and_then(Value::as_array).map(|items| items.iter().filter_map(Value::as_str).collect()).or_else(|| selected.and_then(Value::as_str).map(|item| vec![item])).unwrap_or_default(); ids.iter().map(|id| columns.iter().find(|item| item.id == *id).map(|item| item.label.clone()).unwrap_or_else(|| (*id).to_owned())).collect::<Vec<_>>().join("；")
+        SurveyQuestion::MatrixSingle { columns, .. }
+        | SurveyQuestion::MatrixMultiple { columns, .. } => {
+            let selected = row.and_then(|row| value.get(row));
+            let ids: Vec<&str> = selected
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).collect())
+                .or_else(|| selected.and_then(Value::as_str).map(|item| vec![item]))
+                .unwrap_or_default();
+            ids.iter()
+                .map(|id| {
+                    columns
+                        .iter()
+                        .find(|item| item.id == *id)
+                        .map(|item| item.label.clone())
+                        .unwrap_or_else(|| (*id).to_owned())
+                })
+                .collect::<Vec<_>>()
+                .join("；")
         }
     }
 }
 
-fn csv_cell(value: &str) -> String { let safe = if matches!(value.as_bytes().first(), Some(b'=' | b'+' | b'-' | b'@')) { format!("'{value}") } else { value.to_owned() }; format!("\"{}\"", safe.replace('"', "\"\"")) }
-fn safe_filename(value: &str) -> String { let value: String = value.chars().map(|character| if character.is_control() || "\\/:*?\"<>|".contains(character) { '-' } else { character }).take(100).collect(); if value.trim().is_empty() { "survey-report.csv".into() } else { value } }
-fn one() -> usize { 1 }
+fn csv_cell(value: &str) -> String {
+    let safe = if matches!(value.as_bytes().first(), Some(b'=' | b'+' | b'-' | b'@')) {
+        format!("'{value}")
+    } else {
+        value.to_owned()
+    };
+    format!("\"{}\"", safe.replace('"', "\"\""))
+}
+fn safe_filename(value: &str) -> String {
+    let value: String = value
+        .chars()
+        .map(|character| {
+            if character.is_control() || "\\/:*?\"<>|".contains(character) {
+                '-'
+            } else {
+                character
+            }
+        })
+        .take(100)
+        .collect();
+    if value.trim().is_empty() {
+        "survey-report.csv".into()
+    } else {
+        value
+    }
+}
+fn one() -> usize {
+    1
+}
 
 #[cfg(test)]
 mod tests {

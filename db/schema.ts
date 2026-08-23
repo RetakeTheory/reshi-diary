@@ -127,6 +127,26 @@ export const surveys = sqliteTable(
   (table) => [uniqueIndex("idx_surveys_slug").on(table.slug), index("idx_surveys_status_updated_at").on(table.status, table.updatedAt)],
 );
 
+export const users = sqliteTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    uid: text("uid").notNull(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    displayNameKey: text("display_name_key").notNull(),
+    avatarKey: text("avatar_key"),
+    passwordHash: text("password_hash"),
+    points: integer("points").notNull().default(0),
+    isBanned: integer("is_banned", { mode: "boolean" }).notNull().default(false),
+    banReason: text("ban_reason"),
+    bannedAt: integer("banned_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [uniqueIndex("idx_users_uid").on(table.uid), uniqueIndex("idx_users_email").on(table.email), uniqueIndex("idx_users_display_name_key").on(table.displayNameKey)],
+);
+
 export const surveyResponses = sqliteTable(
   "survey_responses",
   {

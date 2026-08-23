@@ -12,7 +12,9 @@ export async function GET(request: Request) {
   const rows = await db.prepare(`SELECT id, category, title, body, status, admin_reply AS adminReply,
     created_at AS createdAt, updated_at AS updatedAt FROM tickets WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50`)
     .bind(user.id).all();
-  return Response.json({ tickets: rows.results || [] }, { headers: { "Cache-Control": "no-store" } });
+  const messages = await db.prepare(`SELECT m.id, m.ticket_id AS ticketId, m.sender_type AS senderType, m.body, m.created_at AS createdAt
+    FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE t.user_id = ? ORDER BY m.created_at ASC`).bind(user.id).all();
+  return Response.json({ tickets: (rows.results || []).map((ticket) => ({ ...ticket, messages: (messages.results || []).filter((message) => message.ticketId === ticket.id) })) }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {
@@ -32,5 +34,6 @@ export async function POST(request: Request) {
   const ticket = await db.prepare(`INSERT INTO tickets (user_id, category, title, body, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'open', ?, ?) RETURNING id, category, title, body, status, admin_reply AS adminReply, created_at AS createdAt, updated_at AS updatedAt`)
     .bind(user.id, category, title, content, now, now).first();
-  return Response.json({ ticket }, { status: 201, headers: { "Cache-Control": "no-store" } });
+  await db.prepare("INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, body, created_at) VALUES (?, 'user', ?, ?, ?)").bind((ticket as { id: number }).id, user.id, content, now).run();
+  return Response.json({ ticket: { ...ticket, messages: [{ id: -1, ticketId: (ticket as { id: number }).id, senderType: "user", body: content, createdAt: now }] } }, { status: 201, headers: { "Cache-Control": "no-store" } });
 }

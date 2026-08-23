@@ -9,6 +9,7 @@ anyhow = "1.0"
 axum = { version = "0.8", features = ["multipart"] }
 dotenvy = "0.15"
 html-escape = "0.2"
+pbkdf2 = "0.12"
 rand = "0.9"
 regex-lite = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

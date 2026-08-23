@@ -8,6 +8,9 @@ export type ReaderRow = {
   id: string;
   email: string;
   display_name: string;
+  uid: string;
+  password_hash: string | null;
+  is_banned: number;
   avatar_key: string | null;
   points: number;
   created_at: number;
@@ -28,6 +31,17 @@ export function normalizeReaderEmail(value: string) {
 
 export function validReaderEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
+}
+
+export function normalizeDisplayName(value: string) { return value.trim().normalize("NFKC"); }
+export function displayNameKey(value: string) { return normalizeDisplayName(value).toLocaleLowerCase("zh-CN"); }
+
+export async function uniqueReaderUid(db: D1Database) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const uid = String(crypto.getRandomValues(new Uint32Array(1))[0] % 90_000_000 + 10_000_000);
+    if (!await db.prepare("SELECT 1 FROM users WHERE uid = ? LIMIT 1").bind(uid).first()) return uid;
+  }
+  throw new Error("UID_GENERATION_FAILED");
 }
 
 export async function issueReaderSession(userId: string) {
@@ -52,9 +66,9 @@ export async function readerFromRequest(request: Request) {
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
   await ensureDatabaseSchema();
   const db = await getD1();
-  return db.prepare(`SELECT u.id, u.email, u.display_name, u.avatar_key, u.points, u.created_at
+  return db.prepare(`SELECT u.id, u.email, u.display_name, u.uid, u.password_hash, u.is_banned, u.avatar_key, u.points, u.created_at
     FROM reader_sessions s JOIN users u ON u.id = s.user_id
-    WHERE s.token_hash = ? AND s.expires_at > ? LIMIT 1`)
+    WHERE s.token_hash = ? AND s.expires_at > ? AND u.is_banned = 0 LIMIT 1`)
     .bind(await hashValue(token), Date.now()).first<ReaderRow>();
 }
 
@@ -62,8 +76,10 @@ export function publicReader(user: ReaderRow) {
   const level = readerLevel(user.points);
   return {
     id: user.id,
+    uid: user.uid,
     email: user.email,
     displayName: user.display_name,
+    passwordSet: Boolean(user.password_hash),
     avatarUrl: user.avatar_key ? `/api/files/${user.avatar_key}` : null,
     points: user.points,
     level,

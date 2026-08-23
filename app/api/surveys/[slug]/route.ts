@@ -1,8 +1,9 @@
 import { ensureDatabaseSchema, getD1 } from "../../../../db/runtime";
 import { hashValue, sameOrigin } from "../../../../lib/admin-email-auth";
-import { validateSurveyAnswers } from "../../../../lib/surveys";
+import { validateSurveyAnswers, type SurveyFileAnswer } from "../../../../lib/surveys";
 import { surveyFromRow, surveySelect, type SurveyDbRow } from "../../../../lib/survey-d1";
 import { readerFromRequest } from "../../../../lib/reader-auth";
+import { headS3Object } from "../../../../lib/s3-storage";
 
 type Context = { params: Promise<{ slug: string }> };
 
@@ -45,9 +46,21 @@ export async function POST(request: Request, context: Context) {
     if (serialized.length > 100_000) return Response.json({ error: "答卷内容过大" }, { status: 413 });
     const ipHash = await hashValue(`${survey.id}:${clientIp(request)}`);
     const id = crypto.randomUUID();
+    const fileAnswers = survey.questions.filter((question) => question.type === "file" && answers[question.id]).map((question) => ({ question, file: answers[question.id] as SurveyFileAnswer }));
+    for (const { question, file } of fileAnswers) {
+      const reservation = await db.prepare(`SELECT key, size, content_type FROM survey_file_uploads
+        WHERE key = ? AND survey_id = ? AND question_id = ? AND ip_hash = ? AND used_at IS NULL AND created_at > ? LIMIT 1`)
+        .bind(file.key, survey.id, question.id, ipHash, Date.now() - 60 * 60_000).first<{ key: string; size: number; content_type: string }>();
+      if (!reservation || reservation.size !== file.size || reservation.content_type !== file.type) return Response.json({ error: `题目“${question.title}”的文件上传记录无效或已过期` }, { status: 400 });
+      const object = await headS3Object(file.key);
+      if (!object.ok || Number(object.headers.get("content-length")) !== file.size) return Response.json({ error: `题目“${question.title}”的文件尚未上传完成` }, { status: 400 });
+    }
     try {
-      await db.prepare("INSERT INTO survey_responses (id, survey_id, ip_hash, answers_json, created_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(id, survey.id, ipHash, serialized, Date.now()).run();
+      const now = Date.now();
+      await db.batch([
+        db.prepare("INSERT INTO survey_responses (id, survey_id, ip_hash, answers_json, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, survey.id, ipHash, serialized, now),
+        ...fileAnswers.map(({ file }) => db.prepare("UPDATE survey_file_uploads SET used_at = ?, response_id = ? WHERE key = ? AND used_at IS NULL").bind(now, id, file.key)),
+      ]);
     } catch (error) {
       if (error instanceof Error && error.message.includes("survey_ip_limit")) return Response.json({ error: `此 IP 最多可提交 ${survey.ipLimit} 次` }, { status: 429 });
       throw error;
