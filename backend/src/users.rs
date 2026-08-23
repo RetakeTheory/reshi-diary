@@ -831,7 +831,7 @@ fn hex_bytes(value: &[u8]) -> String {
     value.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 fn decode_hex(value: &str) -> Option<Vec<u8>> {
-    if value.len() % 2 != 0 {
+    if !value.len().is_multiple_of(2) {
         return None;
     }
     (0..value.len())
@@ -843,11 +843,9 @@ fn make_password_hash(password: &str) -> String {
     let salt = *Uuid::new_v4().as_bytes();
     let mut output = [0u8; 32];
     pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, 600_000, &mut output);
-    format!(
-        "pbkdf2-sha256$600000${}${}",
-        hex_bytes(&salt),
-        format!("${}", hex_bytes(&output))
-    )
+    let salt_hex = hex_bytes(&salt);
+    let hash_hex = hex_bytes(&output);
+    format!("pbkdf2-sha256$600000${}${}", salt_hex, hash_hex)
 }
 fn verify_password_hash(password: &str, stored: &str) -> bool {
     let parts: Vec<&str> = stored.split('$').collect();

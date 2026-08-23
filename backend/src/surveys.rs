@@ -306,7 +306,7 @@ pub(crate) async fn get_public(
     if row.access == "registered" && users::optional_user(&state, &headers).await?.is_none() {
         return Err(AppError::Unauthorized);
     }
-    Ok(Json(json!({ "survey": survey_json(&row)? })))
+    Ok(Json(json!({ "survey": public_survey_json(&row)? })))
 }
 
 pub(crate) async fn init_file_upload(

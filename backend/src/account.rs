@@ -368,7 +368,7 @@ pub(crate) async fn list_admin_users(
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin(&state, &headers).await?;
     let search = query.q.unwrap_or_default().trim().to_owned();
-    let pattern = format!("%{}%", search.replace('%', "").replace('_', ""));
+    let pattern = format!("%{}%", search.replace(['%', '_'], ""));
     let users = sqlx::query_as::<_, AdminUserItem>("SELECT u.id, u.uid, u.email, u.display_name, u.points, u.is_banned, u.ban_reason, u.banned_at, u.created_at, (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.id) AS ticket_count FROM users u WHERE ? = '' OR u.uid = ? OR u.email LIKE ? OR u.display_name LIKE ? ORDER BY u.created_at DESC LIMIT 200")
         .bind(&search).bind(&search).bind(&pattern).bind(&pattern).fetch_all(&state.db).await?;
     Ok(Json(serde_json::json!({"users":users})))
