@@ -5,6 +5,7 @@ import Icon from "./Icon";
 import EditableModule from "./EditableModule";
 import EditableText from "./EditableText";
 import { pageModule, splitDisplayText } from "../lib/site-pages";
+import { createWheelGradient, labelPositionForSegment, landingAngleForSegment } from "../lib/prize-wheel-geometry.mjs";
 
 type Prize = { id: number; name: string; weight: string };
 type ProbabilityMode = "equal" | "weighted";
@@ -45,7 +46,7 @@ export default function PrizeWheel() {
     });
   }, [mode, prizes]);
 
-  const wheelGradient = `conic-gradient(from -90deg, ${segments.map((segment) => `${segment.color} ${segment.start}deg ${segment.end}deg`).join(", ")})`;
+  const wheelGradient = createWheelGradient(segments);
 
   function updatePrize(id: number, field: "name" | "weight", value: string) {
     setPrizes((current) => current.map((prize) => prize.id === id ? { ...prize, [field]: value } : prize));
@@ -82,7 +83,7 @@ export default function PrizeWheel() {
 
     const selectedSegment = segments[selectedIndex];
     const currentAngle = ((rotation % 360) + 360) % 360;
-    const landingAngle = (360 - selectedSegment.center) % 360;
+    const landingAngle = landingAngleForSegment(selectedSegment.center);
     const nextRotation = rotation + 5 * 360 + ((landingAngle - currentAngle + 360) % 360);
     setError(""); setResult(""); setSpinning(true); setRotation(nextRotation);
     timerRef.current = window.setTimeout(() => {
@@ -98,8 +99,8 @@ export default function PrizeWheel() {
           <div className="wheel-pointer" aria-hidden="true" />
           <div className="wheel-disc" role="img" aria-label={`抽奖转盘，共 ${prizes.length} 个奖项`} style={{ background: wheelGradient, transform: `rotate(${rotation}deg)` }}>
             {segments.map((segment) => {
-              const angle = (segment.center - 90) * Math.PI / 180;
-              return <span key={segment.id} style={{ left: `${50 + Math.cos(angle) * 34}%`, top: `${50 + Math.sin(angle) * 34}%`, transform: `translate(-50%, -50%) rotate(${segment.center}deg)` }}>{segment.name.trim() || "未命名"}</span>;
+              const position = labelPositionForSegment(segment.center);
+              return <span key={segment.id} style={{ left: `${position.left}%`, top: `${position.top}%`, transform: `translate(-50%, -50%) rotate(${segment.center}deg)` }}>{segment.name.trim() || "未命名"}</span>;
             })}
             <i aria-hidden="true"><Icon name="spark" /></i>
           </div>
