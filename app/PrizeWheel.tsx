@@ -2,6 +2,9 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
+import EditableModule from "./EditableModule";
+import EditableText from "./EditableText";
+import { pageModule, splitDisplayText } from "../lib/site-pages";
 
 type Prize = { id: number; name: string; weight: string };
 type ProbabilityMode = "equal" | "weighted";
@@ -13,6 +16,8 @@ const initialPrizes: Prize[] = [
   { id: 3, name: "再睡五分钟", weight: "1" },
   { id: 4, name: "出门散步", weight: "1" },
 ];
+const editableModule = pageModule("prizeWheel", "wheel-widget");
+const copy = editableModule.fields;
 
 export default function PrizeWheel() {
   const [prizes, setPrizes] = useState(initialPrizes);
@@ -23,6 +28,7 @@ export default function PrizeWheel() {
   const [error, setError] = useState("");
   const nextId = useRef(5);
   const timerRef = useRef<number | null>(null);
+  const title = splitDisplayText(copy.title);
 
   useEffect(() => () => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
@@ -86,7 +92,7 @@ export default function PrizeWheel() {
   }
 
   return (
-    <section className="prize-wheel shell" aria-labelledby="prize-wheel-title">
+    <EditableModule module={editableModule}><section className="prize-wheel shell" aria-labelledby="prize-wheel-title">
       <div className="prize-wheel-card">
         <div className="wheel-stage">
           <div className="wheel-pointer" aria-hidden="true" />
@@ -97,15 +103,15 @@ export default function PrizeWheel() {
             })}
             <i aria-hidden="true"><Icon name="spark" /></i>
           </div>
-          <div className={`wheel-result${result ? " has-result" : ""}`} aria-live="polite"><small>{spinning ? "命运正在结算" : result ? "本次抽中" : "LUCKY DRAW"}</small><b>{spinning ? "转盘高速旋转中…" : result || "奖品还藏着"}</b></div>
+          <div className={`wheel-result${result ? " has-result" : ""}`} aria-live="polite"><small>{spinning ? "命运正在结算" : result ? "本次抽中" : "LUCKY DRAW"}</small><b>{spinning ? "转盘高速旋转中…" : result || copy.emptyResult}</b></div>
         </div>
 
         <div className="wheel-editor">
-          <p>PRIZE WHEEL / 自定义抽奖</p>
-          <h1 id="prize-wheel-title">把奖项放上来，<br /><span>让转盘开口。</span></h1>
+          <p>{copy.eyebrow}</p>
+          <h1 id="prize-wheel-title">{title.lead}{title.accent && <><br /><span><EditableText text={title.accent} /></span></>}</h1>
           <div className="probability-mode" aria-label="概率模式">
-            <button type="button" className={mode === "equal" ? "active" : ""} onClick={() => { setMode("equal"); setResult(""); }}>平分概率</button>
-            <button type="button" className={mode === "weighted" ? "active" : ""} onClick={() => { setMode("weighted"); setResult(""); }}>自定义权重</button>
+            <button type="button" className={mode === "equal" ? "active" : ""} onClick={() => { setMode("equal"); setResult(""); }}>{copy.equalMode}</button>
+            <button type="button" className={mode === "weighted" ? "active" : ""} onClick={() => { setMode("weighted"); setResult(""); }}>{copy.weightedMode}</button>
           </div>
           <form onSubmit={spin}>
             <div className="prize-list">
@@ -116,13 +122,13 @@ export default function PrizeWheel() {
                 <button type="button" disabled={spinning || prizes.length <= 2} onClick={() => removePrize(prize.id)} aria-label={`删除${prize.name || `奖项 ${index + 1}`}`}><Icon name="trash" /></button>
               </div>)}
             </div>
-            <button className="add-prize" type="button" disabled={spinning || prizes.length >= 12} onClick={addPrize}><Icon name="plus" /> 添加奖项</button>
-            <button className="spin-wheel" type="submit" disabled={spinning}><span aria-hidden="true"><Icon name="spark" /></span>{spinning ? "正在转动…" : "转起来！"}</button>
+            <button className="add-prize" type="button" disabled={spinning || prizes.length >= 12} onClick={addPrize}><Icon name="plus" /> {copy.addPrize}</button>
+            <button className="spin-wheel" type="submit" disabled={spinning}><span aria-hidden="true"><Icon name="spark" /></span>{spinning ? copy.spinning : copy.spin}</button>
             <p className={`wheel-error${error ? " is-visible" : ""}`} role="alert">{error || (mode === "equal" ? "当前每个奖项概率完全相同。" : "权重越大越容易被抽中，不要求权重加起来等于 100。")}</p>
           </form>
         </div>
       </div>
-    </section>
+    </section></EditableModule>
   );
 }
 

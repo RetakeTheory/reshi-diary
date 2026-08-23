@@ -1,29 +1,32 @@
 import ArrowIcon from "../ArrowIcon";
 import Icon from "../Icon";
 import SiteNav from "../SiteNav";
+import EditableModule from "../EditableModule";
+import EditableText from "../EditableText";
+import { pageDocument, splitDisplayText } from "../../lib/site-pages";
 
 export default function PluginsPage() {
+  const page = pageDocument("plugins");
+  const header = page.modules.find((module) => module.id === "plugins-header")!;
+  const title = splitDisplayText(header.fields.title);
+  const cards = page.modules.filter((module) => module.type === "pluginCard");
+  const art = {
+    "plugin-food-card": { className: "", icon: "food" as const, marker: "spark" as const },
+    "plugin-random-card": { className: "number-art", icon: "dice" as const, marker: "02" },
+    "plugin-wheel-card": { className: "wheel-art", icon: "wheel" as const, marker: "03" },
+  };
   return (
     <main className="plugins-page">
       <SiteNav />
-      <header className="plugin-directory-head shell">
-        <p>MINI TOOLS / 小插件仓库</p>
-        <h1>这里有些<br /><span>奇怪小玩意。</span></h1>
-        <p>不保证能解决人生难题，但很擅长替选择困难症按下那个按钮。</p>
-      </header>
+      <EditableModule module={header}><header className="plugin-directory-head shell"><p>{header.fields.eyebrow}</p><h1>{title.lead}{title.accent && <><br /><span><EditableText text={title.accent} /></span></>}</h1><p>{header.fields.description}</p></header></EditableModule>
       <section className="plugin-grid shell" aria-label="插件目录">
-        <a className="plugin-card" href="/plugins/food-roulette">
-          <div className="plugin-card-art" aria-hidden="true"><span><Icon name="food" /></span><i><Icon name="spark" /></i></div>
-          <div><small>DAILY QUEST / 01</small><h2>今天吃什么</h2><p>58 道候选已就位，按一下，把晚饭交给命运。</p><b>开始摇奖 <ArrowIcon /></b></div>
-        </a>
-        <a className="plugin-card" href="/plugins/random-number">
-          <div className="plugin-card-art number-art" aria-hidden="true"><span><Icon name="dice" /></span><i>02</i></div>
-          <div><small>RANDOM DROP / 02</small><h2>随机数</h2><p>输入上限和数量，不重复抽取，让数字替你决定支线走向。</p><b>召唤数字 <ArrowIcon /></b></div>
-        </a>
-        <a className="plugin-card" href="/plugins/prize-wheel">
-          <div className="plugin-card-art wheel-art" aria-hidden="true"><span><Icon name="wheel" /></span><i>03</i></div>
-          <div><small>LUCKY DRAW / 03</small><h2>自定义抽奖</h2><p>自己填写奖项，平分概率或设置权重，然后看转盘把谁送上领奖台。</p><b>打开转盘 <ArrowIcon /></b></div>
-        </a>
+        {cards.map((module) => {
+          const visual = art[module.id as keyof typeof art];
+          return <EditableModule module={module} key={module.id}><a className="plugin-card" href={module.fields.href} data-module-id={module.id}>
+            <div className={`plugin-card-art ${visual.className}`} aria-hidden="true"><span><Icon name={visual.icon} /></span><i>{typeof visual.marker === "string" ? visual.marker : <Icon name={visual.marker} />}</i></div>
+            <div><small>{module.fields.eyebrow}</small><h2>{module.fields.title}</h2><p>{module.fields.description}</p><b>{module.fields.cta} <ArrowIcon /></b></div>
+          </a></EditableModule>;
+        })}
       </section>
     </main>
   );

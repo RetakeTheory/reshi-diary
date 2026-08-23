@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
+import EditableModule from "./EditableModule";
+import { pageModule } from "../lib/site-pages";
 
 type Food = { name: string; description: string; tags: [string, string]; image: string; position: string; backgroundSize: string };
 type FoodCopy = [string, string, string, string];
@@ -79,6 +81,8 @@ const extraFoodCopy: FoodCopy[] = [
 ];
 
 const foods: Food[] = [...originalFoods, ...extraFoodCopy.map(([name, description, firstTag, secondTag], index) => ({ name, description, tags: [firstTag, secondTag] as [string, string], ...sprite5(index) }))];
+const editableModule = pageModule("foodRoulette", "food-widget");
+const copy = editableModule.fields;
 
 function getDailyFoodIndex() {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -110,27 +114,27 @@ export default function FoodRoulette() {
   }
 
   return (
-    <section className="food-roulette shell" id="food-roulette" aria-labelledby="food-roulette-title">
+    <EditableModule module={editableModule}><section className="food-roulette shell" id="food-roulette" aria-labelledby="food-roulette-title">
       <div className={`food-roulette-card${rolling ? " is-rolling" : ""}`}>
         <div className="food-visual-wrap">
           <div className="food-visual" key={selectedIndex} role="img" aria-label={`${selected.name}的美食插画`} style={{ backgroundImage: `url(${selected.image})`, backgroundPosition: selected.position, backgroundSize: selected.backgroundSize }} />
-          <span className="food-drop-label">TODAY&apos;S DROP</span>
+          <span className="food-drop-label">{copy.dropLabel}</span>
           <i className="food-spark spark-one" aria-hidden="true"><Icon name="spark" /></i>
           <i className="food-spark spark-two" aria-hidden="true"><Icon name="food" /></i>
         </div>
         <div className="food-roulette-copy">
-          <p>DAILY QUEST / 今天吃什么</p>
+          <p>{copy.eyebrow}</p>
           <div className="food-result-meta">
-            <span>{hasRolled ? "本次摇奖结果" : "今日推荐掉落"}</span>
+            <span>{hasRolled ? copy.rolledState : copy.initialState}</span>
             <small>{String(selectedIndex + 1).padStart(2, "0")} / {String(foods.length).padStart(2, "0")}</small>
           </div>
-          <h2 id="food-roulette-title" aria-live="polite">{rolling ? "命运读取中…" : selected.name}</h2>
-          <p className="food-description">{rolling ? "菜单正在高速旋转，请稍等一下下。" : selected.description}</p>
+          <h2 id="food-roulette-title" aria-live="polite">{rolling ? copy.rollingTitle : selected.name}</h2>
+          <p className="food-description">{rolling ? copy.rollingDescription : selected.description}</p>
           <div className="food-tags" aria-label="推荐特点">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
-          <button type="button" onClick={rollFood} disabled={rolling}><span aria-hidden="true"><Icon name="spark" /></span>{rolling ? "正在摇奖…" : "摇一摇，换一个"}</button>
-          <small className="food-hint">58 道候选待命，选择困难就交给命运之骰。</small>
+          <button type="button" onClick={rollFood} disabled={rolling}><span aria-hidden="true"><Icon name="spark" /></span>{rolling ? copy.buttonBusy : copy.button}</button>
+          <small className="food-hint">{copy.hint}</small>
         </div>
       </div>
-    </section>
+    </section></EditableModule>
   );
 }

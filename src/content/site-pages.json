@@ -1,0 +1,731 @@
+{
+  "schemaVersion": 1,
+  "globals": {
+    "navigation": {
+      "brand": "reshi的日记本",
+      "home": "首页",
+      "posts": "文章",
+      "plugins": "插件",
+      "about": "关于",
+      "readerLogin": "读者登录",
+      "readerCenter": "读者中心",
+      "write": "写日记",
+      "foodTitle": "今天吃什么",
+      "foodCaption": "命运摇奖机",
+      "randomTitle": "随机数",
+      "randomCaption": "不重复抽取",
+      "wheelTitle": "自定义抽奖",
+      "wheelCaption": "概率与权重"
+    }
+  },
+  "pages": {
+    "home": {
+      "label": "首页",
+      "path": "/",
+      "modules": [
+        {
+          "id": "home-hero",
+          "type": "hero",
+          "label": "首页首屏",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "kicker": "Detected Reshi's checkpoint",
+            "title": "睡着了。\n断更了。\n嗯，就这样",
+            "subtitle": "reshi（不是惹事）的信息站。\n不定时更新学校内的废物小功能。\nIt's here.",
+            "cta": "偷看一眼偶的公告",
+            "ctaHref": "/posts",
+            "diaryStatus": "Loading……",
+            "diaryQuest": "It's your tommorow",
+            "diaryTitle": "主线任务经常断更\n催更大欢迎",
+            "diaryFoot": "主线摸鱼 · 支线生活"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "home-archive",
+          "type": "archivePortal",
+          "label": "文章入口",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "Contents / 文章目录",
+            "title": "过来看看新写的文章吧",
+            "description": "走过路过不要错过",
+            "cta": "打开文章目录",
+            "ctaHref": "/posts"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "home-about",
+          "type": "about",
+          "label": "关于作者",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "Intro / 关于作者",
+            "title": "见字如面，我是 reshi。",
+            "paragraph1": "喜欢睡觉、吃饭、做一些自己喜欢的事\n念叨了好几次旅游成功地失败了",
+            "paragraph2": "这里是我的线上存档点：记喜欢的东西、突发脑洞、踩过的坑，以及一些不太适合塞进朋友圈的小事。",
+            "socialLabel": "小红书 · reshi_",
+            "githubLabel": "GitHub · RetakeTheory",
+            "githubHref": "https://github.com/RetakeTheory",
+            "emailLabel": "reshi1417@163.com",
+            "emailHref": "mailto:reshi1417@163.com"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "home-subscribe",
+          "type": "subscribe",
+          "label": "订阅区域",
+          "hidden": true,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "RESHI'S LETTER / 日记来信",
+            "title": "有什么Upda",
+            "description": "订阅",
+            "placeholder": "你的邮箱地址",
+            "cta": "订阅更新"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "home-footer",
+          "type": "footer",
+          "label": "页脚",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "brand": "reshi的日记本",
+            "slogan": "我的主线，\n就是这样了www",
+            "copyright": "© 2026 reshi",
+            "social": "小红书 reshi_",
+            "github": "GitHub",
+            "githubHref": "https://github.com/RetakeTheory",
+            "email": "邮箱",
+            "emailHref": "mailto:reshi1417@163.com",
+            "backTop": "回到顶部"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "center",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "posts": {
+      "label": "文章目录",
+      "path": "/posts",
+      "modules": [
+        {
+          "id": "posts-header",
+          "type": "directoryHeader",
+          "label": "目录标题",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "STORY INDEX / 文章目录",
+            "title": "全部存档，\n慢慢翻。",
+            "description": "按发布时间从新到旧排列。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "posts-feed",
+          "type": "postFeed",
+          "label": "文章列表（动态）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "emptyTitle": "日记本还是空白的",
+            "emptyDescription": "新文章发布后会出现在这里。",
+            "readCta": "阅读文章"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "article": {
+      "label": "文章阅读页",
+      "path": "/posts/:slug",
+      "modules": [
+        {
+          "id": "article-header",
+          "type": "articleHeader",
+          "label": "文章标题（动态）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "backLabel": "返回文章"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "article-body",
+          "type": "articleBody",
+          "label": "文章正文（后台编辑）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": false,
+          "fields": {},
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "article-community",
+          "type": "community",
+          "label": "回应与评论",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "reactionEyebrow": "REACTIONS / 添加回应",
+            "reactionTitle": "这篇文章让你想到什么？",
+            "commentsEyebrow": "COMMENTS / 评论",
+            "commentsTitle": "一起聊聊",
+            "loginTitle": "登录后参与讨论",
+            "loginDescription": "支持邮箱验证码和 Passkey。",
+            "loginCta": "登录 / 注册",
+            "empty": "还没有评论，来写第一条吧。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "article-footer",
+          "type": "articleFooter",
+          "label": "文章页尾",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "signature": "写于 reshi 的日记本",
+            "cta": "继续阅读",
+            "ctaHref": "/posts"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "plugins": {
+      "label": "插件目录",
+      "path": "/plugins",
+      "modules": [
+        {
+          "id": "plugins-header",
+          "type": "pluginHeader",
+          "label": "插件目录标题",
+          "hidden": false,
+          "canMove": false,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "MINI TOOLS / 小插件仓库",
+            "title": "这里有些\n奇怪小玩意。",
+            "description": "不保证能解决人生难题，但很擅长替选择困难症按下那个按钮。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "plugin-food-card",
+          "type": "pluginCard",
+          "label": "今天吃什么卡片",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "DAILY QUEST / 01",
+            "title": "今天吃什么",
+            "description": "58 道候选已就位，按一下，把晚饭交给命运。",
+            "cta": "开始摇奖",
+            "href": "/plugins/food-roulette"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "plugin-random-card",
+          "type": "pluginCard",
+          "label": "随机数卡片",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "RANDOM DROP / 02",
+            "title": "随机数",
+            "description": "输入上限和数量，不重复抽取，让数字替你决定支线走向。",
+            "cta": "召唤数字",
+            "href": "/plugins/random-number"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "plugin-wheel-card",
+          "type": "pluginCard",
+          "label": "自定义抽奖卡片",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "LUCKY DRAW / 03",
+            "title": "自定义抽奖",
+            "description": "自己填写奖项，平分概率或设置权重，然后看转盘把谁送上领奖台。",
+            "cta": "打开转盘",
+            "href": "/plugins/prize-wheel"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "foodRoulette": {
+      "label": "今天吃什么",
+      "path": "/plugins/food-roulette",
+      "modules": [
+        {
+          "id": "food-widget",
+          "type": "foodWidget",
+          "label": "美食摇奖机（功能锁定）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "DAILY QUEST / 今天吃什么",
+            "dropLabel": "TODAY'S DROP",
+            "initialState": "今日推荐掉落",
+            "rolledState": "本次摇奖结果",
+            "rollingTitle": "命运读取中…",
+            "rollingDescription": "菜单正在高速旋转，请稍等一下下。",
+            "button": "摇一摇，换一个",
+            "buttonBusy": "正在摇奖…",
+            "hint": "58 道候选待命，选择困难就交给命运之骰。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "randomNumber": {
+      "label": "随机数",
+      "path": "/plugins/random-number",
+      "modules": [
+        {
+          "id": "random-widget",
+          "type": "randomWidget",
+          "label": "随机数工具（功能锁定）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "RANDOM DROP / 随机数",
+            "title": "让数字替你\n做个决定。",
+            "description": "范围固定为 1 到你输入的上限，抽到的数字不会重复。很适合抽签、排顺序，或者决定谁去拿外卖。",
+            "maximumLabel": "数字上限",
+            "countLabel": "抽取数量",
+            "button": "开始抽取",
+            "buttonBusy": "数字正在乱跑…",
+            "empty": "结果还藏在次元裂缝里"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "prizeWheel": {
+      "label": "自定义抽奖",
+      "path": "/plugins/prize-wheel",
+      "modules": [
+        {
+          "id": "wheel-widget",
+          "type": "wheelWidget",
+          "label": "抽奖转盘（功能锁定）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "PRIZE WHEEL / 自定义抽奖",
+            "title": "把奖项放上来，\n让转盘开口。",
+            "equalMode": "平分概率",
+            "weightedMode": "自定义权重",
+            "addPrize": "添加奖项",
+            "spin": "转起来！",
+            "spinning": "正在转动…",
+            "emptyResult": "奖品还藏着"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "login": {
+      "label": "读者登录",
+      "path": "/login",
+      "modules": [
+        {
+          "id": "login-intro",
+          "type": "loginIntro",
+          "label": "登录页介绍",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "登录page",
+            "title": "reshi小站的通行证",
+            "description": "互动操作需要注册账号哦"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "login-form",
+          "type": "loginForm",
+          "label": "登录表单（功能锁定）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": false,
+          "fields": {
+            "loginTab": "登录",
+            "registerTab": "注册",
+            "displayName": "显示名称",
+            "email": "邮箱地址",
+            "sendCode": "发送登录验证码",
+            "register": "验证邮箱并注册",
+            "passkey": "使用 Passkey 登录",
+            "agreement": "继续即表示你同意只发布友善、与文章相关的内容。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "account": {
+      "label": "读者中心",
+      "path": "/account",
+      "modules": [
+        {
+          "id": "account-header",
+          "type": "accountHeader",
+          "label": "账户信息（动态）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": false,
+          "fields": {
+            "eyebrow": "READER ACCOUNT / 读者账户",
+            "logout": "退出登录",
+            "loginRequiredTitle": "还没有登录",
+            "loginRequiredDescription": "登录后可以管理头像、积分、Passkey 和工单。",
+            "loginRequiredCta": "登录 / 注册"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "account-level",
+          "type": "accountLevel",
+          "label": "积分等级（动态）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "highest": "已到达最高等级",
+            "distance": "距离下一等级"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "account-tasks",
+          "type": "accountTasks",
+          "label": "每日任务（动态）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "DAILY / 每日任务",
+            "title": "今天也来留个脚印",
+            "description": "签到、评论、回应每日各计分一次。",
+            "checkIn": "签到",
+            "complete": "今日完成",
+            "goPost": "去文章页完成"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "account-passkeys",
+          "type": "accountPasskeys",
+          "label": "Passkey（功能锁定）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "PASSKEY",
+            "title": "更快、更安全地回来",
+            "description": "Passkey 使用指纹、面容或设备 PIN；邮箱验证码仍可用于恢复。",
+            "deviceLabel": "设备名称",
+            "add": "添加 Passkey",
+            "empty": "尚未添加 Passkey。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "account-tickets",
+          "type": "accountTickets",
+          "label": "意见与问题（功能锁定）",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "TICKETS / 意见与问题",
+            "title": "把问题交给我",
+            "description": "提交后可在这里查看处理状态与回复。",
+            "submit": "提交工单",
+            "empty": "还没有提交过工单。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "adminLogin": {
+      "label": "管理员登录",
+      "path": "/admin/login",
+      "modules": [
+        {
+          "id": "admin-login-card",
+          "type": "adminLogin",
+          "label": "管理员登录卡片",
+          "hidden": false,
+          "canMove": false,
+          "canHide": false,
+          "fields": {
+            "eyebrow": "ADMIN ACCESS / 返回存档点",
+            "title": "欢迎回来，\n存档员。",
+            "note": "验证码小纸条会飞到邮箱，10 分钟内有效；也可以用 Passkey 一键回城。",
+            "back": "返回首页"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "preview": {
+      "label": "附件阅读器",
+      "path": "/preview/:key",
+      "modules": [
+        {
+          "id": "preview-header",
+          "type": "previewHeader",
+          "label": "附件标题（动态）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": false,
+          "fields": {
+            "eyebrow": "ATTACHMENT READER / 附件阅读器",
+            "open": "新窗口打开",
+            "download": "下载文件"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "preview-stage",
+          "type": "previewStage",
+          "label": "文件预览（功能锁定）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": false,
+          "fields": {
+            "unsupportedTitle": "这个格式暂时不能在线读",
+            "unsupportedDescription": "浏览器没法安全地直接打开它，不过文件本体还在，可以下载后用本地应用查看。",
+            "unsupportedCta": "下载到本地"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "preview-footer",
+          "type": "previewFooter",
+          "label": "附件页尾",
+          "hidden": false,
+          "canMove": false,
+          "canHide": true,
+          "fields": {
+            "backArticle": "读完了，回到原文章",
+            "back": "返回上一页",
+            "note": "预览由站内文件流直接提供，不会把附件转交给第三方阅读服务。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "admin": {
+      "label": "管理后台",
+      "path": "/admin",
+      "modules": [
+        {
+          "id": "admin-notice",
+          "type": "adminNotice",
+          "label": "顶部通知管理",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {},
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "admin-passkeys",
+          "type": "adminPasskeys",
+          "label": "管理员 Passkey",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {},
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "admin-tickets",
+          "type": "adminTickets",
+          "label": "读者工单管理",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {},
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "admin-posts",
+          "type": "adminPosts",
+          "label": "文章编辑器",
+          "hidden": false,
+          "canMove": true,
+          "canHide": false,
+          "fields": {},
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    }
+  }
+}

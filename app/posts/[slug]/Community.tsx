@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Icon, { type IconName } from "../../Icon";
 import ReaderAvatar from "../../ReaderAvatar";
+import { pageModule } from "../../../lib/site-pages";
 
 type User = { id: string; displayName: string; email: string; avatarUrl?: string | null; level?: number; levelColor?: string };
 type Comment = { id: number; parentId: number | null; body: string; createdAt: number; userId: string; displayName: string; avatarUrl?: string | null; points?: number; level?: number; levelColor?: string };
@@ -12,6 +13,7 @@ const reactionMeta: Array<{ kind: Reaction["kind"]; label: string; icon: IconNam
   { kind: "spark", label: "有共鸣", icon: "spark" },
   { kind: "insight", label: "有启发", icon: "insight" },
 ];
+const copy = pageModule("article", "article-community").fields;
 
 export default function Community({ slug }: { slug: string }) {
   const [comments, setComments] = useState<Comment[]>([]);
@@ -102,23 +104,23 @@ export default function Community({ slug }: { slug: string }) {
 
   return <section className="community" aria-labelledby="community-title">
     <div className="reaction-panel">
-      <div><p>REACTIONS / 添加回应</p><h2>这篇文章让你想到什么？</h2></div>
+      <div><p>{copy.reactionEyebrow}</p><h2>{copy.reactionTitle}</h2></div>
       <div className="reaction-actions">
         {reactionMeta.map((item) => <button type="button" key={item.kind} disabled={reactionBusy !== null || loadState === "loading"} className={mine.includes(item.kind) ? "is-active" : ""} aria-pressed={mine.includes(item.kind)} onClick={() => react(item.kind)}><Icon name={item.icon} /><span>{reactionBusy === item.kind ? "处理中…" : item.label}</span><b>{count(item.kind)}</b></button>)}
       </div>
     </div>
     <div className="comments-panel">
-      <header><div><p>COMMENTS / 评论</p><h2 id="community-title">一起聊聊</h2></div><span>{comments.length} 条</span></header>
+      <header><div><p>{copy.commentsEyebrow}</p><h2 id="community-title">{copy.commentsTitle}</h2></div><span>{comments.length} 条</span></header>
       {user ? <form className="comment-form" onSubmit={submit}>
         <label htmlFor="comment-body">{replyTo ? `回复 ${replyTo.displayName}` : `以 ${user.displayName} 的身份评论`}</label>
         <textarea id="comment-body" value={body} maxLength={1000} onChange={(event) => setBody(event.target.value)} placeholder="写下你的想法……" required />
         <div><span>{body.length} / 1000</span>{replyTo && <button type="button" className="button-quiet" onClick={() => setReplyTo(null)}>取消回复</button>}<button type="submit" disabled={busy}>{busy ? "正在发布…" : "发布评论"}</button></div>
-      </form> : <div className="comment-login"><Icon name="comment" /><div><b>登录后参与讨论</b><p>支持邮箱验证码和 Passkey。</p></div><a href={`/login?next=${encodeURIComponent(`/posts/${slug}`)}`}>登录 / 注册</a></div>}
+      </form> : <div className="comment-login"><Icon name="comment" /><div><b>{copy.loginTitle}</b><p>{copy.loginDescription}</p></div><a href={`/login?next=${encodeURIComponent(`/posts/${slug}`)}`}>{copy.loginCta}</a></div>}
       {message && <p className="community-message" role="status">{message}</p>}
       <div className="comment-list" aria-busy={loadState === "loading"}>
         {loadState === "loading" ? <div className="comment-empty"><span className="community-loader" /><p>正在加载讨论…</p></div>
           : loadState === "error" ? <div className="comment-empty"><Icon name="comment" /><p>讨论暂时没有加载成功。</p><button type="button" className="button-quiet" onClick={() => void load()}>重新加载</button></div>
-            : comments.length ? renderComments(null) : <div className="comment-empty"><Icon name="comment" /><p>还没有评论，来写第一条吧。</p></div>}
+            : comments.length ? renderComments(null) : <div className="comment-empty"><Icon name="comment" /><p>{copy.empty}</p></div>}
       </div>
     </div>
   </section>;

@@ -1,5 +1,8 @@
 import SiteNav from "../SiteNav";
 import UserLogin from "./UserLogin";
+import EditableModule from "../EditableModule";
+import EditableText from "../EditableText";
+import { pageDocument, splitDisplayText } from "../../lib/site-pages";
 
 type PageProps = { searchParams: Promise<{ next?: string | string[] }> };
 
@@ -7,11 +10,18 @@ export default async function LoginPage({ searchParams }: PageProps) {
   const raw = (await searchParams).next;
   const candidate = Array.isArray(raw) ? raw[0] : raw;
   const next = candidate?.startsWith("/") && !candidate.startsWith("//") ? candidate : "/account";
+  const page = pageDocument("login");
   return <main className="user-auth-page">
     <SiteNav backHref="/" backLabel="返回首页" />
     <section className="user-auth-shell shell">
-      <div className="user-auth-copy"><p>READER ACCOUNT / 读者账户</p><h1>来坐一会，<br /><span>一起聊聊。</span></h1><p>邮箱验证码无需密码；登录后可评论、回复、添加回应，并登记 Passkey。</p></div>
-      <UserLogin next={next} />
+      {page.modules.map((module) => {
+        if (module.id === "login-intro") {
+          const title = splitDisplayText(module.fields.title);
+          return <EditableModule module={module} key={module.id}><div className="user-auth-copy"><p>{module.fields.eyebrow}</p><h1>{title.lead}{title.accent && <><br /><span><EditableText text={title.accent} /></span></>}</h1><p>{module.fields.description}</p></div></EditableModule>;
+        }
+        if (module.id === "login-form") return <EditableModule module={module} key={module.id}><UserLogin next={next} /></EditableModule>;
+        return null;
+      })}
     </section>
   </main>;
 }

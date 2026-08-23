@@ -4,8 +4,10 @@ import { FormEvent, useState, useSyncExternalStore } from "react";
 import { browserSupportsWebAuthn, startAuthentication, type PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
 import ArrowIcon from "../ArrowIcon";
 import Icon from "../Icon";
+import { pageModule } from "../../lib/site-pages";
 
 type Intent = "login" | "register";
+const copy = pageModule("login", "login-form").fields;
 
 export default function UserLogin({ next }: { next: string }) {
   const supported = useSyncExternalStore(() => () => undefined, browserSupportsWebAuthn, () => false);
@@ -70,14 +72,14 @@ export default function UserLogin({ next }: { next: string }) {
 
   return <div className="user-auth-card">
     <div className="auth-tabs" role="tablist" aria-label="账户操作">
-      <button type="button" role="tab" aria-selected={intent === "login"} onClick={() => switchIntent("login")}>登录</button>
-      <button type="button" role="tab" aria-selected={intent === "register"} onClick={() => switchIntent("register")}>注册</button>
+      <button type="button" role="tab" aria-selected={intent === "login"} onClick={() => switchIntent("login")}>{copy.loginTab}</button>
+      <button type="button" role="tab" aria-selected={intent === "register"} onClick={() => switchIntent("register")}>{copy.registerTab}</button>
     </div>
     {step === "details" ? <form onSubmit={sendCode} aria-busy={busy}>
-      {intent === "register" && <label><span>显示名称</span><input value={displayName} maxLength={40} autoComplete="nickname" onChange={(event) => setDisplayName(event.target.value)} placeholder="大家怎么称呼你？" required /></label>}
-      <label><span>邮箱地址</span><input type="email" value={email} autoComplete="email" onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
-      <button className="login-action" type="submit" disabled={busy}>{busy ? "正在发送…" : <>{intent === "register" ? "验证邮箱并注册" : "发送登录验证码"}<ArrowIcon /></>}</button>
-      {intent === "login" && supported && <><div className="login-divider"><span>或</span></div><button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><Icon name="key" /> 使用 Passkey 登录</button></>}
+      {intent === "register" && <label><span>{copy.displayName}</span><input value={displayName} maxLength={40} autoComplete="nickname" onChange={(event) => setDisplayName(event.target.value)} placeholder="大家怎么称呼你？" required /></label>}
+      <label><span>{copy.email}</span><input type="email" value={email} autoComplete="email" onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
+      <button className="login-action" type="submit" disabled={busy}>{busy ? "正在发送…" : <>{intent === "register" ? copy.register : copy.sendCode}<ArrowIcon /></>}</button>
+      {intent === "login" && supported && <><div className="login-divider"><span>或</span></div><button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><Icon name="key" /> {copy.passkey}</button></>}
     </form> : <form onSubmit={verify} aria-busy={busy}>
       <label><span>已发送至</span><input value={email} readOnly /></label>
       <label><span>6 位验证码</span><input className="user-code-input" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required /></label>
@@ -85,6 +87,6 @@ export default function UserLogin({ next }: { next: string }) {
       <button className="login-resend" type="button" onClick={() => setStep("details")}>返回修改邮箱</button>
     </form>}
     {message && <p className="user-auth-message" role="status">{message}</p>}
-    <small>继续即表示你同意只发布友善、与文章相关的内容。</small>
+    <small>{copy.agreement}</small>
   </div>;
 }

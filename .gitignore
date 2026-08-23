@@ -40,6 +40,8 @@ yarn-error.log*
 /outputs/
 /work/
 *.tsbuildinfo
+/src/content/site-pages.draft.json
+/src/content/site-pages.publish-backup.json
 
 # rust backend
 /backend/target/

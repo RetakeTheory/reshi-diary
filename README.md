@@ -1,6 +1,18 @@
 
 ## GitHub 自动部署到 Cloudflare Worker
 
+## 浏览器整站模块编辑器
+
+在项目根目录运行：
+
+```powershell
+pnpm run text:edit
+```
+
+保持命令窗口开启，然后在浏览器打开 [http://localhost:3789/](http://localhost:3789/)。无需安装 Figma：编辑器可以切换全部网站页面，拖动模块排序、显示或隐藏模块、修改文字和安全链接，并调整模块留白、对齐与宽度。桌面、平板和手机预览可随时切换。
+
+“保存草稿”只保存本机工作进度；“发布并检查 · GitHub”会更新 `src/content/site-pages.json`、执行完整构建、只提交该内容文件并推送到 `origin/main`，随后 GitHub Actions 自动部署网站。为防止误传开发代码，发布要求当前位于与 GitHub 同步的 `main` 分支，且没有其他未提交修改。文章正文仍在管理后台编辑，登录、评论、抽奖、附件和 API 等功能逻辑会保持锁定。完整说明见 [整站模块编辑器文档](docs/visual-editor.md)。
+
 仓库内的 [Deploy Worker](.github/workflows/deploy-worker.yml) 工作流会在代码推送到 `main` 后自动构建并部署，也可以在 GitHub 的 **Actions → Deploy Worker → Run workflow** 中手动一键发布。
 
 首次使用前，在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中添加两个 Repository secrets：

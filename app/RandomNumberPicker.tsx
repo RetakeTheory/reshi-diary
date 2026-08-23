@@ -2,8 +2,13 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
+import EditableModule from "./EditableModule";
+import EditableText from "./EditableText";
+import { pageModule, splitDisplayText } from "../lib/site-pages";
 
 const MAX_RESULT_COUNT = 10000;
+const editableModule = pageModule("randomNumber", "random-widget");
+const copy = editableModule.fields;
 
 function parsePositiveInteger(value: string) {
   const normalized = value.trim();
@@ -34,6 +39,7 @@ export default function RandomNumberPicker() {
   const [error, setError] = useState("");
   const [rolling, setRolling] = useState(false);
   const timerRef = useRef<number | null>(null);
+  const title = splitDisplayText(copy.title);
 
   useEffect(() => () => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
@@ -67,12 +73,12 @@ export default function RandomNumberPicker() {
   }
 
   return (
-    <section className="number-picker shell" aria-labelledby="number-picker-title">
+    <EditableModule module={editableModule}><section className="number-picker shell" aria-labelledby="number-picker-title">
       <div className={`number-picker-card${rolling ? " is-rolling" : ""}`}>
         <div className="number-picker-copy">
-          <p>RANDOM DROP / 随机数</p>
-          <h1 id="number-picker-title">让数字替你<br /><span>做个决定。</span></h1>
-          <p>范围固定为 1 到你输入的上限，抽到的数字不会重复。很适合抽签、排顺序，或者决定谁去拿外卖。</p>
+          <p>{copy.eyebrow}</p>
+          <h1 id="number-picker-title">{title.lead}{title.accent && <><br /><span><EditableText text={title.accent} /></span></>}</h1>
+          <p>{copy.description}</p>
           <div className="number-rules"><span>仅限正整数</span><span>结果不重复</span><span>最多 10,000 个</span></div>
         </div>
 
@@ -80,17 +86,17 @@ export default function RandomNumberPicker() {
           <form onSubmit={handleDraw} noValidate>
             <div className="number-fields">
               <label>
-                <span>数字上限</span>
+                <span>{copy.maximumLabel}</span>
                 <input value={maximum} onChange={(event) => setMaximum(event.target.value)} inputMode="numeric" pattern="[1-9][0-9]*" placeholder="例如 100" aria-describedby="number-error" />
                 <small>抽取范围：1 ～ {parsePositiveInteger(maximum)?.toLocaleString("zh-CN") ?? "?"}</small>
               </label>
               <label>
-                <span>抽取数量</span>
+                <span>{copy.countLabel}</span>
                 <input value={count} onChange={(event) => setCount(event.target.value)} inputMode="numeric" pattern="[1-9][0-9]*" placeholder="例如 3" aria-describedby="number-error" />
                 <small>每个数字只会出现一次</small>
               </label>
             </div>
-            <button type="submit" disabled={rolling}><span aria-hidden="true"><Icon name="spark" /></span>{rolling ? "数字正在乱跑…" : "开始抽取"}</button>
+            <button type="submit" disabled={rolling}><span aria-hidden="true"><Icon name="spark" /></span>{rolling ? copy.buttonBusy : copy.button}</button>
             <p className={`number-error${error ? " is-visible" : ""}`} id="number-error" role="alert">{error || "请输入两个正整数，然后把剩下的交给随机数。"}</p>
           </form>
 
@@ -98,10 +104,10 @@ export default function RandomNumberPicker() {
             {rolling ? <div className="number-loading" aria-label="正在抽取"><i /><i /><i /></div> : results.length > 0 ? <>
               <div className="number-results-head"><span>本次掉落</span><small>{results.length} 个数字</small></div>
               <div className="number-chip-grid">{results.map((result, index) => <b key={result} style={{ animationDelay: `${Math.min(index, 20) * 24}ms` }}>{result.toLocaleString("zh-CN")}</b>)}</div>
-            </> : <div className="number-empty"><b>?</b><span>结果还藏在次元裂缝里</span></div>}
+            </> : <div className="number-empty"><b>?</b><span>{copy.empty}</span></div>}
           </div>
         </div>
       </div>
-    </section>
+    </section></EditableModule>
   );
 }

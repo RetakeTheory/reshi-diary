@@ -7,6 +7,9 @@ import { rustBackendFetch } from "../../lib/rust-backend";
 import ArrowIcon from "../ArrowIcon";
 import Icon, { type IconName } from "../Icon";
 import SiteNav from "../SiteNav";
+import EditableModule from "../EditableModule";
+import EditableText from "../EditableText";
+import { pageDocument, splitDisplayText } from "../../lib/site-pages";
 
 export const dynamic = "force-dynamic";
 
@@ -54,31 +57,29 @@ async function loadPosts(): Promise<ListedPost[]> {
 export default async function PostsPage() {
   const posts = await loadPosts();
   const categories = Array.from(new Set(posts.map((post) => post.category)));
+  const page = pageDocument("posts");
   return (
     <main className="posts-directory-page" id="top">
       <SiteNav />
-      <header className="posts-directory-head shell">
-        <div><p>STORY INDEX / 文章目录</p><h1>全部存档，<br /><span>慢慢翻。</span></h1></div>
-        <p>{posts.length} 篇文章 · {categories.length} 个分类<br />按发布时间从新到旧排列。</p>
-      </header>
-      <section className="posts shell posts-directory-list" aria-label="全部文章">
-        <div className="post-grid">
-          {posts.length === 0 && <div className="homepage-empty"><Icon name="file" /><h2>日记本还是空白的</h2><p>新文章发布后会出现在这里。</p></div>}
-          {posts.map((post, index) => (
-            <article className="post-card" key={post.slug}>
-              <a href={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
-                <div className={`post-art ${post.theme}`} aria-hidden="true">
-                  <span className="art-index">{String(index + 1).padStart(2, "0")}</span>
-                  <b><Icon name={post.icon} /></b><div className="art-disc" /><div className="art-tile" />
-                </div>
-                <div className="post-meta"><span>{post.category}</span><time>{post.date}</time></div>
-                <h2>{post.title}</h2><p>{post.excerpt}</p>
-                <div className="read-more"><span>{post.read}</span><b>阅读文章 <ArrowIcon direction="up-right" /></b></div>
-              </a>
-            </article>
-          ))}
-        </div>
-      </section>
+      {page.modules.map((module) => {
+        const fields = module.fields;
+        if (module.id === "posts-header") {
+          const title = splitDisplayText(fields.title);
+          return <EditableModule module={module} key={module.id}><header className="posts-directory-head shell">
+          <div><p>{fields.eyebrow}</p><h1>{title.lead}{title.accent && <><br /><span><EditableText text={title.accent} /></span></>}</h1></div>
+          <p>{posts.length} 篇文章 · {categories.length} 个分类<br />{fields.description}</p>
+        </header></EditableModule>;
+        }
+        if (module.id === "posts-feed") return <EditableModule module={module} key={module.id}><section className="posts shell posts-directory-list" aria-label="全部文章"><div className="post-grid">
+          {posts.length === 0 && <div className="homepage-empty"><Icon name="file" /><h2>{fields.emptyTitle}</h2><p>{fields.emptyDescription}</p></div>}
+          {posts.map((post, index) => <article className="post-card" key={post.slug}><a href={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
+            <div className={`post-art ${post.theme}`} aria-hidden="true"><span className="art-index">{String(index + 1).padStart(2, "0")}</span><b><Icon name={post.icon} /></b><div className="art-disc" /><div className="art-tile" /></div>
+            <div className="post-meta"><span>{post.category}</span><time>{post.date}</time></div><h2>{post.title}</h2><p>{post.excerpt}</p>
+            <div className="read-more"><span>{post.read}</span><b>{fields.readCta} <ArrowIcon direction="up-right" /></b></div>
+          </a></article>)}
+        </div></section></EditableModule>;
+        return null;
+      })}
     </main>
   );
 }

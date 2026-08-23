@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>reshi 整站模块编辑器</title>
+  <style>
+    :root{color-scheme:light;--bg:#e9ebf2;--panel:#f7f7fb;--paper:#fff;--ink:#191a24;--muted:#727688;--line:#dfe1e9;--purple:#7558f6;--purple-2:#ece8ff;--green:#19765a;--red:#b03a51;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif}*{box-sizing:border-box}body{height:100vh;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font-size:13px}button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}:focus-visible{outline:3px solid #a89aff;outline-offset:2px}.app{display:grid;grid-template-rows:62px 1fr 34px;height:100vh}.topbar{display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.9);backdrop-filter:blur(18px)}.brand{display:flex;align-items:center;gap:9px;min-width:190px;font-weight:800}.brand-mark{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:var(--purple);color:#fff;font-size:11px}.page-select{height:38px;min-width:180px;padding:0 34px 0 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-weight:650}.spacer{flex:1}.group{display:flex;align-items:center;padding:3px;border:1px solid var(--line);border-radius:10px;background:#f3f3f8}.icon-button,.view-button{height:30px;border:0;border-radius:7px;background:transparent;color:var(--muted)}.icon-button{min-width:34px}.view-button{padding:0 10px;font-size:11px}.view-button.active{background:#fff;color:var(--ink);box-shadow:0 2px 8px #27233d12}.secondary,.primary{height:38px;padding:0 15px;border-radius:10px;font-weight:750}.secondary{border:1px solid var(--line);background:#fff;color:var(--ink)}.primary{border:0;background:var(--purple);color:#fff;box-shadow:0 8px 20px #7558f633}.workspace{display:grid;grid-template-columns:240px minmax(360px,1fr) 310px;min-height:0}.sidebar,.inspector{min-height:0;overflow:auto;background:var(--panel)}.sidebar{border-right:1px solid var(--line)}.inspector{border-left:1px solid var(--line)}.panel-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;height:48px;padding:0 14px;border-bottom:1px solid var(--line);background:rgba(247,247,251,.94);backdrop-filter:blur(12px)}.panel-head b{font-size:12px}.panel-head span{color:var(--muted);font-size:10px}.layers{display:grid;gap:5px;padding:10px}.layer{display:grid;grid-template-columns:22px 1fr 28px;align-items:center;gap:6px;width:100%;min-height:48px;padding:5px 5px 5px 8px;border:1px solid transparent;border-radius:10px;background:transparent;text-align:left;color:var(--ink)}.layer:hover{background:#fff}.layer.selected{border-color:#cfc5ff;background:#fff;box-shadow:0 5px 16px #3b326512}.layer.dragging{opacity:.35}.handle{color:#a1a4b2;letter-spacing:-2px}.layer-copy{min-width:0}.layer-copy b,.layer-copy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.layer-copy b{font-size:11px}.layer-copy small{margin-top:3px;color:var(--muted);font-size:9px}.eye{display:grid;place-items:center;width:27px;height:27px;border:0;border-radius:7px;background:transparent;color:var(--muted)}.eye:hover{background:var(--purple-2);color:var(--purple)}.canvas-area{position:relative;min-width:0;overflow:auto;padding:28px;background-color:#dfe1e9;background-image:radial-gradient(#bdc0ce 1px,transparent 1px);background-size:18px 18px}.canvas-frame{width:min(100%,1160px);min-height:100%;margin:0 auto;border:1px solid #d7d8e1;border-radius:18px;background:#fdfcf9;box-shadow:0 18px 55px #27263d24;overflow:hidden}.canvas-frame.tablet{width:min(100%,760px)}.canvas-frame.mobile{width:min(100%,390px)}.canvas-nav{display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 5%;border-bottom:1px solid #ebe8e2}.canvas-nav b{font-size:11px}.canvas-nav span{color:#777;letter-spacing:2px}.canvas-page-head{padding:24px 5% 5px;color:#8b8793;font-size:10px;letter-spacing:.13em}.module-list{display:grid;gap:12px;padding:16px 5% 42px}.module-card{position:relative;min-height:128px;padding:25px;border:1px solid #e9e5de;border-radius:17px;background:#fff;box-shadow:0 8px 24px #362e5110;text-align:var(--align,left);transition:opacity .15s,border-color .15s,transform .15s}.module-card:hover{border-color:#cfc5ff}.module-card.selected{border:2px solid var(--purple);padding:24px;box-shadow:0 0 0 4px #7558f61a,0 12px 35px #3e31651a}.module-card.compact{padding-block:16px;min-height:92px}.module-card.airy{padding-block:46px;min-height:180px}.module-card.narrow{width:78%;margin-inline:auto}.module-card.wide{width:100%}.module-card.hidden{opacity:.42;background:repeating-linear-gradient(-45deg,#fff,#fff 8px,#f5f4f8 8px,#f5f4f8 16px)}.module-card.hidden::after{content:"已隐藏";position:absolute;right:12px;top:12px;padding:4px 7px;border-radius:5px;background:#292936;color:#fff;font-size:9px}.module-tag{display:flex;align-items:center;gap:7px;margin-bottom:17px;color:var(--purple);font-size:9px;font-weight:800;letter-spacing:.12em}.module-tag i{width:7px;height:7px;border-radius:50%;background:currentColor}.preview-title{max-width:780px;margin:0;font-size:clamp(24px,4vw,54px);line-height:1.08;letter-spacing:-.045em;white-space:pre-line;overflow-wrap:anywhere}.mobile .preview-title{font-size:31px}.preview-copy{max-width:720px;margin:14px 0 0;color:#6e6c75;line-height:1.8;white-space:pre-line;overflow-wrap:anywhere}.field-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}.field-chip{max-width:100%;padding:6px 9px;border-radius:7px;background:#f4f2fa;color:#656170;font-size:10px;white-space:pre-line;overflow-wrap:anywhere}.locked-card{display:flex;align-items:center;gap:9px;margin-top:18px;color:#8a8792;font-size:10px}.locked-card::before{content:"◆";color:#b3adc8}.empty-canvas{display:grid;place-items:center;min-height:360px;color:var(--muted)}.inspector-body{padding:15px}.section{padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--line)}.section:last-child{border:0}.section-title{display:flex;align-items:center;justify-content:space-between;margin:0 0 12px;font-size:11px}.section-title small{color:var(--muted);font-weight:400}.field{display:grid;gap:6px;margin-bottom:12px}.field>span{display:flex;justify-content:space-between;color:#555968;font-size:10px}.field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}.field input,.field select{height:38px;padding:0 10px}.field textarea{min-height:82px;padding:10px;line-height:1.6;resize:vertical}.field input:hover,.field textarea:hover,.field select:hover{border-color:#bcb2ea}.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.switch{position:relative;width:38px;height:22px;border:0;border-radius:999px;background:#c9cbd4}.switch.on{background:var(--purple)}.switch::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}.switch.on::after{transform:translateX(16px)}.segmented{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:10px;background:#ececf2}.segmented button{min-height:31px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:10px}.segmented button.active{background:#fff;color:var(--ink);font-weight:750;box-shadow:0 2px 8px #28283a12}.notice{padding:12px;border-radius:10px;background:#efedf7;color:#666173;font-size:10px;line-height:1.7}.statusbar{display:flex;align-items:center;gap:8px;padding:0 14px;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px}.status-dot{width:7px;height:7px;border-radius:50%;background:#a8abba}.status-dot.dirty{background:#f0a52b}.status-dot.success{background:var(--green)}.status-dot.error{background:var(--red)}.status-path{margin-left:auto;font-family:ui-monospace,monospace}.mobile-only{display:none}@media(max-width:900px){.workspace{grid-template-columns:190px 1fr}.inspector{position:fixed;right:0;top:62px;bottom:34px;z-index:5;width:min(330px,92vw);box-shadow:-15px 0 40px #2d2a4024}.canvas-area{padding:16px}.view-button{display:none}}@media(max-width:620px){.app{grid-template-rows:auto 1fr 34px}.topbar{flex-wrap:wrap;padding:10px}.brand{min-width:0}.page-select{order:3;width:100%}.workspace{grid-template-columns:1fr}.sidebar{display:none}.canvas-area{padding:10px}.secondary{display:none}.mobile-only{display:block}}
+    @media(max-width:900px){.workspace{grid-template-columns:190px minmax(0,1fr);grid-template-rows:minmax(280px,1fr) 280px}.inspector{position:static;grid-column:1/-1;width:auto;border-top:1px solid var(--line);border-left:0;box-shadow:none}.inspector .panel-head{position:sticky}.canvas-area{min-height:0}}
+    @media(max-width:620px){.workspace{grid-template-columns:1fr;grid-template-rows:180px 360px 320px;overflow:auto}.sidebar{display:block;grid-column:1;grid-row:1;border-right:0;border-bottom:1px solid var(--line)}.canvas-area{grid-column:1;grid-row:2}.inspector{grid-column:1;grid-row:3}.secondary{display:inline-block}.topbar .secondary,.topbar .primary{flex:1;padding-inline:8px}}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">RE</span><span>整站模块编辑器</span></div>
+      <select id="page-select" class="page-select" aria-label="选择页面"></select>
+      <div class="group" aria-label="预览尺寸"><button class="view-button active" data-view="desktop">桌面</button><button class="view-button" data-view="tablet">平板</button><button class="view-button" data-view="mobile">手机</button></div>
+      <div class="spacer"></div>
+      <div class="group"><button id="undo" class="icon-button" title="撤销 Ctrl+Z">↶</button><button id="redo" class="icon-button" title="重做 Ctrl+Shift+Z">↷</button></div>
+      <button id="reset" class="secondary">恢复已发布</button>
+      <button id="save-draft" class="secondary">保存草稿</button>
+      <button id="publish" class="primary" title="构建成功后提交到 GitHub，并触发网站部署">发布并检查 · GitHub</button>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar"><div class="panel-head"><b>页面模块</b><span>拖动排序</span></div><div id="layers" class="layers"></div></aside>
+      <section class="canvas-area" aria-label="页面预览">
+        <div id="canvas" class="canvas-frame desktop">
+          <div class="canvas-nav"><b>reshi 的日记本</b><span>· · ·</span></div>
+          <div id="canvas-page-head" class="canvas-page-head"></div>
+          <div id="module-list" class="module-list"></div>
+        </div>
+      </section>
+      <aside class="inspector"><div class="panel-head"><b>属性</b><span id="selection-type">未选择</span></div><div id="inspector" class="inspector-body"></div></aside>
+    </div>
+
+    <footer class="statusbar"><span id="status-dot" class="status-dot"></span><span id="status">正在读取整站配置…</span><span id="status-path" class="status-path"></span></footer>
+  </main>
+
+  <script>
+    const $ = (selector) => document.querySelector(selector);
+    const clone = (value) => structuredClone(value);
+    const pageSelect = $("#page-select");
+    const layers = $("#layers");
+    const moduleList = $("#module-list");
+    const inspector = $("#inspector");
+    const canvas = $("#canvas");
+    const status = $("#status");
+    const statusDot = $("#status-dot");
+    const fieldLabels = {
+      eyebrow:"眉题",kicker:"顶部小标题",title:"标题",subtitle:"介绍文字",description:"说明",cta:"按钮文字",ctaHref:"按钮链接",href:"跳转链接",
+      paragraph1:"第一段",paragraph2:"第二段",placeholder:"输入提示",button:"按钮",buttonBusy:"处理中按钮",empty:"空状态",note:"补充说明",back:"返回文字",
+      brand:"品牌名",slogan:"标语",copyright:"版权",signature:"落款",loginTitle:"登录提示标题",loginDescription:"登录提示说明",loginCta:"登录按钮",
+      open:"打开按钮",download:"下载按钮",unsupportedTitle:"不支持格式标题",unsupportedDescription:"不支持格式说明",unsupportedCta:"下载提示按钮"
+    };
+    let doc = null;
+    let published = null;
+    let version = "";
+    let draftVersion = "";
+    let publishTarget = null;
+    let savedSnapshot = "";
+    let pageId = "home";
+    let selectedId = "";
+    let undoStack = [];
+    let redoStack = [];
+    let draggingId = "";
+    let busy = false;
+
+    function currentPage() { return pageId === "__navigation" ? null : doc.pages[pageId]; }
+    function currentModules() {
+      if (pageId === "__navigation") return [{id:"global-navigation",type:"navigation",label:"全站导航文字",hidden:false,canMove:false,canHide:false,fields:doc.globals.navigation,styles:{spacing:"default",align:"inherit",width:"default"}}];
+      return currentPage().modules;
+    }
+    function selectedModule() { return currentModules().find((item) => item.id === selectedId) || currentModules()[0]; }
+    function mark(state, message) { statusDot.className = `status-dot ${state || ""}`; status.textContent = message; }
+    function isDirty() { return doc && JSON.stringify(doc) !== savedSnapshot; }
+    function updateState(announce = true) {
+      $("#undo").disabled = busy || !undoStack.length;
+      $("#redo").disabled = busy || !redoStack.length;
+      $("#save-draft").disabled = busy || !isDirty();
+      $("#publish").disabled = busy;
+      $("#reset").disabled = busy;
+      if (!busy && announce) mark(isDirty() ? "dirty" : "success", isDirty() ? "有尚未保存的修改" : "草稿已保存");
+    }
+    function checkpoint() {
+      undoStack.push(JSON.stringify(doc));
+      if (undoStack.length > 60) undoStack.shift();
+      redoStack = [];
+    }
+    function mutate(callback) { checkpoint(); callback(); renderAll(); }
+    function restore(stackFrom, stackTo) {
+      if (!stackFrom.length) return;
+      stackTo.push(JSON.stringify(doc));
+      doc = JSON.parse(stackFrom.pop());
+      renderAll();
+    }
+    function textPreview(module) {
+      const fields = Object.entries(module.fields);
+      const title = module.fields.title || module.fields.diaryTitle || module.fields.slogan || module.fields.brand || module.label;
+      const copy = module.fields.subtitle || module.fields.description || module.fields.paragraph1 || module.fields.note || "";
+      const extra = fields.filter(([key,value]) => value && !["title","diaryTitle","slogan","brand","subtitle","description","paragraph1","note"].includes(key)).slice(0,4);
+      return { title, copy, extra };
+    }
+    function renderPages() {
+      const options = [`<option value="__navigation">全站导航</option>`, ...Object.entries(doc.pages).map(([id,page]) => `<option value="${id}">${escapeHtml(page.label)}</option>` )];
+      pageSelect.innerHTML = options.join("");
+      pageSelect.value = pageId;
+    }
+    function renderLayers() {
+      layers.replaceChildren(...currentModules().map((module) => {
+        const row = document.createElement("div");
+        row.className = `layer${module.id === selectedId ? " selected" : ""}`;
+        row.draggable = module.canMove;
+        row.dataset.id = module.id;
+        row.innerHTML = `<span class="handle">${module.canMove ? "⠿" : "◆"}</span><span class="layer-copy"><b>${escapeHtml(module.label)}</b><small>${escapeHtml(module.type)}${module.hidden ? " · 已隐藏" : ""}</small></span>`;
+        const eye = document.createElement("button");
+        eye.className = "eye";
+        eye.type = "button";
+        eye.title = module.canHide ? (module.hidden ? "显示模块" : "隐藏模块") : "此功能模块不能隐藏";
+        eye.disabled = !module.canHide;
+        eye.textContent = module.hidden ? "○" : "●";
+        eye.addEventListener("click", (event) => { event.stopPropagation(); mutate(() => module.hidden = !module.hidden); });
+        row.append(eye);
+        row.addEventListener("click", () => { selectedId = module.id; renderAll(); });
+        row.addEventListener("dragstart", () => { draggingId = module.id; row.classList.add("dragging"); });
+        row.addEventListener("dragend", () => { draggingId = ""; row.classList.remove("dragging"); });
+        row.addEventListener("dragover", (event) => { if (draggingId && module.canMove) event.preventDefault(); });
+        row.addEventListener("drop", (event) => { event.preventDefault(); reorder(draggingId, module.id); });
+        return row;
+      }));
+    }
+    function reorder(fromId, toId) {
+      if (!fromId || fromId === toId || pageId === "__navigation") return;
+      const modules = currentPage().modules;
+      const from = modules.findIndex((item) => item.id === fromId && item.canMove);
+      const to = modules.findIndex((item) => item.id === toId && item.canMove);
+      if (from < 0 || to < 0) return;
+      mutate(() => { const [moved] = modules.splice(from,1); modules.splice(to,0,moved); });
+    }
+    function renderCanvas() {
+      const page = currentPage();
+      $("#canvas-page-head").textContent = page ? `结构预览  ·  ${page.label}  ·  ${page.path}  ·  发布后请在真实页面检查最终样式` : "结构预览  ·  全站共享  ·  NAVIGATION";
+      moduleList.replaceChildren(...currentModules().map((module) => {
+        const preview = textPreview(module);
+        const card = document.createElement("article");
+        const align = module.styles.align === "center" ? "center" : "left";
+        card.className = `module-card ${module.styles.spacing} ${module.styles.width}${module.hidden ? " hidden" : ""}${module.id === selectedId ? " selected" : ""}`;
+        card.style.setProperty("--align", align);
+        card.dataset.id = module.id;
+        const chips = preview.extra.map(([key,value]) => `<span class="field-chip">${escapeHtml(fieldLabels[key] || key)} · ${escapeHtml(value)}</span>`).join("");
+        card.innerHTML = `<div class="module-tag"><i></i>${escapeHtml(module.label)}</div><h2 class="preview-title">${escapeHtml(preview.title)}</h2>${preview.copy ? `<p class="preview-copy">${escapeHtml(preview.copy)}</p>` : ""}${chips ? `<div class="field-chips">${chips}</div>` : ""}${!Object.keys(module.fields).length ? `<div class="locked-card">动态数据与功能逻辑由网站代码管理</div>` : ""}`;
+        card.addEventListener("click", () => { selectedId = module.id; renderAll(); });
+        return card;
+      }));
+      if (!currentModules().length) moduleList.innerHTML = `<div class="empty-canvas">这个页面没有可编辑模块</div>`;
+    }
+    function controlGroup(label, key, values, names, module) {
+      const wrap = document.createElement("div"); wrap.className = "field";
+      wrap.innerHTML = `<span>${label}</span><div class="segmented"></div>`;
+      const group = wrap.lastElementChild;
+      values.forEach((value,index) => { const button = document.createElement("button"); button.type="button"; button.textContent=names[index]; button.className=module.styles[key]===value?"active":""; button.addEventListener("click",()=>mutate(()=>module.styles[key]=value)); group.append(button); });
+      return wrap;
+    }
+    function renderInspector() {
+      const module = selectedModule();
+      if (!module) { inspector.innerHTML = `<div class="notice">请先选择一个模块。</div>`; return; }
+      $("#selection-type").textContent = module.type;
+      inspector.replaceChildren();
+      const info = document.createElement("section"); info.className="section";
+      info.innerHTML = `<h3 class="section-title">${escapeHtml(module.label)}<small>${escapeHtml(module.id)}</small></h3><div class="toggle-row"><span>在页面中显示</span></div>`;
+      const toggle = document.createElement("button"); toggle.type="button"; toggle.className=`switch ${module.hidden?"":"on"}`; toggle.disabled=!module.canHide; toggle.title=module.canHide?"切换显示状态":"此核心功能不能隐藏"; toggle.addEventListener("click",()=>mutate(()=>module.hidden=!module.hidden)); info.querySelector(".toggle-row").append(toggle); inspector.append(info);
+      const content = document.createElement("section"); content.className="section"; content.innerHTML=`<h3 class="section-title">内容<small>${Object.keys(module.fields).length} 项</small></h3>`;
+      for (const [key,value] of Object.entries(module.fields)) {
+        const label = document.createElement("label"); label.className="field";
+        const long = value.length > 42 || value.includes("\n");
+        label.innerHTML=`<span><b>${escapeHtml(fieldLabels[key]||key)}</b><small>${value.length} / 5000</small></span>`;
+        const input=document.createElement(long?"textarea":"input"); input.value=value; input.maxLength=5000; input.spellcheck=false;
+        input.addEventListener("input",()=>{ checkpoint(); module.fields[key]=input.value; renderLayers(); renderCanvas(); updateState(); });
+        label.append(input); content.append(label);
+      }
+      if (!Object.keys(module.fields).length) content.innerHTML += `<div class="notice">这里展示的是动态数据或管理功能。你仍可调整整个模块的顺序与布局，但内部业务逻辑会保持锁定。</div>`;
+      inspector.append(content);
+      if (pageId !== "__navigation") {
+        const layout=document.createElement("section"); layout.className="section"; layout.innerHTML=`<h3 class="section-title">模块布局<small>安全样式</small></h3>`;
+        layout.append(controlGroup("上下留白","spacing",["compact","default","airy"],["紧凑","默认","宽松"],module));
+        layout.append(controlGroup("文字对齐","align",["inherit","left","center"],["继承","左对齐","居中"],module));
+        layout.append(controlGroup("内容宽度","width",["narrow","default","wide"],["窄","默认","宽"],module)); inspector.append(layout);
+      }
+    }
+    function renderAll() {
+      if (!doc) return;
+      if (!currentModules().some((module)=>module.id===selectedId)) selectedId=currentModules()[0]?.id||"";
+      renderPages(); renderLayers(); renderCanvas(); renderInspector();
+      $("#status-path").textContent = currentPage()?.path || "全站共享";
+      updateState();
+    }
+    function escapeHtml(value) { const div=document.createElement("div"); div.textContent=String(value); return div.innerHTML; }
+    async function request(path, options={}) {
+      const response=await fetch(path,{cache:"no-store",...options});
+      const result=await response.json();
+      if(!response.ok||!result.ok) throw new Error(result.error||"操作失败");
+      return result;
+    }
+    async function load() {
+      try { const result=await request("/api/site-pages"); doc=clone(result.draft); published=clone(result.published); version=result.version; draftVersion=result.draftVersion; publishTarget=result.publishTarget; savedSnapshot=JSON.stringify(doc); selectedId=doc.pages.home.modules[0].id; renderAll(); const ready=publishTarget.currentBranch===publishTarget.branch; mark(ready?"success":"dirty",ready?`已读取 ${Object.keys(doc.pages).length} 个页面；发布将推送到 ${publishTarget.remote}/${publishTarget.branch}`:`当前是 ${publishTarget.currentBranch} 分支；保存草稿可用，GitHub 发布需先合并并切换到 ${publishTarget.branch}`); }
+      catch(error){ mark("error",error.message||"读取失败"); }
+    }
+    async function save(path, label) {
+      busy=true; updateState(false); mark("",label);
+      try { const result=await request(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({document:doc,version,draftVersion})}); doc=clone(result.document); version=result.version; draftVersion=result.draftVersion; savedSnapshot=JSON.stringify(doc); undoStack=[]; redoStack=[]; renderAll(); mark("success",result.message); }
+      catch(error){ mark("error",error.message||"保存失败"); }
+      finally{ busy=false; updateState(false); }
+    }
+    pageSelect.addEventListener("change",()=>{ pageId=pageSelect.value; selectedId=""; renderAll(); });
+    document.querySelectorAll(".view-button").forEach(button=>button.addEventListener("click",()=>{ document.querySelectorAll(".view-button").forEach(x=>x.classList.remove("active")); button.classList.add("active"); canvas.className=`canvas-frame ${button.dataset.view}`; }));
+    $("#undo").addEventListener("click",()=>restore(undoStack,redoStack)); $("#redo").addEventListener("click",()=>restore(redoStack,undoStack));
+    $("#save-draft").addEventListener("click",()=>save("/api/site-pages/draft","正在保存本机草稿…"));
+    $("#publish").addEventListener("click",()=>save("/api/site-pages/publish",`正在完整构建、提交并推送到 ${publishTarget?.remote||"origin"}/${publishTarget?.branch||"main"}；随后 GitHub Actions 会更新网站…`));
+    $("#reset").addEventListener("click",async()=>{ if(!confirm("确定丢弃本机草稿，恢复为当前已发布内容吗？"))return; busy=true; updateState(false); try{const result=await request("/api/site-pages/reset-draft",{method:"POST"}); doc=clone(result.document); published=clone(result.document); version=result.version; draftVersion=result.draftVersion; savedSnapshot=JSON.stringify(doc); undoStack=[];redoStack=[];renderAll();mark("success",result.message)}catch(error){mark("error",error.message)}finally{busy=false;updateState(false)} });
+    window.addEventListener("keydown",event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="z"){event.preventDefault();restore(event.shiftKey?redoStack:undoStack,event.shiftKey?undoStack:redoStack)}});
+    window.addEventListener("beforeunload",event=>{if(isDirty()){event.preventDefault();event.returnValue=""}});
+    load();
+  </script>
+</body>
+</html>

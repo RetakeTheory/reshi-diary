@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import ArrowIcon from "../../ArrowIcon";
 import SiteNav from "../../SiteNav";
 import { getFilePreviewMetadata } from "../../../lib/file-preview";
+import EditableModule from "../../EditableModule";
+import { pageDocument, pageModule } from "../../../lib/site-pages";
 
 export const dynamic = "force-dynamic";
 
@@ -35,15 +37,19 @@ export default async function FilePreviewPage({ params, searchParams }: PageProp
   const fromArticle = returnTo.startsWith("/posts/");
   const rawUrl = `/api/files/${encodeKey(keyParts)}`;
   const downloadUrl = `${rawUrl}?download=1`;
+  const page = pageDocument("preview");
+  const header = pageModule("preview", "preview-header");
+  const stage = pageModule("preview", "preview-stage");
+  const footer = pageModule("preview", "preview-footer");
 
   return (
     <main className="file-preview-page">
       <SiteNav backHref={returnTo} backLabel={fromArticle ? "返回原文章" : "返回上一页"} />
 
       <section className="file-reader shell">
-        <header className="file-reader-head">
+        <EditableModule module={header}><header className="file-reader-head">
           <div className="file-reader-copy">
-            <p>ATTACHMENT READER / 附件阅读器</p>
+            <p>{header.fields.eyebrow}</p>
             <h1>{metadata.filename}</h1>
             <div className="file-reader-meta">
               <span>{metadata.contentType.split(";", 1)[0]}</span>
@@ -51,12 +57,12 @@ export default async function FilePreviewPage({ params, searchParams }: PageProp
             </div>
           </div>
           <div className="file-reader-actions">
-            {metadata.previewable && metadata.mode && <a href={rawUrl} target="_blank" rel="noopener noreferrer">新窗口打开</a>}
-            <a className="primary" href={downloadUrl}>下载文件</a>
+            {metadata.previewable && metadata.mode && <a href={rawUrl} target="_blank" rel="noopener noreferrer">{header.fields.open}</a>}
+            <a className="primary" href={downloadUrl}>{header.fields.download}</a>
           </div>
-        </header>
+        </header></EditableModule>
 
-        <div className={`file-reader-stage mode-${metadata.mode || "unsupported"}`}>
+        <EditableModule module={stage}><div className={`file-reader-stage mode-${metadata.mode || "unsupported"}`}>
           {metadata.previewable && metadata.mode === "image" && (
             // The file endpoint streams arbitrary image dimensions, so Next Image cannot know a stable layout size here.
             // eslint-disable-next-line @next/next/no-img-element
@@ -74,17 +80,17 @@ export default async function FilePreviewPage({ params, searchParams }: PageProp
           {(!metadata.previewable || !metadata.mode) && (
             <div className="file-reader-empty">
               <span>FILE</span>
-              <h2>这个格式暂时不能在线读</h2>
-              <p>浏览器没法安全地直接打开它，不过文件本体还在，可以下载后用本地应用查看。</p>
-              <a href={downloadUrl}>下载到本地</a>
+              <h2>{stage.fields.unsupportedTitle}</h2>
+              <p>{stage.fields.unsupportedDescription}</p>
+              <a href={downloadUrl}>{stage.fields.unsupportedCta}</a>
             </div>
           )}
-        </div>
+        </div></EditableModule>
 
-        <footer className="file-reader-foot">
-          <a href={returnTo}><ArrowIcon direction="left" /> {fromArticle ? "读完了，回到原文章" : "返回上一页"}</a>
-          <small>预览由站内文件流直接提供，不会把附件转交给第三方阅读服务。</small>
-        </footer>
+        {page.modules.some((module) => module.id === footer.id) && <EditableModule module={footer}><footer className="file-reader-foot">
+          <a href={returnTo}><ArrowIcon direction="left" /> {fromArticle ? footer.fields.backArticle : footer.fields.back}</a>
+          <small>{footer.fields.note}</small>
+        </footer></EditableModule>}
       </section>
     </main>
   );

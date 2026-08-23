@@ -12,8 +12,9 @@
     "deploy:verify": "node scripts/verify-worker-bindings.mjs",
     "deploy": "pnpm run deploy:guard && wrangler deploy --config dist/server/wrangler.json --keep-vars --strict",
     "start": "node scripts/run-vinext.mjs start",
-    "figma:sync": "node scripts/figma-text-sync-server.mjs",
-    "figma:sync:check": "node scripts/figma-text-sync-server.mjs --check",
+    "text:edit": "node scripts/visual-editor-server.mjs",
+    "pages:edit": "node scripts/visual-editor-server.mjs",
+    "pages:edit:check": "node scripts/visual-editor-server.mjs --check",
     "test": "npm run build && node --test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"

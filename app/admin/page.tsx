@@ -11,6 +11,8 @@ import { ADMIN_SESSION_COOKIE } from "../../lib/admin-email-auth";
 import { getRustBackendOrigin, rustBackendFetch } from "../../lib/rust-backend";
 import NotificationManager from "./NotificationManager";
 import TicketManager from "./TicketManager";
+import EditableModule from "../EditableModule";
+import { pageDocument } from "../../lib/site-pages";
 
 export const dynamic = "force-dynamic";
 
@@ -40,16 +42,23 @@ export default async function AdminPage() {
     }));
   }
 
+  const page = pageDocument("admin");
+  const sections = {
+    "admin-notice": <NotificationManager />,
+    "admin-passkeys": <PasskeyManager />,
+    "admin-tickets": <TicketManager />,
+    "admin-posts": <AdminEditor initialPosts={initialPosts} />,
+  };
+
   return (
     <main className="admin-shell">
       <header className="admin-topbar">
         <Link className="brand" href="/"><span>RE</span>reshi 的日记本</Link>
         <div><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
-      <NotificationManager />
-      <PasskeyManager />
-      <TicketManager />
-      <AdminEditor initialPosts={initialPosts} />
+      {page.modules.map((module) => <EditableModule module={module} key={module.id}>
+        {sections[module.id as keyof typeof sections]}
+      </EditableModule>)}
     </main>
   );
 }
