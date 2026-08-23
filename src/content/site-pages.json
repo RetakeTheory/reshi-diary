@@ -487,9 +487,9 @@
           "canMove": true,
           "canHide": false,
           "fields": {
-            "eyebrow": "READER ACCOUNT / 读者账户",
+            "eyebrow": "你的账户",
             "logout": "退出登录",
-            "loginRequiredTitle": "还没有登录",
+            "loginRequiredTitle": "还没有登录>_<",
             "loginRequiredDescription": "登录后可以管理头像、积分、Passkey 和工单。",
             "loginRequiredCta": "登录 / 注册"
           },
@@ -524,9 +524,9 @@
           "canMove": true,
           "canHide": true,
           "fields": {
-            "eyebrow": "DAILY / 每日任务",
-            "title": "今天也来留个脚印",
-            "description": "签到、评论、回应每日各计分一次。",
+            "eyebrow": "每日任务",
+            "title": "我——独自升级了吗。",
+            "description": "每项任务每天仅能完成一次哦",
             "checkIn": "签到",
             "complete": "今日完成",
             "goPost": "去文章页完成"
@@ -545,12 +545,12 @@
           "canMove": true,
           "canHide": true,
           "fields": {
-            "eyebrow": "PASSKEY",
-            "title": "更快、更安全地回来",
-            "description": "Passkey 使用指纹、面容或设备 PIN；邮箱验证码仍可用于恢复。",
+            "eyebrow": "通行密钥",
+            "title": "你的新一代通行证",
+            "description": "Passkey 使用指纹、面容或设备 PIN；邮箱验证码仍可用于登录哦。",
             "deviceLabel": "设备名称",
-            "add": "添加 Passkey",
-            "empty": "尚未添加 Passkey。"
+            "add": "添加新的通行密钥",
+            "empty": "还没有通行密钥呢。"
           },
           "styles": {
             "spacing": "default",
@@ -566,11 +566,11 @@
           "canMove": true,
           "canHide": true,
           "fields": {
-            "eyebrow": "TICKETS / 意见与问题",
-            "title": "把问题交给我",
-            "description": "提交后可在这里查看处理状态与回复。",
+            "eyebrow": "工单",
+            "title": "遇到问题了吗？",
+            "description": "提交后可在这里查看处理状态与回复yo~",
             "submit": "提交工单",
-            "empty": "还没有提交过工单。"
+            "empty": "你还没有提交过工单www"
           },
           "styles": {
             "spacing": "default",
