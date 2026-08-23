@@ -464,7 +464,7 @@
             "email": "邮箱地址",
             "sendCode": "发送登录验证码",
             "register": "验证邮箱并注册",
-            "passkey": "使用 Passkey 登录",
+            "passkey": "使用通行密钥登录",
             "agreement": "继续即表示你同意只发布友善、与文章相关的内容。"
           },
           "styles": {
