@@ -411,12 +411,12 @@
           "canMove": false,
           "canHide": true,
           "fields": {
-            "eyebrow": "PRIZE WHEEL / 自定义抽奖",
-            "title": "把奖项放上来，\n让转盘开口。",
+            "eyebrow": "在吗，你的活动黑奴page",
+            "title": "抽个什么呢……",
             "equalMode": "平分概率",
             "weightedMode": "自定义权重",
             "addPrize": "添加奖项",
-            "spin": "转起来！",
+            "spin": "抽！",
             "spinning": "正在转动…",
             "emptyResult": "奖品还藏着"
           },
