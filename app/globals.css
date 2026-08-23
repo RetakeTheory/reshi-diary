@@ -351,3 +351,6 @@ svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-l
 
 @media(max-width:800px){.external-link-panel{top:170px;grid-template-columns:1fr}.external-link-panel>button{width:100%}.external-warning-card{padding:32px 22px}.external-warning-actions{display:grid}.external-warning-actions a{width:100%}.campus-map-shell{width:min(100% - 22px,1180px);padding-top:10px}.campus-map-heading{display:block}.campus-map-heading h1{font-size:clamp(40px,13vw,60px)}.campus-map-scale{display:inline-flex;margin-top:16px}.campus-map-frame{padding:7px;border-radius:20px}.campus-map-viewport{border-radius:14px}.campus-map-toolbar{top:17px;right:17px}.campus-map-toolbar button{width:38px;height:38px}.campus-map-footer{align-items:flex-start}.campus-map-footer p{max-width:140px}}
 @media(prefers-reduced-motion:reduce){.campus-map-canvas{transition-duration:.01ms}.campus-map-hotspot::before{animation:none;opacity:.5}.external-link-panel{animation:none}}
+
+/* Survey file upload progress */
+.survey-file-progress{display:block;width:100%;height:4px;overflow:hidden;border-radius:99px;background:rgba(var(--accent-rgb),.12)}.survey-file-progress>span{display:block;width:100%;height:100%;border-radius:inherit;background:var(--accent);transform-origin:left;transition:transform .16s ease-out}.survey-file-field label.is-uploading{cursor:wait}
