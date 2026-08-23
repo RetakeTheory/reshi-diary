@@ -268,12 +268,12 @@
           "canMove": false,
           "canHide": true,
           "fields": {
-            "eyebrow": "MINI TOOLS / 小插件仓库",
-            "title": "这里有些\n奇怪小玩意。",
-            "description": "不保证能解决人生难题，但很擅长替选择困难症按下那个按钮。"
+            "eyebrow": "小插件仓库",
+            "title": "写的没啥用的\n小东西……",
+            "description": "用吧，一用一个不吱声"
           },
           "styles": {
-            "spacing": "default",
+            "spacing": "airy",
             "align": "inherit",
             "width": "default"
           }
@@ -288,7 +288,7 @@
           "fields": {
             "eyebrow": "DAILY QUEST / 01",
             "title": "今天吃什么",
-            "description": "58 道候选已就位，按一下，把晚饭交给命运。",
+            "description": "随便抽一个吃的吧",
             "cta": "开始摇奖",
             "href": "/plugins/food-roulette"
           },
@@ -308,7 +308,7 @@
           "fields": {
             "eyebrow": "RANDOM DROP / 02",
             "title": "随机数",
-            "description": "输入上限和数量，不重复抽取，让数字替你决定支线走向。",
+            "description": "充当着一个电子卡西欧的作用",
             "cta": "召唤数字",
             "href": "/plugins/random-number"
           },
@@ -328,7 +328,7 @@
           "fields": {
             "eyebrow": "LUCKY DRAW / 03",
             "title": "自定义抽奖",
-            "description": "自己填写奖项，平分概率或设置权重，然后看转盘把谁送上领奖台。",
+            "description": "在？抽个到底唱K还是剧本杀",
             "cta": "打开转盘",
             "href": "/plugins/prize-wheel"
           },
