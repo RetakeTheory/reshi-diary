@@ -12,6 +12,7 @@ import { getRustBackendOrigin, rustBackendFetch } from "../../lib/rust-backend";
 import NotificationManager from "./NotificationManager";
 import TicketManager from "./TicketManager";
 import SurveyManager from "./SurveyManager";
+import UserManager from "./UserManager";
 import EditableModule from "../EditableModule";
 import { pageDocument } from "../../lib/site-pages";
 
@@ -61,6 +62,7 @@ export default async function AdminPage() {
       {page.modules.map((module) => <EditableModule module={module} key={module.id}>
         {sections[module.id as keyof typeof sections]}
       </EditableModule>)}
+      <UserManager />
     </main>
   );
 }

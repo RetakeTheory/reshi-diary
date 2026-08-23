@@ -104,6 +104,11 @@ export async function ensureDatabaseSchema() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_reader_sessions_expires_at ON reader_sessions (expires_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS reader_password_attempts (
+      key_hash TEXT PRIMARY KEY NOT NULL,
+      attempts INTEGER DEFAULT 0 NOT NULL,
+      window_started_at INTEGER NOT NULL
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS reader_passkeys (
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL,
@@ -166,6 +171,16 @@ export async function ensureDatabaseSchema() {
       updated_at INTEGER NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_tickets_user_updated_at ON tickets (user_id, updated_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS ticket_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+      ticket_id INTEGER NOT NULL,
+      sender_type TEXT NOT NULL,
+      sender_id TEXT,
+      body TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket_created_at ON ticket_messages (ticket_id, created_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
       text TEXT NOT NULL,
@@ -201,6 +216,20 @@ export async function ensureDatabaseSchema() {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_survey_created_at ON survey_responses (survey_id, created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_ip ON survey_responses (survey_id, ip_hash)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS survey_file_uploads (
+      key TEXT PRIMARY KEY NOT NULL,
+      survey_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      ip_hash TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      used_at INTEGER,
+      response_id TEXT,
+      FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_file_uploads_survey_created ON survey_file_uploads (survey_id, created_at DESC)"),
     db.prepare(`CREATE TRIGGER IF NOT EXISTS enforce_survey_ip_limit
       BEFORE INSERT ON survey_responses
       WHEN (SELECT COUNT(*) FROM survey_responses WHERE survey_id = NEW.survey_id AND ip_hash = NEW.ip_hash)
@@ -221,6 +250,35 @@ export async function ensureDatabaseSchema() {
   if (!names.has("avatar_key")) await db.prepare("ALTER TABLE users ADD COLUMN avatar_key TEXT").run();
   if (!names.has("points")) await db.prepare("ALTER TABLE users ADD COLUMN points INTEGER DEFAULT 0 NOT NULL").run();
   if (!names.has("updated_at")) await db.prepare("ALTER TABLE users ADD COLUMN updated_at INTEGER DEFAULT 0 NOT NULL").run();
+  if (!names.has("uid")) await db.prepare("ALTER TABLE users ADD COLUMN uid TEXT").run();
+  if (!names.has("display_name_key")) await db.prepare("ALTER TABLE users ADD COLUMN display_name_key TEXT").run();
+  if (!names.has("password_hash")) await db.prepare("ALTER TABLE users ADD COLUMN password_hash TEXT").run();
+  if (!names.has("is_banned")) await db.prepare("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0 NOT NULL").run();
+  if (!names.has("ban_reason")) await db.prepare("ALTER TABLE users ADD COLUMN ban_reason TEXT").run();
+  if (!names.has("banned_at")) await db.prepare("ALTER TABLE users ADD COLUMN banned_at INTEGER").run();
+  const existingUsers = await db.prepare("SELECT id, uid, display_name, display_name_key FROM users ORDER BY created_at ASC").all<{ id: string; uid: string | null; display_name: string; display_name_key: string | null }>();
+  const usedUids = new Set((existingUsers.results || []).map((user) => user.uid).filter(Boolean) as string[]);
+  const usedNames = new Set<string>();
+  const userUpdates = [];
+  for (const user of existingUsers.results || []) {
+    let userUid = user.uid;
+    while (!userUid || usedUids.has(userUid) && userUid !== user.uid) userUid = String(crypto.getRandomValues(new Uint32Array(1))[0] % 90_000_000 + 10_000_000);
+    usedUids.add(userUid);
+    let displayName = user.display_name.trim() || `用户${userUid.slice(-4)}`;
+    let displayNameKey = displayName.normalize("NFKC").toLocaleLowerCase("zh-CN");
+    if (usedNames.has(displayNameKey)) { displayName = `${displayName.slice(0, 34)}-${userUid.slice(-4)}`; displayNameKey = displayName.normalize("NFKC").toLocaleLowerCase("zh-CN"); }
+    usedNames.add(displayNameKey);
+    if (user.uid !== userUid || user.display_name !== displayName || user.display_name_key !== displayNameKey) userUpdates.push(db.prepare("UPDATE users SET uid = ?, display_name = ?, display_name_key = ? WHERE id = ?").bind(userUid, displayName, displayNameKey, user.id));
+  }
+  if (userUpdates.length) await db.batch(userUpdates);
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_uid ON users (uid)").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display_name_key ON users (display_name_key)").run();
+  await db.prepare(`INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, body, created_at)
+    SELECT id, 'user', user_id, body, created_at FROM tickets
+    WHERE NOT EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = tickets.id)`).run();
+  await db.prepare(`INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, body, created_at)
+    SELECT id, 'admin', NULL, admin_reply, updated_at FROM tickets
+    WHERE admin_reply IS NOT NULL AND admin_reply <> '' AND NOT EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = tickets.id AND m.sender_type = 'admin')`).run();
   const surveyColumns = await db.prepare("PRAGMA table_info(surveys)").all<{ name: string }>();
   const surveyNames = new Set((surveyColumns.results || []).map((column) => column.name));
   if (!surveyNames.has("access")) await db.prepare("ALTER TABLE surveys ADD COLUMN access TEXT DEFAULT 'public' NOT NULL").run();

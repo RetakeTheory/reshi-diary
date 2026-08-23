@@ -160,8 +160,12 @@ fn routes(state: AppState) -> Router {
         )
         .route("/api/notifications/active", get(notifications::get_active))
         .route("/api/surveys/{slug}", get(surveys::get_public).post(surveys::submit_public))
+        .route("/api/surveys/{slug}/files", post(surveys::init_file_upload))
+        .route("/api/surveys/{slug}/files/{upload_id}", axum::routing::put(surveys::upload_file))
         .route("/api/auth/send-code", post(users::send_code))
         .route("/api/auth/verify-code", post(users::verify_code))
+        .route("/api/auth/password", post(users::password_login))
+        .route("/api/auth/password-reset", post(users::password_reset))
         .route("/api/auth/me", get(users::me))
         .route("/api/auth/logout", post(users::logout))
         .route(
@@ -174,12 +178,14 @@ fn routes(state: AppState) -> Router {
         )
         .route("/api/account/passkeys", get(users::list_passkeys))
         .route("/api/account/avatar", post(account::upload_avatar))
+        .route("/api/account/profile", post(method_not_allowed).put(users::update_profile))
         .route("/api/account/tasks", get(account::get_tasks))
         .route("/api/account/check-in", post(account::check_in))
         .route(
             "/api/account/tickets",
             get(account::list_tickets).post(account::create_ticket),
         )
+        .route("/api/account/tickets/{id}/messages", post(account::reply_ticket))
         .route(
             "/api/account/passkeys/options",
             post(users::registration_options),
@@ -196,6 +202,7 @@ fn routes(state: AppState) -> Router {
             post(method_not_allowed).put(surveys::update_admin).delete(surveys::delete_admin),
         )
         .route("/api/admin/surveys/{id}/report", get(surveys::report_admin))
+        .route("/api/admin/surveys/{id}/results", get(surveys::results_admin))
         .route(
             "/api/admin/posts/{id}",
             post(method_not_allowed)
@@ -215,6 +222,8 @@ fn routes(state: AppState) -> Router {
         .route("/api/admin/auth/logout", post(logout))
         .route("/api/admin/passkeys", get(passkeys::list_passkeys))
         .route("/api/admin/tickets", get(account::list_admin_tickets))
+        .route("/api/admin/users", get(account::list_admin_users))
+        .route("/api/admin/users/{id}", post(method_not_allowed).put(account::update_admin_user))
         .route(
             "/api/admin/tickets/{id}",
             post(method_not_allowed).put(account::update_ticket),
@@ -235,7 +244,7 @@ fn routes(state: AppState) -> Router {
                 .delete(notifications::remove),
         )
         .route("/api/files/{*key}", get(download_file))
-        .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES + 1024 * 1024))
+        .layer(DefaultBodyLimit::max(101 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

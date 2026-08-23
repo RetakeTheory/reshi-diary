@@ -4,6 +4,7 @@ import { getApiAdmin } from "../../../../admin/admin-auth";
 import { normalizeSurveyInput } from "../../../../../lib/surveys";
 import { surveyFromRow, surveySelect, type SurveyDbRow } from "../../../../../lib/survey-d1";
 import { sanitizeRichHtml } from "../../../../../lib/rich-content";
+import { deleteS3Object } from "../../../../../lib/s3-storage";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -33,9 +34,12 @@ export async function DELETE(request: Request, context: Context) {
   const { id } = await context.params;
   await ensureDatabaseSchema();
   const db = await getD1();
+  const files = await db.prepare("SELECT key FROM survey_file_uploads WHERE survey_id = ?").bind(id).all<{ key: string }>();
   await db.batch([
+    db.prepare("DELETE FROM survey_file_uploads WHERE survey_id = ?").bind(id),
     db.prepare("DELETE FROM survey_responses WHERE survey_id = ?").bind(id),
     db.prepare("DELETE FROM surveys WHERE id = ?").bind(id),
   ]);
+  await Promise.allSettled((files.results || []).map((file) => deleteS3Object(file.key)));
   return Response.json({ ok: true });
 }

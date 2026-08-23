@@ -1,0 +1,22 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { Survey, SurveyAnswers, SurveyFileAnswer, SurveyQuestion } from "../../../../../lib/surveys";
+import { displaySurveyAnswer } from "../../../../../lib/surveys";
+import type { SurveyQuestionReport, SurveyResponseResult } from "../../../../../lib/survey-report";
+import Icon from "../../../../Icon";
+
+function fileUrl(key: string) { return `/api/files/${key.split("/").map(encodeURIComponent).join("/")}`; }
+function Answer({ question, value }: { question: SurveyQuestion; value: unknown }) {
+  if (question.type === "file") { const file = value as SurveyFileAnswer | undefined; return file ? <a href={fileUrl(file.key)} target="_blank" rel="noreferrer"><Icon name="file" />{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</a> : <span>未作答</span>; }
+  if (question.type === "matrix_single" || question.type === "matrix_multiple") return <div>{question.rows.map((row) => <p key={row.id}><b>{row.label}</b>{displaySurveyAnswer(question, value, row.id) || "未作答"}</p>)}</div>;
+  return <span>{displaySurveyAnswer(question, value) || "未作答"}</span>;
+}
+
+export default function SurveyResultsClient({ id }: { id: string }) {
+  const [data, setData] = useState<{ survey: Survey; reports: SurveyQuestionReport[]; responses: SurveyResponseResult[]; total: number; truncated: boolean } | null>(null);
+  const [selected, setSelected] = useState<SurveyResponseResult | null>(null); const [message, setMessage] = useState("");
+  useEffect(() => { fetch(`/api/admin/surveys/${id}/results`, { cache: "no-store" }).then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error || "报表加载失败"); setData(result); }).catch((error) => setMessage(error instanceof Error ? error.message : "报表加载失败")); }, [id]);
+  if (!data) return <section className="survey-results-shell"><p>{message || "正在生成在线报表…"}</p></section>;
+  return <section className="survey-results-shell"><header><div><p>RESULTS / 在线报表</p><h1>{data.survey.title}</h1><span>{data.total} 份答卷{data.truncated ? " · 当前统计最近 5000 份" : ""}</span></div><a href={`/api/admin/surveys/${id}/report`}>下载 CSV</a></header><div className="survey-results-layout"><div className="survey-report-list">{data.reports.map((report, index) => <article key={report.id}><header><span>{index + 1}</span><div><h2>{report.title}</h2><small>{report.answered} / {report.total} 人作答</small></div></header>{report.options && <div className="survey-bars">{report.options.map((option) => <div key={option.id}><span>{option.label}</span><i><b style={{ width: `${report.answered ? option.count / report.answered * 100 : 0}%` }} /></i><strong>{option.count}</strong></div>)}</div>}{report.rows?.map((row) => <div className="survey-report-matrix" key={row.id}><b>{row.label}</b><div className="survey-bars">{row.options.map((option) => <div key={option.id}><span>{option.label}</span><i><b style={{ width: `${report.answered ? option.count / report.answered * 100 : 0}%` }} /></i><strong>{option.count}</strong></div>)}</div></div>)}{report.textAnswers && <div className="survey-text-results">{report.textAnswers.slice(0, 12).map((answer) => <button type="button" key={answer.responseId} onClick={() => setSelected(data.responses.find((item) => item.id === answer.responseId) || null)}>{answer.value}</button>)}</div>}{report.fileAnswers && <div className="survey-text-results">{report.fileAnswers.slice(0, 12).map((file) => <a key={file.responseId} href={fileUrl(file.key)} target="_blank" rel="noreferrer"><Icon name="file" />{file.name}</a>)}</div>}</article>)}</div><aside className="survey-response-list"><h2>单答卷结果</h2>{data.responses.map((response, index) => <button type="button" key={response.id} className={selected?.id === response.id ? "is-active" : ""} onClick={() => setSelected(response)}><b>答卷 {data.total - index}</b><small>{new Date(response.createdAt).toLocaleString("zh-CN")}</small></button>)}</aside></div>{selected && <div className="survey-response-dialog" role="dialog" aria-modal="true" aria-label="单答卷结果"><article><header><div><p>RESPONSE</p><h2>单答卷结果</h2><small>{new Date(selected.createdAt).toLocaleString("zh-CN")} · {selected.id}</small></div><button type="button" onClick={() => setSelected(null)}>关闭</button></header>{data.survey.questions.map((question, index) => <section key={question.id}><b>{index + 1}. {question.title}</b><Answer question={question} value={(selected.answers as SurveyAnswers)[question.id]} /></section>)}</article></div>}</section>;
+}

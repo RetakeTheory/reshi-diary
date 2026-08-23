@@ -1,7 +1,7 @@
 export type SurveyStatus = "draft" | "published" | "closed";
 export type SurveyAccess = "public" | "registered";
 export type SurveySuccessMode = "message" | "redirect";
-export type QuestionType = "single" | "multiple" | "matrix_single" | "matrix_multiple" | "short_text";
+export type QuestionType = "single" | "multiple" | "matrix_single" | "matrix_multiple" | "short_text" | "file";
 export type ShortTextType = "text" | "digits_fixed" | "id_card" | "name" | "english";
 
 export type ChoiceItem = { id: string; label: string };
@@ -20,7 +20,9 @@ export type ShortTextQuestion = QuestionBase<"short_text"> & {
   textType: ShortTextType;
   fixedDigits: number;
 };
-export type SurveyQuestion = ChoiceQuestion | MatrixQuestion | ShortTextQuestion;
+export type FileQuestion = QuestionBase<"file"> & { maxSizeMb: number };
+export type SurveyFileAnswer = { key: string; name: string; size: number; type: string };
+export type SurveyQuestion = ChoiceQuestion | MatrixQuestion | ShortTextQuestion | FileQuestion;
 
 export type Survey = {
   id: string;
@@ -46,7 +48,7 @@ export type SurveyAnswers = Record<string, unknown>;
 const idPattern = /^[A-Za-z0-9_-]{1,80}$/;
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])$/;
 const shortTextTypes = new Set<ShortTextType>(["text", "digits_fixed", "id_card", "name", "english"]);
-const questionTypes = new Set<QuestionType>(["single", "multiple", "matrix_single", "matrix_multiple", "short_text"]);
+const questionTypes = new Set<QuestionType>(["single", "multiple", "matrix_single", "matrix_multiple", "short_text", "file"]);
 
 function text(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -102,6 +104,12 @@ export function normalizeSurveyInput(raw: unknown): SurveyInput {
     if (type === "matrix_single" || type === "matrix_multiple") {
       const matrix = question as Partial<MatrixQuestion>;
       return { ...base, type, rows: normalizeItems(matrix.rows, `第 ${index + 1} 题行`, 1, 50), columns: normalizeItems(matrix.columns, `第 ${index + 1} 题列`, 2, 30) };
+    }
+    if (type === "file") {
+      const file = question as Partial<FileQuestion>;
+      const maxSizeMb = Number(file.maxSizeMb || 100);
+      if (!Number.isSafeInteger(maxSizeMb) || maxSizeMb < 1 || maxSizeMb > 100) throw new Error(`第 ${index + 1} 题文件上限需为 1–100 MB`);
+      return { ...base, type: "file", maxSizeMb };
     }
     const short = question as Partial<ShortTextQuestion>;
     const maxLength = Number(short.maxLength);
@@ -186,6 +194,14 @@ export function validateSurveyAnswers(questions: SurveyQuestion[], raw: unknown)
       if (Object.keys(normalized).length) answers[question.id] = normalized;
       continue;
     }
+    if (question.type === "file") {
+      if (!value) { if (question.required) throw new Error(`${prefix}为必答题`); continue; }
+      const file = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<SurveyFileAnswer> : {};
+      const key = text(file.key, 240); const name = text(file.name, 240); const type = text(file.type, 160) || "application/octet-stream"; const size = Number(file.size);
+      if (!/^survey-files\/[A-Za-z0-9_-]{1,80}\/[a-f0-9-]{20,80}$/.test(key) || !name || !Number.isSafeInteger(size) || size < 1 || size > question.maxSizeMb * 1024 * 1024) throw new Error(`${prefix}文件无效或超过 ${question.maxSizeMb} MB`);
+      answers[question.id] = { key, name, size, type } satisfies SurveyFileAnswer;
+      continue;
+    }
     const answer = text(value, 5001);
     if (!answer) { if (question.required) throw new Error(`${prefix}为必答题`); continue; }
     if ([...answer].length > question.maxLength) throw new Error(`${prefix}不能超过 ${question.maxLength} 字`);
@@ -198,7 +214,11 @@ export function validateSurveyAnswers(questions: SurveyQuestion[], raw: unknown)
   return answers;
 }
 
-function displayAnswer(question: SurveyQuestion, value: unknown, rowId?: string) {
+export function displaySurveyAnswer(question: SurveyQuestion, value: unknown, rowId?: string) {
+  if (question.type === "file") {
+    const file = value && typeof value === "object" ? value as Partial<SurveyFileAnswer> : {};
+    return file.name ? `${file.name}（${Math.ceil(Number(file.size || 0) / 1024)} KB）` : "";
+  }
   if (question.type === "short_text") return typeof value === "string" ? value : "";
   if (question.type === "single" || question.type === "multiple") {
     const answer = value && typeof value === "object" ? value as { selected?: string | string[]; otherText?: string } : {};
@@ -221,9 +241,9 @@ export function surveyResponsesCsv(survey: Pick<Survey, "title" | "questions">, 
   const columns: Array<{ heading: string; value: (answers: SurveyAnswers) => string }> = [];
   survey.questions.forEach((question, index) => {
     if (question.type === "matrix_single" || question.type === "matrix_multiple") {
-      question.rows.forEach((row) => columns.push({ heading: `${index + 1}. ${question.title} / ${row.label}`, value: (answers) => displayAnswer(question, answers[question.id], row.id) }));
+      question.rows.forEach((row) => columns.push({ heading: `${index + 1}. ${question.title} / ${row.label}`, value: (answers) => displaySurveyAnswer(question, answers[question.id], row.id) }));
     } else {
-      columns.push({ heading: `${index + 1}. ${question.title}`, value: (answers) => displayAnswer(question, answers[question.id]) });
+      columns.push({ heading: `${index + 1}. ${question.title}`, value: (answers) => displaySurveyAnswer(question, answers[question.id]) });
     }
   });
   const lines = [

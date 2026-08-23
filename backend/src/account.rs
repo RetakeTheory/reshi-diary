@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{HeaderMap, StatusCode},
 };
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,14 @@ struct AdminTicketItem {
     updated_at: i64,
     display_name: String,
     email: String,
+    user_id: String,
+    uid: String,
+    is_banned: bool,
 }
+
+#[derive(Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+struct TicketMessage { id: i64, ticket_id: i64, sender_type: String, body: String, created_at: i64 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,8 +71,21 @@ pub(crate) struct TicketBody {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TicketUpdateBody {
     status: Option<String>,
-    admin_reply: Option<String>,
+    message: Option<String>,
 }
+
+#[derive(Deserialize)]
+pub(crate) struct TicketMessageBody { body: Option<String> }
+
+#[derive(Deserialize)]
+pub(crate) struct UserBanBody { banned: Option<bool>, reason: Option<String> }
+
+#[derive(Deserialize)]
+pub(crate) struct UserQuery { q: Option<String> }
+
+#[derive(Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+struct AdminUserItem { id: String, uid: String, email: String, display_name: String, points: i64, is_banned: bool, ban_reason: Option<String>, banned_at: Option<i64>, created_at: i64, ticket_count: i64 }
 
 pub(crate) async fn upload_avatar(
     State(state): State<AppState>,
@@ -190,7 +210,8 @@ pub(crate) async fn list_tickets(
         .bind(&user.id)
         .fetch_all(&state.db)
         .await?;
-    Ok(Json(serde_json::json!({ "tickets": tickets })))
+    let mut values = Vec::new(); for ticket in tickets { values.push(ticket_json(&state, &ticket).await?); }
+    Ok(Json(serde_json::json!({ "tickets": values })))
 }
 
 pub(crate) async fn create_ticket(
@@ -218,9 +239,10 @@ pub(crate) async fn create_ticket(
         .execute(&state.db)
         .await?;
     let ticket = ticket_by_id(&state, result.last_insert_rowid()).await?;
+    sqlx::query("INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, body, created_at) VALUES (?, 'user', ?, ?, ?)").bind(ticket.id).bind(&user.id).bind(&body).bind(now).execute(&state.db).await?;
     Ok((
         StatusCode::CREATED,
-        Json(serde_json::json!({ "ticket": ticket })),
+        Json(serde_json::json!({ "ticket": ticket_json(&state, &ticket).await? })),
     ))
 }
 
@@ -229,10 +251,11 @@ pub(crate) async fn list_admin_tickets(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin(&state, &headers).await?;
-    let tickets = sqlx::query_as::<_, AdminTicketItem>("SELECT tickets.id, tickets.category, tickets.title, tickets.body, tickets.status, tickets.admin_reply, tickets.created_at, tickets.updated_at, users.display_name, users.email FROM tickets JOIN users ON users.id = tickets.user_id ORDER BY tickets.updated_at DESC LIMIT 200")
+    let tickets = sqlx::query_as::<_, AdminTicketItem>("SELECT tickets.id, tickets.category, tickets.title, tickets.body, tickets.status, tickets.admin_reply, tickets.created_at, tickets.updated_at, users.display_name, users.email, users.id AS user_id, users.uid, users.is_banned FROM tickets JOIN users ON users.id = tickets.user_id ORDER BY tickets.updated_at DESC LIMIT 200")
         .fetch_all(&state.db)
         .await?;
-    Ok(Json(serde_json::json!({ "tickets": tickets })))
+    let mut values = Vec::new(); for ticket in tickets { let messages = ticket_messages(&state, ticket.id).await?; values.push(serde_json::json!({"id":ticket.id,"userId":ticket.user_id,"uid":ticket.uid,"category":ticket.category,"title":ticket.title,"body":ticket.body,"status":ticket.status,"adminReply":ticket.admin_reply,"createdAt":ticket.created_at,"updatedAt":ticket.updated_at,"displayName":ticket.display_name,"email":ticket.email,"isBanned":ticket.is_banned,"messages":messages})); }
+    Ok(Json(serde_json::json!({ "tickets": values })))
 }
 
 pub(crate) async fn update_ticket(
@@ -248,13 +271,13 @@ pub(crate) async fn update_ticket(
         _ => return Err(AppError::BadRequest("工单状态无效".into())),
     };
     let reply = input
-        .admin_reply
+        .message
         .map(|value| value.trim().chars().take(2_000).collect::<String>())
         .filter(|value| !value.is_empty());
     let updated =
-        sqlx::query("UPDATE tickets SET status = ?, admin_reply = ?, updated_at = ? WHERE id = ?")
+        sqlx::query("UPDATE tickets SET status = ?, admin_reply = CASE WHEN ? IS NULL THEN admin_reply ELSE ? END, updated_at = ? WHERE id = ?")
             .bind(status)
-            .bind(reply)
+            .bind(&reply).bind(&reply)
             .bind(now_ms())
             .bind(id)
             .execute(&state.db)
@@ -263,17 +286,42 @@ pub(crate) async fn update_ticket(
     if updated == 0 {
         return Err(AppError::NotFound("工单不存在"));
     }
-    Ok(Json(
-        serde_json::json!({ "ticket": ticket_by_id(&state, id).await? }),
-    ))
+    let message = if let Some(reply) = reply { Some(sqlx::query_as::<_, TicketMessage>("INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, body, created_at) VALUES (?, 'admin', NULL, ?, ?) RETURNING id, ticket_id, sender_type, body, created_at").bind(id).bind(reply).bind(now_ms()).fetch_one(&state.db).await?) } else { None };
+    Ok(Json(serde_json::json!({ "ticket": ticket_by_id(&state, id).await?, "message": message })))
+}
+
+pub(crate) async fn reply_ticket(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<i64>, Json(input): Json<TicketMessageBody>) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    verify_origin(&state.config, &headers)?; let user = users::require_user(&state, &headers).await?; let body = normalize_text(input.body.as_deref(), 2_000, "回复需为 1–2000 字")?;
+    let status: Option<String> = sqlx::query_scalar("SELECT status FROM tickets WHERE id = ? AND user_id = ?").bind(id).bind(&user.id).fetch_optional(&state.db).await?;
+    if status.is_none() { return Err(AppError::NotFound("工单不存在")); } if status.as_deref() == Some("closed") { return Err(AppError::Conflict("已关闭的工单不能继续回复")); }
+    let now = now_ms(); let message = sqlx::query_as::<_, TicketMessage>("INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, body, created_at) VALUES (?, 'user', ?, ?, ?) RETURNING id, ticket_id, sender_type, body, created_at").bind(id).bind(&user.id).bind(body).bind(now).fetch_one(&state.db).await?;
+    sqlx::query("UPDATE tickets SET status = 'open', updated_at = ? WHERE id = ?").bind(now).bind(id).execute(&state.db).await?;
+    Ok((StatusCode::CREATED, Json(serde_json::json!({"message":message,"status":"open","updatedAt":now}))))
+}
+
+pub(crate) async fn list_admin_users(State(state): State<AppState>, headers: HeaderMap, Query(query): Query<UserQuery>) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin(&state, &headers).await?; let search = query.q.unwrap_or_default().trim().to_owned(); let pattern = format!("%{}%", search.replace('%', "").replace('_', ""));
+    let users = sqlx::query_as::<_, AdminUserItem>("SELECT u.id, u.uid, u.email, u.display_name, u.points, u.is_banned, u.ban_reason, u.banned_at, u.created_at, (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.id) AS ticket_count FROM users u WHERE ? = '' OR u.uid = ? OR u.email LIKE ? OR u.display_name LIKE ? ORDER BY u.created_at DESC LIMIT 200")
+        .bind(&search).bind(&search).bind(&pattern).bind(&pattern).fetch_all(&state.db).await?;
+    Ok(Json(serde_json::json!({"users":users})))
+}
+
+pub(crate) async fn update_admin_user(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>, Json(input): Json<UserBanBody>) -> Result<Json<serde_json::Value>, AppError> {
+    verify_origin(&state.config, &headers)?; require_admin(&state, &headers).await?; let banned = input.banned.unwrap_or(false); let reason = input.reason.map(|value| value.trim().chars().take(200).collect::<String>()).filter(|value| !value.is_empty()); let now = now_ms();
+    let user = sqlx::query_as::<_, AdminUserItem>("UPDATE users SET is_banned = ?, ban_reason = ?, banned_at = ?, updated_at = ? WHERE id = ? RETURNING id, uid, email, display_name, points, is_banned, ban_reason, banned_at, created_at, (SELECT COUNT(*) FROM tickets t WHERE t.user_id = users.id) AS ticket_count")
+        .bind(banned).bind(if banned { reason } else { None }).bind(if banned { Some(now) } else { None }).bind(now).bind(&id).fetch_optional(&state.db).await?.ok_or(AppError::NotFound("用户不存在"))?;
+    if banned { sqlx::query("DELETE FROM user_sessions WHERE user_id = ?").bind(id).execute(&state.db).await?; }
+    Ok(Json(serde_json::json!({"user":user})))
 }
 
 fn user_payload(user: &users::UserRecord) -> serde_json::Value {
     let level = reader_level(user.points);
     serde_json::json!({
         "id": user.id,
+        "uid": user.uid,
         "email": user.email,
         "displayName": user.display_name,
+        "passwordSet": user.password_set,
         "avatarUrl": user.avatar_url,
         "points": user.points,
         "level": level,
@@ -319,6 +367,14 @@ async fn ticket_by_id(state: &AppState, id: i64) -> Result<TicketItem, AppError>
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::NotFound("工单不存在"))
+}
+
+async fn ticket_messages(state: &AppState, id: i64) -> Result<Vec<TicketMessage>, AppError> {
+    Ok(sqlx::query_as::<_, TicketMessage>("SELECT id, ticket_id, sender_type, body, created_at FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC").bind(id).fetch_all(&state.db).await?)
+}
+
+async fn ticket_json(state: &AppState, ticket: &TicketItem) -> Result<serde_json::Value, AppError> {
+    Ok(serde_json::json!({"id":ticket.id,"category":ticket.category,"title":ticket.title,"body":ticket.body,"status":ticket.status,"adminReply":ticket.admin_reply,"createdAt":ticket.created_at,"updatedAt":ticket.updated_at,"messages":ticket_messages(state,ticket.id).await?}))
 }
 
 fn normalize_text(value: Option<&str>, max: usize, message: &str) -> Result<String, AppError> {

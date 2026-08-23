@@ -2,13 +2,22 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import type { MatrixQuestion, Survey, SurveyAnswers, SurveyQuestion } from "../../../lib/surveys";
+import type { FileQuestion, MatrixQuestion, Survey, SurveyAnswers, SurveyFileAnswer, SurveyQuestion } from "../../../lib/surveys";
 import { validateSurveyAnswers } from "../../../lib/surveys";
 import Icon from "../../Icon";
 import RichPostContent from "../../posts/[slug]/RichPostContent";
 
 type PublicSurvey = Omit<Survey, "responseCount" | "successContent" | "successRedirectUrl">;
 type Completion = { mode: "message"; content: string } | { mode: "redirect"; redirectUrl: string };
+
+const questionTypeLabels: Record<SurveyQuestion["type"], string> = {
+  single: "单选题",
+  multiple: "多选题",
+  matrix_single: "矩阵单选题",
+  matrix_multiple: "矩阵多选题",
+  short_text: "简答题",
+  file: "文件题",
+};
 
 function ChoiceField({ question, value, onChange }: { question: Extract<SurveyQuestion, { type: "single" | "multiple" }>; value: unknown; onChange: (value: unknown) => void }) {
   const answer = value && typeof value === "object" ? value as { selected?: string | string[]; otherText?: string } : {};
@@ -31,6 +40,26 @@ function ShortField({ question, value, onChange }: { question: Extract<SurveyQue
   const numeric = question.textType === "digits_fixed";
   const placeholder = question.textType === "id_card" ? "请输入 18 位身份证号码" : question.textType === "name" ? "请输入姓名" : question.textType === "english" ? "Please enter English text" : numeric ? `请输入 ${question.fixedDigits} 位数字` : "请输入回答";
   return <div className="survey-short-field"><input value={answer} required={question.required} maxLength={numeric ? question.fixedDigits : question.maxLength} inputMode={numeric ? "numeric" : "text"} autoComplete={question.textType === "name" ? "name" : "off"} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /><small>{[...answer].length} / {numeric ? question.fixedDigits : question.maxLength}</small></div>;
+}
+
+function FileField({ slug, question, value, onChange }: { slug: string; question: FileQuestion; value: unknown; onChange: (value: SurveyFileAnswer | undefined) => void }) {
+  const file = value && typeof value === "object" ? value as SurveyFileAnswer : null;
+  const [uploading, setUploading] = useState(false); const [error, setError] = useState("");
+  async function upload(selected: File) {
+    setError("");
+    if (selected.size > question.maxSizeMb * 1024 * 1024) { setError(`文件不能超过 ${question.maxSizeMb} MB`); return; }
+    setUploading(true);
+    try {
+      const response = await fetch(`/api/surveys/${encodeURIComponent(slug)}/files`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ questionId: question.id, name: selected.name, size: selected.size, type: selected.type || "application/octet-stream" }) });
+      const result = await response.json() as SurveyFileAnswer & { uploadUrl?: string; headers?: Record<string, string>; error?: string };
+      if (!response.ok || !result.uploadUrl) throw new Error(result.error || "无法开始上传");
+      const uploaded = await fetch(result.uploadUrl, { method: "PUT", headers: result.headers, body: selected });
+      if (!uploaded.ok) throw new Error("文件上传失败，请检查存储跨域设置后重试");
+      onChange({ key: result.key, name: result.name, size: result.size, type: result.type });
+    } catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : "文件上传失败"); }
+    finally { setUploading(false); }
+  }
+  return <div className="survey-file-field">{file ? <div className="survey-file-ready"><Icon name="file" /><span><b>{file.name}</b><small>{(file.size / 1024 / 1024).toFixed(2)} MB</small></span><button type="button" onClick={() => onChange(undefined)}>移除</button></div> : <label className={uploading ? "is-uploading" : ""}><Icon name="file" /><span><b>{uploading ? "正在上传…" : "选择文件"}</b><small>单个文件不超过 {question.maxSizeMb} MB</small></span><input type="file" disabled={uploading} required={question.required} onChange={(event) => event.target.files?.[0] && upload(event.target.files[0])} /></label>}{error && <small className="survey-file-error" role="alert">{error}</small>}</div>;
 }
 
 export default function SurveyForm({ slug }: { slug: string }) {
@@ -62,7 +91,20 @@ export default function SurveyForm({ slug }: { slug: string }) {
   return <form className="survey-public-form" onSubmit={submit} noValidate>
     <header><span className={`survey-status status-${survey.status}`}>{survey.status === "published" ? "正在收集" : "已结束"}</span><h1>{survey.title}</h1>{survey.description && <p>{survey.description}</p>}<small>每个 IP 最多提交 {survey.ipLimit} 次 · 标有“必答”的题目必须填写</small></header>
     {survey.status === "closed" ? <div className="survey-closed"><Icon name="check" /><b>问卷已结束收集</b><span>感谢关注。</span></div> : <>
-      <div className="survey-public-questions">{survey.questions.map((question, index) => <fieldset key={question.id}><legend><span>{index + 1}</span><b>{question.title}</b>{question.required && <em>必答</em>}</legend>{question.description && <p>{question.description}</p>}{(question.type === "single" || question.type === "multiple") && <ChoiceField question={question} value={answers[question.id]} onChange={(value) => answer(question.id, value)} />}{(question.type === "matrix_single" || question.type === "matrix_multiple") && <MatrixField question={question} value={answers[question.id]} onChange={(value) => answer(question.id, value)} />}{question.type === "short_text" && <ShortField question={question} value={answers[question.id]} onChange={(value) => answer(question.id, value)} />}</fieldset>)}</div>
+      <div className="survey-public-questions">{survey.questions.map((question, index) => <fieldset key={question.id}>
+        <legend className="sr-only">第 {index + 1} 题：{question.title}{question.required ? "，必答" : ""}</legend>
+        <div className="survey-question-heading">
+          <span className="survey-question-number" aria-hidden="true">{index + 1}</span>
+          <div className="survey-question-title-line">
+            <b>{question.title}</b>
+            <span className="survey-question-tags">
+              <span className={`survey-question-type type-${question.type}`}>{questionTypeLabels[question.type]}</span>
+              {question.required && <span className="survey-required-tag">必答</span>}
+            </span>
+          </div>
+        </div>
+        {question.description && <p>{question.description}</p>}{(question.type === "single" || question.type === "multiple") && <ChoiceField question={question} value={answers[question.id]} onChange={(value) => answer(question.id, value)} />}{(question.type === "matrix_single" || question.type === "matrix_multiple") && <MatrixField question={question} value={answers[question.id]} onChange={(value) => answer(question.id, value)} />}{question.type === "short_text" && <ShortField question={question} value={answers[question.id]} onChange={(value) => answer(question.id, value)} />}{question.type === "file" && <FileField slug={slug} question={question} value={answers[question.id]} onChange={(value) => answer(question.id, value)} />}
+      </fieldset>)}</div>
       {message && <p className="survey-submit-error" role="alert">{message}</p>}
       <button className="survey-submit" type="submit" disabled={busy}>{busy ? "正在提交…" : survey.submitLabel}</button>
     </>}
