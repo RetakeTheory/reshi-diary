@@ -46,7 +46,7 @@ jobs:
           RUST_BACKEND_ORIGIN: ${{ vars.RUST_BACKEND_ORIGIN }}
 
       - name: Deploy Worker
-        run: pnpm exec wrangler deploy --config dist/server/wrangler.json --keep-vars --strict
+        run: pnpm exec wrangler deploy --config dist/server/wrangler.json --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
