@@ -10,7 +10,7 @@ function escapeAttribute(value: string) {
 
 function safeUrl(value: string) {
   const url = value.trim();
-  return /^(https?:\/\/|\/api\/files\/|\/preview\/)/i.test(url) ? url : "";
+  return /^(https?:\/\/|\/api\/files\/|\/preview\/|\/out\?url=)/i.test(url) ? url : "";
 }
 
 export function sanitizeRichHtml(input: string) {

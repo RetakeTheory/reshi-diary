@@ -7,6 +7,7 @@ import ReaderAvatar from "../ReaderAvatar";
 import AvatarCropper from "./AvatarCropper";
 import EditableModule from "../EditableModule";
 import { pageDocument, pageModule } from "../../lib/site-pages";
+import { readJsonOrEmpty } from "../../lib/http-response";
 
 type User = { id: string; uid: string; displayName: string; email: string; passwordSet: boolean; avatarUrl: string | null; points: number; level: number; levelColor: string; createdAt: number };
 type Passkey = { id: string; name: string; createdAt: number; lastUsedAt: number | null };
@@ -85,12 +86,12 @@ export default function AccountClient() {
   }
   async function sendPasswordCode() {
     if (!user) return; setBusy(true); setMessage("");
-    try { const response = await fetch("/api/auth/send-code", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: user.email, intent: "set_password" }) }); const result = await response.json() as { error?: string }; if (!response.ok) throw new Error(result.error || "验证码发送失败"); setPassword((current) => ({ ...current, sent: true })); setMessage("验证邮件已发送"); }
+    try { const response = await fetch("/api/auth/send-code", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: user.email, intent: "set_password" }) }); const result = await readJsonOrEmpty<{ error?: string }>(response); if (!response.ok) throw new Error(result.error || "验证码发送失败"); setPassword((current) => ({ ...current, sent: true })); setMessage("验证邮件已发送"); }
     catch (error) { setMessage(error instanceof Error ? error.message : "验证码发送失败"); } finally { setBusy(false); }
   }
   async function setAccountPassword(event: FormEvent) {
     event.preventDefault(); if (!user) return; setBusy(true); setMessage("");
-    try { const response = await fetch("/api/auth/password-reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: user.email, intent: "set_password", code: password.code, password: password.value }) }); const result = await response.json() as { error?: string }; if (!response.ok) throw new Error(result.error || "密码设置失败"); setPassword({ code: "", value: "", sent: false }); setUser({ ...user, passwordSet: true }); setMessage("登录密码已更新"); }
+    try { const response = await fetch("/api/auth/password-reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: user.email, intent: "set_password", code: password.code, password: password.value }) }); const result = await readJsonOrEmpty<{ error?: string }>(response); if (!response.ok) throw new Error(result.error || "密码设置失败"); setPassword({ code: "", value: "", sent: false }); setUser({ ...user, passwordSet: true }); setMessage("登录密码已更新"); }
     catch (error) { setMessage(error instanceof Error ? error.message : "密码设置失败"); } finally { setBusy(false); }
   }
   async function replyTicket(ticketId: number) {

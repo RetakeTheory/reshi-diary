@@ -53,19 +53,6 @@ export async function putS3Object(key: string, upload: S3Upload) {
   });
 }
 
-export async function presignS3PutObject(key: string, upload: Omit<S3Upload, "body">, expiresInSeconds = 900) {
-  const { aws, config } = client(0);
-  const headers = new Headers({
-    "Content-Type": upload.contentType,
-    "X-Amz-Meta-Filename": encodeURIComponent(upload.filename),
-    "X-Amz-Meta-Previewable": upload.previewable ? "1" : "0",
-  });
-  const target = new URL(objectUrl(config.bucket, config.region, key));
-  target.searchParams.set("X-Amz-Expires", String(expiresInSeconds));
-  const signed = await aws.sign(target, { method: "PUT", headers, aws: { signQuery: true } });
-  return { uploadUrl: signed.url, headers: Object.fromEntries(headers.entries()), expiresAt: Date.now() + expiresInSeconds * 1000 };
-}
-
 export async function getS3Object(key: string, range?: string | null) {
   const { aws, config } = client(2);
   const headers = new Headers();

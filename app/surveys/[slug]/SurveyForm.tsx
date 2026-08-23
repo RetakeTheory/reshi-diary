@@ -44,22 +44,38 @@ function ShortField({ question, value, onChange }: { question: Extract<SurveyQue
 
 function FileField({ slug, question, value, onChange }: { slug: string; question: FileQuestion; value: unknown; onChange: (value: SurveyFileAnswer | undefined) => void }) {
   const file = value && typeof value === "object" ? value as SurveyFileAnswer : null;
-  const [uploading, setUploading] = useState(false); const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false); const [progress, setProgress] = useState(0); const [error, setError] = useState("");
+  function putFile(url: string, headers: Record<string, string> | undefined, selected: File) {
+    return new Promise<void>((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("PUT", url, true);
+      Object.entries(headers || {}).forEach(([name, headerValue]) => request.setRequestHeader(name, headerValue));
+      request.upload.onprogress = (event) => { if (event.lengthComputable) setProgress(Math.min(99, Math.round(event.loaded / event.total * 100))); };
+      request.onerror = () => reject(new Error("文件上传连接失败，请检查网络后重试"));
+      request.onabort = () => reject(new Error("文件上传已取消"));
+      request.onload = () => {
+        if (request.status >= 200 && request.status < 300) { setProgress(100); resolve(); return; }
+        let message = "文件上传失败，请稍后重试";
+        try { message = (JSON.parse(request.responseText) as { error?: string }).error || message; } catch { /* Keep the stable fallback for non-JSON upstream responses. */ }
+        reject(new Error(message));
+      };
+      request.send(selected);
+    });
+  }
   async function upload(selected: File) {
     setError("");
     if (selected.size > question.maxSizeMb * 1024 * 1024) { setError(`文件不能超过 ${question.maxSizeMb} MB`); return; }
-    setUploading(true);
+    setUploading(true); setProgress(0);
     try {
       const response = await fetch(`/api/surveys/${encodeURIComponent(slug)}/files`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ questionId: question.id, name: selected.name, size: selected.size, type: selected.type || "application/octet-stream" }) });
       const result = await response.json() as SurveyFileAnswer & { uploadUrl?: string; headers?: Record<string, string>; error?: string };
       if (!response.ok || !result.uploadUrl) throw new Error(result.error || "无法开始上传");
-      const uploaded = await fetch(result.uploadUrl, { method: "PUT", headers: result.headers, body: selected });
-      if (!uploaded.ok) throw new Error("文件上传失败，请检查存储跨域设置后重试");
+      await putFile(result.uploadUrl, result.headers, selected);
       onChange({ key: result.key, name: result.name, size: result.size, type: result.type });
     } catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : "文件上传失败"); }
-    finally { setUploading(false); }
+    finally { setUploading(false); setProgress(0); }
   }
-  return <div className="survey-file-field">{file ? <div className="survey-file-ready"><Icon name="file" /><span><b>{file.name}</b><small>{(file.size / 1024 / 1024).toFixed(2)} MB</small></span><button type="button" onClick={() => onChange(undefined)}>移除</button></div> : <label className={uploading ? "is-uploading" : ""}><Icon name="file" /><span><b>{uploading ? "正在上传…" : "选择文件"}</b><small>单个文件不超过 {question.maxSizeMb} MB</small></span><input type="file" disabled={uploading} required={question.required} onChange={(event) => event.target.files?.[0] && upload(event.target.files[0])} /></label>}{error && <small className="survey-file-error" role="alert">{error}</small>}</div>;
+  return <div className="survey-file-field">{file ? <div className="survey-file-ready"><Icon name="file" /><span><b>{file.name}</b><small>{(file.size / 1024 / 1024).toFixed(2)} MB</small></span><button type="button" onClick={() => onChange(undefined)}>移除</button></div> : <label className={uploading ? "is-uploading" : ""}><Icon name="file" /><span><b>{uploading ? `正在上传… ${progress}%` : "选择文件"}</b><small>单个文件不超过 {question.maxSizeMb} MB</small>{uploading && <i className="survey-file-progress" aria-hidden="true"><span style={{ transform: `scaleX(${progress / 100})` }} /></i>}</span><input type="file" disabled={uploading} required={question.required} onChange={(event) => event.target.files?.[0] && upload(event.target.files[0])} /></label>}{error && <small className="survey-file-error" role="alert">{error}</small>}</div>;
 }
 
 export default function SurveyForm({ slug }: { slug: string }) {

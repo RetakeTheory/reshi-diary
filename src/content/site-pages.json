@@ -15,7 +15,9 @@
       "randomTitle": "随机数",
       "randomCaption": "不重复抽取",
       "wheelTitle": "自定义抽奖",
-      "wheelCaption": "概率与权重"
+      "wheelCaption": "概率与权重",
+      "mapTitle": "动画校园地图",
+      "mapCaption": "松江校区缩放导览"
     }
   },
   "pages": {
@@ -336,6 +338,51 @@
             "spacing": "default",
             "align": "inherit",
             "width": "default"
+          }
+        },
+        {
+          "id": "plugin-map-card",
+          "type": "pluginCard",
+          "label": "动画校园地图卡片",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "CAMPUS ATLAS / 04",
+            "title": "动画校园地图",
+            "description": "松江校区总览，可缩放、拖拽和定位常用地点",
+            "cta": "打开地图",
+            "href": "/plugins/campus-map"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "campusMap": {
+      "label": "动画校园地图",
+      "path": "/plugins/campus-map",
+      "modules": [
+        {
+          "id": "campus-map-widget",
+          "type": "campusMapWidget",
+          "label": "松江校区动画地图（功能锁定）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": true,
+          "fields": {
+            "title": "松江校区，慢慢看。",
+            "description": "滚轮或按钮缩放，放大后拖拽浏览；双击可快速切换视野。",
+            "hint": "地图内容以校方最新发布版本为准。",
+            "mapAlt": "东华大学松江校区新主校区总览图"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "wide"
           }
         }
       ]

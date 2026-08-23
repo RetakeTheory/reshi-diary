@@ -50,6 +50,7 @@ export default function SiteNav({ backHref, backLabel }: { backHref?: string; ba
             <a href="/plugins/food-roulette"><span><Icon name="food" /></span><b>{copy.foodTitle}</b><small>{copy.foodCaption}</small></a>
             <a href="/plugins/random-number"><span><Icon name="dice" /></span><b>{copy.randomTitle}</b><small>{copy.randomCaption}</small></a>
             <a href="/plugins/prize-wheel"><span><Icon name="wheel" /></span><b>{copy.wheelTitle}</b><small>{copy.wheelCaption}</small></a>
+            <a href="/plugins/campus-map"><span><Icon name="map" /></span><b>{copy.mapTitle}</b><small>{copy.mapCaption}</small></a>
           </div>
         </div>
         <a href="/#about">{copy.about}</a><a href={reader ? "/account" : "/login"}>{reader ? copy.readerCenter : copy.readerLogin}</a>

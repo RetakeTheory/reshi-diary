@@ -1,5 +1,5 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- full-page navigation remains reliable in the deployed Worker */
 import { desc } from "drizzle-orm";
-import Link from "next/link";
 import { getDb } from "../../db";
 import { posts } from "../../db/schema";
 import { ensureDatabaseSchema } from "../../db/runtime";
@@ -56,7 +56,7 @@ export default async function AdminPage() {
   return (
     <main className="admin-shell">
       <header className="admin-topbar">
-        <Link className="brand" href="/"><span>RE</span>reshi 的日记本</Link>
+        <a className="brand" href="/"><span>RE</span>reshi 的日记本</a>
         <div><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
       {page.modules.map((module) => <EditableModule module={module} key={module.id}>
