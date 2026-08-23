@@ -106,5 +106,38 @@ export const uploads = sqliteTable(
   (table) => [index("idx_uploads_created_at").on(table.createdAt)],
 );
 
+export const surveys = sqliteTable(
+  "surveys",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    status: text("status", { enum: ["draft", "published", "closed"] }).notNull().default("draft"),
+    access: text("access", { enum: ["public", "registered"] }).notNull().default("public"),
+    ipLimit: integer("ip_limit").notNull().default(1),
+    submitLabel: text("submit_label").notNull().default("提交答卷"),
+    successMode: text("success_mode", { enum: ["message", "redirect"] }).notNull().default("message"),
+    successContent: text("success_content").notNull().default("<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>"),
+    successRedirectUrl: text("success_redirect_url").notNull().default(""),
+    questionsJson: text("questions_json").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [uniqueIndex("idx_surveys_slug").on(table.slug), index("idx_surveys_status_updated_at").on(table.status, table.updatedAt)],
+);
+
+export const surveyResponses = sqliteTable(
+  "survey_responses",
+  {
+    id: text("id").primaryKey(),
+    surveyId: text("survey_id").notNull(),
+    ipHash: text("ip_hash").notNull(),
+    answersJson: text("answers_json").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("idx_survey_responses_survey_created_at").on(table.surveyId, table.createdAt), index("idx_survey_responses_ip").on(table.surveyId, table.ipHash)],
+);
+
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;

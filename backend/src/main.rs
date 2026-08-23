@@ -32,6 +32,7 @@ mod account;
 mod community;
 mod notifications;
 mod passkeys;
+mod surveys;
 mod users;
 
 const SESSION_COOKIE: &str = "reshi_admin_session";
@@ -158,6 +159,7 @@ fn routes(state: AppState) -> Router {
             post(community::toggle_reaction),
         )
         .route("/api/notifications/active", get(notifications::get_active))
+        .route("/api/surveys/{slug}", get(surveys::get_public).post(surveys::submit_public))
         .route("/api/auth/send-code", post(users::send_code))
         .route("/api/auth/verify-code", post(users::verify_code))
         .route("/api/auth/me", get(users::me))
@@ -188,6 +190,12 @@ fn routes(state: AppState) -> Router {
         )
         .route("/api/admin/me", get(admin_me))
         .route("/api/admin/posts", get(list_admin_posts).post(create_post))
+        .route("/api/admin/surveys", get(surveys::list_admin).post(surveys::create_admin))
+        .route(
+            "/api/admin/surveys/{id}",
+            post(method_not_allowed).put(surveys::update_admin).delete(surveys::delete_admin),
+        )
+        .route("/api/admin/surveys/{id}/report", get(surveys::report_admin))
         .route(
             "/api/admin/posts/{id}",
             post(method_not_allowed)
@@ -969,6 +977,8 @@ enum AppError {
     NotFound(&'static str),
     #[error("rate limited")]
     RateLimited(i64),
+    #[error("{0}")]
+    SurveyLimit(String),
     #[error("payload too large")]
     PayloadTooLarge,
     #[error("{0}")]
@@ -995,6 +1005,11 @@ impl IntoResponse for AppError {
                 StatusCode::TOO_MANY_REQUESTS,
                 "请求过于频繁",
                 Some(*seconds),
+            ),
+            Self::SurveyLimit(message) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                message.as_str(),
+                None,
             ),
             Self::PayloadTooLarge => (
                 StatusCode::PAYLOAD_TOO_LARGE,

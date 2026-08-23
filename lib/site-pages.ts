@@ -29,7 +29,7 @@ export type SitePagesDocument = {
   pages: Record<string, SitePage>;
 };
 
-export const sitePages = sitePagesJson as SitePagesDocument;
+export const sitePages = sitePagesJson as unknown as SitePagesDocument;
 
 export function pageDocument(pageId: string) {
   const page = sitePages.pages[pageId];

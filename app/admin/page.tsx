@@ -11,6 +11,7 @@ import { ADMIN_SESSION_COOKIE } from "../../lib/admin-email-auth";
 import { getRustBackendOrigin, rustBackendFetch } from "../../lib/rust-backend";
 import NotificationManager from "./NotificationManager";
 import TicketManager from "./TicketManager";
+import SurveyManager from "./SurveyManager";
 import EditableModule from "../EditableModule";
 import { pageDocument } from "../../lib/site-pages";
 
@@ -47,6 +48,7 @@ export default async function AdminPage() {
     "admin-notice": <NotificationManager />,
     "admin-passkeys": <PasskeyManager />,
     "admin-tickets": <TicketManager />,
+    "admin-surveys": <SurveyManager />,
     "admin-posts": <AdminEditor initialPosts={initialPosts} />,
   };
 

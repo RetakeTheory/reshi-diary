@@ -1,6 +1,6 @@
 # Rust backend
 
-Axum backend for reshi-diary. It owns admin and reader auth, Passkeys, posts, avatars, rewards, tickets, attachments, comments, reactions and site notifications.
+Axum backend for reshi-diary. It owns admin and reader auth, Passkeys, posts, avatars, rewards, tickets, attachments, comments, reactions, surveys and site notifications.
 
 ## Local run
 
@@ -31,5 +31,7 @@ Passkeys previously registered in the D1/TypeScript backend are not copied autom
 - `/api/posts/{slug}/community`, `/comments`, `/reactions`: discussion and post reactions.
 - `/api/notifications/active`: current public notice.
 - `/api/admin/notification`: create, update or remove the active notice.
+- `/api/surveys/{slug}`: load and submit a published survey with atomic per-IP limits.
+- `/api/admin/surveys*`: create, publish, close and delete surveys; download UTF-8 CSV reports.
 
 Reader and admin cookies are separate. Mutating requests verify the public origin, and Passkey challenges are single-use with a five-minute TTL.

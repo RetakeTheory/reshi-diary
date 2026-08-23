@@ -174,6 +174,38 @@ export async function ensureDatabaseSchema() {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS surveys (
+      id TEXT PRIMARY KEY NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '' NOT NULL,
+      status TEXT DEFAULT 'draft' NOT NULL,
+      access TEXT DEFAULT 'public' NOT NULL,
+      ip_limit INTEGER DEFAULT 1 NOT NULL,
+      submit_label TEXT DEFAULT '提交答卷' NOT NULL,
+      success_mode TEXT DEFAULT 'message' NOT NULL,
+      success_content TEXT DEFAULT '<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>' NOT NULL,
+      success_redirect_url TEXT DEFAULT '' NOT NULL,
+      questions_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_surveys_status_updated_at ON surveys (status, updated_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS survey_responses (
+      id TEXT PRIMARY KEY NOT NULL,
+      survey_id TEXT NOT NULL,
+      ip_hash TEXT NOT NULL,
+      answers_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_survey_created_at ON survey_responses (survey_id, created_at DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_ip ON survey_responses (survey_id, ip_hash)"),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS enforce_survey_ip_limit
+      BEFORE INSERT ON survey_responses
+      WHEN (SELECT COUNT(*) FROM survey_responses WHERE survey_id = NEW.survey_id AND ip_hash = NEW.ip_hash)
+        >= (SELECT ip_limit FROM surveys WHERE id = NEW.survey_id)
+      BEGIN SELECT RAISE(ABORT, 'survey_ip_limit'); END`),
     db.prepare(`CREATE TABLE IF NOT EXISTS uploads (
       key TEXT PRIMARY KEY NOT NULL,
       filename TEXT NOT NULL,
@@ -189,6 +221,13 @@ export async function ensureDatabaseSchema() {
   if (!names.has("avatar_key")) await db.prepare("ALTER TABLE users ADD COLUMN avatar_key TEXT").run();
   if (!names.has("points")) await db.prepare("ALTER TABLE users ADD COLUMN points INTEGER DEFAULT 0 NOT NULL").run();
   if (!names.has("updated_at")) await db.prepare("ALTER TABLE users ADD COLUMN updated_at INTEGER DEFAULT 0 NOT NULL").run();
+  const surveyColumns = await db.prepare("PRAGMA table_info(surveys)").all<{ name: string }>();
+  const surveyNames = new Set((surveyColumns.results || []).map((column) => column.name));
+  if (!surveyNames.has("access")) await db.prepare("ALTER TABLE surveys ADD COLUMN access TEXT DEFAULT 'public' NOT NULL").run();
+  if (!surveyNames.has("submit_label")) await db.prepare("ALTER TABLE surveys ADD COLUMN submit_label TEXT DEFAULT '提交答卷' NOT NULL").run();
+  if (!surveyNames.has("success_mode")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_mode TEXT DEFAULT 'message' NOT NULL").run();
+  if (!surveyNames.has("success_content")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_content TEXT DEFAULT '<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>' NOT NULL").run();
+  if (!surveyNames.has("success_redirect_url")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_redirect_url TEXT DEFAULT '' NOT NULL").run();
   await db.prepare("PRAGMA optimize").run();
   initialized = true;
 }

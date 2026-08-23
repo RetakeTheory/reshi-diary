@@ -52,13 +52,14 @@ test("falls back to the built-in D1 API when Rust origin is missing", async () =
   assert.deepEqual(await response.json(), { error: "请先登录" });
 });
 
-test("ships Rust community, profile, ticket, Passkey and notification routes", async () => {
-  const [main, users, community, account, notifications, nav] = await Promise.all([
+test("ships Rust community, profile, ticket, Passkey, survey and notification routes", async () => {
+  const [main, users, community, account, notifications, surveys, nav] = await Promise.all([
     readFile(new URL("../backend/src/main.rs", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/users.rs", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/community.rs", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/account.rs", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/notifications.rs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/surveys.rs", import.meta.url), "utf8"),
     readFile(new URL("../app/SiteNav.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(main, /\/api\/auth\/passkey-options/);
@@ -71,5 +72,9 @@ test("ships Rust community, profile, ticket, Passkey and notification routes", a
   assert.match(account, /award_daily_points/);
   assert.match(account, /LEVEL_COLORS/);
   assert.match(notifications, /background_color/);
+  assert.match(main, /\/api\/surveys\/\{slug\}/);
+  assert.match(main, /\/api\/admin\/surveys\/\{id\}\/report/);
+  assert.match(surveys, /enforce_survey_ip_limit|survey_ip_limit/);
+  assert.match(surveys, /build_csv/);
   assert.match(nav, /mobile-menu-trigger/);
 });

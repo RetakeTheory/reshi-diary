@@ -23,7 +23,7 @@ export default function PluginsPage() {
         {cards.map((module) => {
           const visual = art[module.id as keyof typeof art];
           return <EditableModule module={module} key={module.id}><a className="plugin-card" href={module.fields.href} data-module-id={module.id}>
-            <div className={`plugin-card-art ${visual.className}`} aria-hidden="true"><span><Icon name={visual.icon} /></span><i>{typeof visual.marker === "string" ? visual.marker : <Icon name={visual.marker} />}</i></div>
+            <div className={`plugin-card-art ${visual.className}`} aria-hidden="true"><span><Icon name={visual.icon} /></span><i>{visual.marker === "spark" ? <Icon name="spark" /> : visual.marker}</i></div>
             <div><small>{module.fields.eyebrow}</small><h2>{module.fields.title}</h2><p>{module.fields.description}</p><b>{module.fields.cta} <ArrowIcon /></b></div>
           </a></EditableModule>;
         })}

@@ -712,6 +712,20 @@
           }
         },
         {
+          "id": "admin-surveys",
+          "type": "adminSurveys",
+          "label": "问卷管理",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {},
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "wide"
+          }
+        },
+        {
           "id": "admin-posts",
           "type": "adminPosts",
           "label": "文章编辑器",
@@ -723,6 +737,30 @@
             "spacing": "default",
             "align": "inherit",
             "width": "default"
+          }
+        }
+      ]
+    },
+    "survey": {
+      "label": "公开问卷",
+      "path": "/surveys/[slug]",
+      "modules": [
+        {
+          "id": "survey-form",
+          "type": "surveyForm",
+          "label": "问卷表单（功能锁定）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": false,
+          "fields": {
+            "submitLabel": "提交答卷",
+            "successTitle": "提交成功",
+            "successBody": "感谢填写，你的答卷已记录。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "narrow"
           }
         }
       ]
