@@ -5,6 +5,7 @@ import { browserSupportsWebAuthn, startAuthentication, type PublicKeyCredentialR
 import ArrowIcon from "../ArrowIcon";
 import Icon from "../Icon";
 import { pageModule } from "../../lib/site-pages";
+import { readJsonOrEmpty } from "../../lib/http-response";
 
 type Intent = "login" | "register";
 const copy = pageModule("login", "login-form").fields;
@@ -30,7 +31,7 @@ export default function UserLogin({ next }: { next: string }) {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, intent: loginMode === "reset" ? "reset_password" : intent, displayName: intent === "register" ? displayName : undefined }),
       });
-      const result = await response.json() as { error?: string };
+      const result = await readJsonOrEmpty<{ error?: string }>(response);
       if (!response.ok) throw new Error(result.error || "验证码发送失败");
       setStep("code"); setMessage("验证码已发送，请检查收件箱和垃圾邮件。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "验证码发送失败"); }
@@ -52,13 +53,13 @@ export default function UserLogin({ next }: { next: string }) {
 
   async function signInWithPassword(event: FormEvent) {
     event.preventDefault(); setBusy(true); setMessage("");
-    try { const response = await fetch("/api/auth/password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ identifier: email, password }) }); const result = await response.json() as { error?: string }; if (!response.ok) throw new Error(result.error || "登录失败"); window.location.assign(next); }
+    try { const response = await fetch("/api/auth/password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ identifier: email, password }) }); const result = await readJsonOrEmpty<{ error?: string }>(response); if (!response.ok) throw new Error(result.error || "登录失败"); window.location.assign(next); }
     catch (error) { setMessage(error instanceof Error ? error.message : "登录失败"); } finally { setBusy(false); }
   }
 
   async function resetPassword(event: FormEvent) {
     event.preventDefault(); setBusy(true); setMessage("");
-    try { const response = await fetch("/api/auth/password-reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, code, password, intent: "reset_password" }) }); const result = await response.json() as { error?: string }; if (!response.ok) throw new Error(result.error || "密码重置失败"); setLoginMode("password"); setStep("details"); setCode(""); setMessage("密码已重置，现在可以直接登录。"); }
+    try { const response = await fetch("/api/auth/password-reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, code, password, intent: "reset_password" }) }); const result = await readJsonOrEmpty<{ error?: string }>(response); if (!response.ok) throw new Error(result.error || "密码重置失败"); setLoginMode("password"); setStep("details"); setCode(""); setMessage("密码已重置，现在可以直接登录。"); }
     catch (error) { setMessage(error instanceof Error ? error.message : "密码重置失败"); } finally { setBusy(false); }
   }
 

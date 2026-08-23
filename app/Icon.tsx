@@ -1,7 +1,8 @@
 export type IconName =
   | "spark" | "food" | "dice" | "wheel" | "menu" | "close" | "user" | "key"
   | "heart" | "insight" | "reply" | "comment" | "zoom-in" | "zoom-out" | "reset"
-  | "plus" | "minus" | "trash" | "formula" | "table" | "code" | "image" | "file" | "check";
+  | "plus" | "minus" | "trash" | "formula" | "table" | "code" | "image" | "file" | "check"
+  | "external" | "shield" | "map";
 
 export default function Icon({ name, className }: { name: IconName; className?: string }) {
   const common = { className, viewBox: "0 0 24 24", "aria-hidden": true } as const;
@@ -30,5 +31,8 @@ export default function Icon({ name, className }: { name: IconName; className?: 
     case "image": return <svg {...common}><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><circle cx="8.5" cy="9" r="1.6" /><path d="m5 17 4.4-4.4 3.3 3.2 2.4-2.4L19 17.3" /></svg>;
     case "file": return <svg {...common}><path d="M6.5 3.5h7.4l3.6 3.7v13.3h-11z" /><path d="M13.5 3.8v4h3.8M9.5 12h5M9.5 15.5h5" /></svg>;
     case "check": return <svg {...common}><path d="m5 12.5 4.2 4.2L19 7" /></svg>;
+    case "external": return <svg {...common}><path d="M13 5h6v6M19 5l-8 8" /><path d="M16 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h5" /></svg>;
+    case "shield": return <svg {...common}><path d="M12 3 5 6v5c0 4.4 2.7 7.8 7 10 4.3-2.2 7-5.6 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-4" /></svg>;
+    case "map": return <svg {...common}><path d="m4 6 5-2 6 2 5-2v14l-5 2-6-2-5 2V6Z" /><path d="M9 4v14M15 6v14" /></svg>;
   }
 }

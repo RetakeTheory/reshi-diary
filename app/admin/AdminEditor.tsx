@@ -87,6 +87,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
   const [formulaOpen, setFormulaOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   const [codeOpen, setCodeOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const [codeLanguage, setCodeLanguage] = useState("auto");
   const [codeText, setCodeText] = useState("");
   const [tableRows, setTableRows] = useState(3);
@@ -95,6 +96,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
   const [displayFormula, setDisplayFormula] = useState(true);
   const [attachmentPreview, setAttachmentPreview] = useState(true);
   const [uploading, setUploading] = useState("");
+  const [externalLink, setExternalLink] = useState({ title: "", url: "https://", description: "" });
   const editorRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -206,7 +208,38 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
     const selection = window.getSelection();
     const selectedText = selection?.rangeCount ? selection.getRangeAt(0).toString() : "";
     setCodeText(selectedText);
-    setFormulaOpen(false); setTableOpen(false); setCodeOpen((open) => !open);
+    setFormulaOpen(false); setTableOpen(false); setLinkOpen(false); setCodeOpen((open) => !open);
+  }
+
+  function openLinkPanel(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault(); rememberSelection();
+    const selection = window.getSelection();
+    const selectedText = selection?.rangeCount ? selection.getRangeAt(0).toString().trim() : "";
+    if (selectedText) setExternalLink((current) => ({ ...current, title: selectedText.slice(0, 80) }));
+    setFormulaOpen(false); setTableOpen(false); setCodeOpen(false); setLinkOpen((open) => !open);
+  }
+
+  function insertExternalLink(event: SyntheticEvent) {
+    event.preventDefault();
+    let target: URL;
+    try { target = new URL(externalLink.url.trim()); }
+    catch { setMessage("请输入完整网址，例如 https://example.com"); return; }
+    if (!/^https?:$/.test(target.protocol)) { setMessage("外链仅支持 HTTP 或 HTTPS 地址"); return; }
+    const title = externalLink.title.trim() || target.hostname;
+    const card = document.createElement("a");
+    card.className = "external-link-card";
+    card.href = `/out?url=${encodeURIComponent(target.toString())}`;
+    card.target = "_blank";
+    card.rel = "noopener noreferrer";
+    const mark = document.createElement("span"); mark.className = "external-link-mark";
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", "M13 5h6v6M19 5l-8 8M16 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h5"); svg.append(path); mark.append(svg);
+    const copy = document.createElement("span"); copy.className = "external-link-copy";
+    const heading = document.createElement("strong"); heading.textContent = title.slice(0, 80);
+    const description = document.createElement("span"); description.textContent = (externalLink.description.trim() || "将在安全提示页确认后访问外部网站").slice(0, 180);
+    const domain = document.createElement("span"); domain.className = "external-link-domain"; domain.textContent = target.hostname;
+    copy.append(heading, description, domain); card.append(mark, copy);
+    insertTopLevelBlock(card); setExternalLink({ title: "", url: "https://", description: "" }); setLinkOpen(false); setMessage("外链卡片已插入；读者将先看到隐私安全提示");
   }
 
   function insertCodeBlock(event: SyntheticEvent) {
@@ -326,7 +359,7 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
           <label><span>分类 · 文章 ID 将在首次保存时自动生成</span><input value={form.category} onChange={(e) => update("category", e.target.value)} placeholder="例如：校园生活" /></label>
           <label><span>摘要</span><textarea className="excerpt-field" value={form.excerpt} onChange={(e) => update("excerpt", e.target.value)} placeholder="用一两句话介绍这篇文章（可留空）" /></label>
           <div className="rich-editor-wrap">
-            <div className="rich-editor-label"><span>正文</span><small>支持排版、公式、表格、代码、图片和附件</small></div>
+            <div className="rich-editor-label"><span>正文</span><small>支持排版、公式、表格、代码、外链卡片、图片和附件</small></div>
             <div className="rich-toolbar" role="toolbar" aria-label="文章排版工具">
               <div className="toolbar-group">
                 <button type="button" title="加粗" onMouseDown={(e) => toolbarMouseDown(e, "bold")}><b>B</b></button>
@@ -341,10 +374,11 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
                 <button type="button" title="无序列表" aria-label="无序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertUnorderedList")}><ListToolbarIcon /></button>
                 <button type="button" title="有序列表" aria-label="有序列表" onMouseDown={(e) => toolbarMouseDown(e, "insertOrderedList")}><ListToolbarIcon ordered /></button>
                 <button type="button" title="插入代码块" aria-label="插入代码块" onMouseDown={openCodePanel}><Icon name="code" /></button>
+                <button type="button" title="插入外链卡片" aria-label="插入外链卡片" onMouseDown={openLinkPanel}><Icon name="external" /></button>
               </div>
               <div className="toolbar-group toolbar-insert">
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setCodeOpen(false); setFormulaOpen((open) => !open); }}><Icon name="formula" /> <span>公式</span></button>
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setCodeOpen(false); setTableOpen((open) => !open); }}><Icon name="table" /> <span>表格</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setTableOpen(false); setCodeOpen(false); setLinkOpen(false); setFormulaOpen((open) => !open); }}><Icon name="formula" /> <span>公式</span></button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); setFormulaOpen(false); setCodeOpen(false); setLinkOpen(false); setTableOpen((open) => !open); }}><Icon name="table" /> <span>表格</span></button>
                 <button type="button" title="插入图片" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}><ImageToolbarIcon /> <span>图片</span></button>
                 <button type="button" title="插入文件" onMouseDown={(e) => { e.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><FileToolbarIcon /> <span>文件</span></button>
               </div>
@@ -353,6 +387,12 @@ export default function AdminEditor({ initialPosts }: { initialPosts: AdminPost[
               <label><span>代码语言</span><select value={codeLanguage} onChange={(event) => setCodeLanguage(event.target.value)}>{codeLanguages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}</select></label>
               <label className="code-source"><span>代码内容</span><textarea value={codeText} onChange={(event) => setCodeText(event.target.value)} spellCheck={false} placeholder="粘贴代码；选择自动识别也可以。" /></label>
               <button type="button" onClick={insertCodeBlock}>高亮并插入</button>
+            </div>}
+            {linkOpen && <div className="external-link-panel">
+              <label><span>卡片标题</span><input value={externalLink.title} maxLength={80} onChange={(event) => setExternalLink({ ...externalLink, title: event.target.value })} placeholder="例如：东华大学官网" /></label>
+              <label><span>外部网址</span><input type="url" value={externalLink.url} onChange={(event) => setExternalLink({ ...externalLink, url: event.target.value })} placeholder="https://example.com" /></label>
+              <label><span>补充说明（选填）</span><input value={externalLink.description} maxLength={180} onChange={(event) => setExternalLink({ ...externalLink, description: event.target.value })} placeholder="告诉读者这个链接通往哪里" /></label>
+              <button type="button" onClick={insertExternalLink}>插入安全外链</button>
             </div>}
             {formulaOpen && <div className="formula-panel"><label><span>LaTeX 公式</span><input value={latex} onChange={(e) => setLatex(e.target.value)} placeholder="例如：\\frac{a}{b}" /></label><label className="formula-mode"><input type="checkbox" checked={displayFormula} onChange={(e) => setDisplayFormula(e.target.checked)} /> 独占一行</label><button type="button" onClick={insertFormula}>插入公式</button></div>}
             {tableOpen && <div className="table-panel"><label><span>行数</span><input type="number" min="1" max="12" value={tableRows} onChange={(e) => setTableRows(Number(e.target.value))} /></label><label><span>列数</span><input type="number" min="1" max="8" value={tableColumns} onChange={(e) => setTableColumns(Number(e.target.value))} /></label><button type="button" onClick={insertTable}>插入表格</button></div>}
