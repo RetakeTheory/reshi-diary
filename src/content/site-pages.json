@@ -919,7 +919,7 @@
           "canHide": false,
           "fields": {
             "back": "返回问卷",
-            "eyebrow": "INFORMATION LOOKUP",
+            "eyebrow": "查询",
             "description": "查询管理员为你的答卷提供的模块化反馈",
             "loading": "正在打开查询页面…",
             "loadError": "查询页面加载失败",
