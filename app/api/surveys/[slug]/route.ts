@@ -47,6 +47,7 @@ export async function POST(request: Request, context: Context) {
     const now = Date.now(); const actorKey = reader ? `user:${reader.id}` : `ip:${ipHash}`;
     let timedOut = false;
     if (survey.kind === "exam") {
+      if (survey.examStartAt && now < survey.examStartAt) return Response.json({ error: "考试尚未开放", opensAt: survey.examStartAt, serverNow: now }, { status: 425 });
       const attemptId = typeof body.attemptId === "string" ? body.attemptId : "";
       const attempt = await db.prepare("SELECT id, expires_at AS expiresAt, submitted_at AS submittedAt FROM survey_attempts WHERE id = ? AND survey_id = ? AND actor_key = ? LIMIT 1").bind(attemptId, survey.id, actorKey).first<{ id: string; expiresAt: number; submittedAt: number | null }>();
       if (!attempt || attempt.submittedAt) return Response.json({ error: "考试作答凭证无效或已经提交" }, { status: 400 });

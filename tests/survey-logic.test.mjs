@@ -9,6 +9,13 @@ import {
   applyManualSurveyScores,
   validateSurveyAnswers,
 } from "../lib/surveys.ts";
+import { serverClockNow } from "../lib/server-clock.ts";
+
+test("server clock ignores system clock changes after synchronization", () => {
+  const anchor = { serverNow: 1_000_000, monotonicNow: 500 };
+  assert.equal(serverClockNow(anchor, 1_250), 1_000_750);
+  assert.equal(serverClockNow(null, 1_250, 42), 42);
+});
 
 function exam() {
   return normalizeSurveyInput({

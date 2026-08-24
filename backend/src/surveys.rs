@@ -649,6 +649,9 @@ pub(crate) async fn submit_public(
     let ip = client_ip(&headers);
     let ip_hash = hash_value(&format!("{}:{ip}", row.id));
     let now = now_ms();
+    if row.kind == "exam" && row.exam_start_at > now {
+        return Err(AppError::BadRequest("考试尚未开放".into()));
+    }
     let actor_key = user
         .as_ref()
         .map(|item| format!("user:{}", item.id))
