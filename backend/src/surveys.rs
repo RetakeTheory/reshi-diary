@@ -262,7 +262,7 @@ pub(crate) struct SubmissionInput {
 }
 
 #[derive(Deserialize)]
-struct QueryInput {
+pub(crate) struct QueryInput {
     identity: String,
 }
 
@@ -275,7 +275,7 @@ struct FeedbackModule {
 }
 
 #[derive(Deserialize, Serialize)]
-struct FeedbackInput {
+pub(crate) struct FeedbackInput {
     title: String,
     modules: Vec<FeedbackModule>,
 }
