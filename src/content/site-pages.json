@@ -86,8 +86,8 @@
             "socialLabel": "小红书 · reshi_",
             "githubLabel": "GitHub · RetakeTheory",
             "githubHref": "https://github.com/RetakeTheory",
-            "emailLabel": "站内联系",
-            "emailHref": "/account"
+            "emailLabel": "reshi1417@163.com",
+            "emailHref": "mailto:reshi1417@163.com"
           },
           "styles": {
             "spacing": "default",
@@ -129,8 +129,8 @@
             "social": "小红书 reshi_",
             "github": "GitHub",
             "githubHref": "https://github.com/RetakeTheory",
-            "email": "站内联系",
-            "emailHref": "/account",
+            "email": "邮箱",
+            "emailHref": "mailto:reshi1417@163.com",
             "backTop": "回到顶部"
           },
           "styles": {
@@ -397,9 +397,9 @@
           "canHide": true,
           "fields": {
             "back": "返回插件目录",
-            "eyebrow": "CAMPUS FOOD / 干饭情报",
+            "eyebrow": "干饭情报",
             "title": "学校干饭红黑榜",
-            "description": "红榜用绿色标记值得推荐的餐厅，黑榜用红色标记需要避雷的餐厅。"
+            "description": "吃点什么呢"
           },
           "styles": {
             "spacing": "default",
@@ -839,6 +839,20 @@
           }
         },
         {
+          "id": "admin-posts",
+          "type": "adminPosts",
+          "label": "文章编辑器",
+          "hidden": false,
+          "canMove": true,
+          "canHide": false,
+          "fields": {},
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
           "id": "admin-surveys",
           "type": "adminSurveys",
           "label": "问卷管理",
@@ -864,20 +878,6 @@
             "spacing": "default",
             "align": "inherit",
             "width": "wide"
-          }
-        },
-        {
-          "id": "admin-posts",
-          "type": "adminPosts",
-          "label": "文章编辑器",
-          "hidden": false,
-          "canMove": true,
-          "canHide": false,
-          "fields": {},
-          "styles": {
-            "spacing": "default",
-            "align": "inherit",
-            "width": "default"
           }
         }
       ]
