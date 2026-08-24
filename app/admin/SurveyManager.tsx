@@ -72,9 +72,17 @@ function QuestionEditor({ question, questions, surveyKind, index, total, onChang
     const fresh = blankQuestion(type);
     onChange({ ...fresh, id: question.id, title: question.title, description: type === "heading" ? "" : question.description, required: type === "heading" ? false : question.required, logic: type === "heading" ? null : question.logic, points: type === "heading" ? 0 : question.points } as SurveyQuestion);
   }
-  function setLogic(value: string) {
-    if (!value) { onChange({ ...question, logic: null }); return; }
-    const [sourceQuestionId, optionId] = value.split(":"); onChange({ ...question, logic: { sourceQuestionId, optionId } });
+  function setLogicSource(sourceQuestionId: string) {
+    if (!sourceQuestionId) { onChange({ ...question, logic: null }); return; }
+    const source = logicSources.find((item) => item.id === sourceQuestionId);
+    const firstOptionId = source?.options[0]?.id || (source?.allowOther ? "__other" : "");
+    onChange({ ...question, logic: firstOptionId ? { sourceQuestionId, optionIds: [firstOptionId] } : null });
+  }
+  function toggleLogicOption(optionId: string, checked: boolean) {
+    if (!question.logic) return;
+    const current = question.logic.optionIds?.length ? question.logic.optionIds : question.logic.optionId ? [question.logic.optionId] : [];
+    const optionIds = checked ? [...new Set([...current, optionId])] : current.filter((item) => item !== optionId);
+    onChange({ ...question, logic: optionIds.length ? { sourceQuestionId: question.logic.sourceQuestionId, optionIds } : null });
   }
   function toggleCorrect(optionId: string, checked: boolean) {
     if (question.type !== "single" && question.type !== "multiple") return;
@@ -94,7 +102,7 @@ function QuestionEditor({ question, questions, surveyKind, index, total, onChang
     {question.type === "personal_info" && <div className="survey-short-settings"><label><span>个人信息类型</span><select value={question.infoType} onChange={(event) => onChange({ ...question, infoType: event.target.value as PersonalInfoType })}>{Object.entries(personalInfoLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>最多字数</span><input type="number" min={1} max={500} value={question.maxLength} onChange={(event) => onChange({ ...question, maxLength: Number(event.target.value) })} /></label></div>}
     {question.type === "file" && <div className="survey-short-settings"><label><span>单个文件上限（MB）</span><input type="number" min={1} max={100} value={question.maxSizeMb} onChange={(event) => onChange({ ...question, maxSizeMb: Number(event.target.value) })} /></label><p>填写者每题可上传 1 个文件，系统硬上限为 100 MB。</p></div>}
     {surveyKind === "exam" && (question.type === "single" || question.type === "multiple" || question.type === "short_text") && <div className="survey-score-settings"><label><span>本题分数</span><input type="number" min={0} max={1000} value={question.points} onChange={(event) => onChange({ ...question, points: Number(event.target.value) })} /></label><small>设为 0 时不计分。</small></div>}
-    {question.type !== "heading" && <div className="survey-logic-settings"><label><span>条件显示</span><select value={question.logic ? `${question.logic.sourceQuestionId}:${question.logic.optionId}` : ""} onChange={(event) => setLogic(event.target.value)}><option value="">始终显示</option>{logicSources.flatMap((source) => [...source.options, ...(source.allowOther ? [{ id: "__other", label: "其他" }] : [])].map((option) => <option key={`${source.id}:${option.id}`} value={`${source.id}:${option.id}`}>当“{source.title || "未命名题目"}”选择“{option.label}”</option>))}</select></label><small>仅可引用前面的选择题，避免循环逻辑。</small></div>}
+    {question.type !== "heading" && <div className="survey-logic-settings"><label><span>条件显示</span><select value={question.logic?.sourceQuestionId || ""} onChange={(event) => setLogicSource(event.target.value)}><option value="">始终显示</option>{logicSources.map((source) => <option key={source.id} value={source.id}>根据“{source.title || "未命名题目"}”显示</option>)}</select></label>{question.logic && (() => { const source = logicSources.find((item) => item.id === question.logic?.sourceQuestionId); const selected = question.logic.optionIds?.length ? question.logic.optionIds : question.logic.optionId ? [question.logic.optionId] : []; return source ? <fieldset><legend>选择任一以下选项时显示（可多选）</legend>{[...source.options, ...(source.allowOther ? [{ id: "__other", label: "其他" }] : [])].map((option) => <label key={option.id}><input type="checkbox" checked={selected.includes(option.id)} onChange={(event) => toggleLogicOption(option.id, event.target.checked)} />{option.label}</label>)}</fieldset> : null; })()}<small>仅可引用前面的选择题；所选条件满足任意一个即显示。</small></div>}
   </article>;
 }
 
@@ -114,7 +122,12 @@ export default function SurveyManager() {
     setDraft((current) => {
       if (!current) return current;
       const validOptions = question.type === "single" || question.type === "multiple" ? new Set([...question.options.map((item) => item.id), ...(question.allowOther ? ["__other"] : [])]) : null;
-      return { ...current, questions: current.questions.map((item, position) => position === index ? question : item.logic?.sourceQuestionId === question.id && (!validOptions || !validOptions.has(item.logic.optionId)) ? { ...item, logic: null } : item) };
+      return { ...current, questions: current.questions.map((item, position) => {
+        if (position === index || item.logic?.sourceQuestionId !== question.id) return position === index ? question : item;
+        if (!validOptions) return { ...item, logic: null };
+        const optionIds = (item.logic.optionIds?.length ? item.logic.optionIds : item.logic.optionId ? [item.logic.optionId] : []).filter((optionId) => validOptions.has(optionId));
+        return { ...item, logic: optionIds.length ? { sourceQuestionId: question.id, optionIds } : null };
+      }) };
     });
   }
   function moveQuestion(index: number, offset: number) {

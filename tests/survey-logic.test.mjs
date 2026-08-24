@@ -86,6 +86,14 @@ test("public information lookup rejects low-entropy identity fields", () => {
   assert.equal(normalized.queryEnabled, true);
 });
 
+test("conditional questions can be triggered by any of several selected options", () => {
+  const survey = exam(); const conditional = survey.questions[1];
+  conditional.logic = { sourceQuestionId: "q1", optionIds: ["a", "b"] };
+  assert.equal(questionIsVisible(conditional, { q1: { selected: "a" } }, survey.questions), true);
+  assert.equal(questionIsVisible(conditional, { q1: { selected: "b" } }, survey.questions), true);
+  assert.equal(questionIsVisible(conditional, { q1: { selected: "missing" } }, survey.questions), false);
+});
+
 test("result query is a companion setting for both surveys and exams", () => {
   const input = exam();
   input.queryEnabled = true;

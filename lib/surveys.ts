@@ -6,7 +6,7 @@ export type QuestionType = "single" | "multiple" | "matrix_single" | "matrix_mul
 export type ShortTextType = "text" | "digits_fixed" | "id_card" | "name" | "english";
 export type ShortTextScoringMode = "exact" | "contains" | "manual";
 export type PersonalInfoType = "name" | "email" | "phone" | "student_id" | "id_card" | "custom";
-export type QuestionLogic = { sourceQuestionId: string; optionId: string };
+export type QuestionLogic = { sourceQuestionId: string; optionIds: string[]; optionId?: string };
 
 export type ChoiceItem = { id: string; label: string };
 type QuestionBase<T extends QuestionType> = { id: string; type: T; title: string; description: string; required: boolean; logic: QuestionLogic | null; points: number };
@@ -125,7 +125,11 @@ export function normalizeSurveyInput(raw: unknown): SurveyInput {
     if (!type || !questionTypes.has(type) || !questionTitle) throw new Error(`请完善第 ${index + 1} 题`);
     ids.add(id);
     const rawLogic = question.logic && typeof question.logic === "object" ? question.logic as Partial<QuestionLogic> : null;
-    const logic = rawLogic ? { sourceQuestionId: text(rawLogic.sourceQuestionId, 80), optionId: text(rawLogic.optionId, 80) } : null;
+    const legacyOptionId = rawLogic ? text(rawLogic.optionId, 80) : "";
+    const optionIds = rawLogic && Array.isArray(rawLogic.optionIds)
+      ? [...new Set(rawLogic.optionIds.map((item) => text(item, 80)).filter(Boolean))].slice(0, 50)
+      : legacyOptionId ? [legacyOptionId] : [];
+    const logic = rawLogic ? { sourceQuestionId: text(rawLogic.sourceQuestionId, 80), optionIds } : null;
     const rawPoints = Number(question.points || 0);
     if (!Number.isSafeInteger(rawPoints) || rawPoints < 0 || rawPoints > 1000) throw new Error(`第 ${index + 1} 题分数需为 0–1000`);
     const points = kind === "exam" ? rawPoints : 0;
@@ -174,7 +178,7 @@ export function normalizeSurveyInput(raw: unknown): SurveyInput {
     const source = questions[sourceIndex];
     if (sourceIndex < 0 || sourceIndex >= index || !source || source.type !== "single" && source.type !== "multiple") throw new Error(`第 ${index + 1} 题的显示条件必须引用前面的选择题`);
     const allowed = new Set([...source.options.map((item) => item.id), ...(source.allowOther ? ["__other"] : [])]);
-    if (!allowed.has(question.logic.optionId)) throw new Error(`第 ${index + 1} 题的显示条件选项无效`);
+    if (!question.logic.optionIds.length || question.logic.optionIds.some((optionId) => !allowed.has(optionId))) throw new Error(`第 ${index + 1} 题的显示条件选项无效`);
   });
   if (queryEnabled && access === "public") {
     const identity = questions.find((question) => question.id === queryIdentityQuestionId);
@@ -210,7 +214,9 @@ function selectedOptionIds(value: unknown) {
 export function questionIsVisible(question: SurveyQuestion, answers: SurveyAnswers, questions?: SurveyQuestion[]): boolean {
   if (!question.logic) return true;
   const source = questions?.find((item) => item.id === question.logic!.sourceQuestionId);
-  return (!source || questionIsVisible(source, answers, questions)) && selectedOptionIds(answers[question.logic.sourceQuestionId]).includes(question.logic.optionId);
+  const optionIds = question.logic.optionIds?.length ? question.logic.optionIds : question.logic.optionId ? [question.logic.optionId] : [];
+  const selected = selectedOptionIds(answers[question.logic.sourceQuestionId]);
+  return optionIds.length > 0 && (!source || questionIsVisible(source, answers, questions)) && optionIds.some((optionId) => selected.includes(optionId));
 }
 
 export function visibleSurveyQuestions(questions: SurveyQuestion[], answers: SurveyAnswers) {

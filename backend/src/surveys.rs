@@ -26,7 +26,20 @@ struct ChoiceItem {
 #[serde(rename_all = "camelCase")]
 struct QuestionLogic {
     source_question_id: String,
-    option_id: String,
+    #[serde(default)]
+    option_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    option_id: Option<String>,
+}
+
+impl QuestionLogic {
+    fn selected_option_ids(&self) -> Vec<&str> {
+        if self.option_ids.is_empty() {
+            self.option_id.as_deref().into_iter().collect()
+        } else {
+            self.option_ids.iter().map(String::as_str).collect()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1160,10 +1173,11 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
             )));
         }
         if let Some(logic) = question.logic() {
+            let logic_option_ids = logic.selected_option_ids();
             let source = input.questions[..index]
                 .iter()
                 .find(|item| item.id() == logic.source_question_id);
-            let valid = source.is_some_and(|item| match item {
+            let valid = !logic_option_ids.is_empty() && source.is_some_and(|item| match item {
                 SurveyQuestion::Single {
                     options,
                     allow_other,
@@ -1174,8 +1188,10 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
                     allow_other,
                     ..
                 } => {
-                    options.iter().any(|option| option.id == logic.option_id)
-                        || *allow_other && logic.option_id == "__other"
+                    logic_option_ids.iter().all(|logic_option_id| {
+                        options.iter().any(|option| option.id == *logic_option_id)
+                            || *allow_other && *logic_option_id == "__other"
+                    })
                 }
                 _ => false,
             });
@@ -1394,9 +1410,12 @@ fn question_visible(
         let source = questions
             .iter()
             .find(|item| item.id() == logic.source_question_id);
+        let selected = selected_option_ids(answers.get(&logic.source_question_id));
         source.is_none_or(|item| question_visible(item, answers, questions))
-            && selected_option_ids(answers.get(&logic.source_question_id))
-                .contains(&logic.option_id.as_str())
+            && logic
+                .selected_option_ids()
+                .iter()
+                .any(|option_id| selected.contains(option_id))
     })
 }
 
