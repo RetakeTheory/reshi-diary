@@ -225,6 +225,15 @@ async function currentBranch() {
   return result.output;
 }
 
+async function fetchPublishBranch() {
+  try {
+    await run("git", ["fetch", "--quiet", publishRemote, publishBranch]);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.split("\n").at(-1) : "连接失败";
+    throw new Error(`本机无法连接 GitHub（github.com:443）。localhost 编辑器使用本机 Git 网络，不能调用 Codex 的 GitHub 插件；请连接可访问 GitHub 的网络或配置 Git 代理后重试。${detail ? `\n${detail}` : ""}`);
+  }
+}
+
 async function assertOnlyPageContentChanged() {
   const status = await run("git", ["status", "--porcelain", "--untracked-files=normal"]);
   const paths = parseGitStatusPaths(status.output);
@@ -246,7 +255,7 @@ async function syncFromGitHub() {
   const branch = await currentBranch();
   if (branch !== publishBranch) throw new Error(`当前分支是 ${branch}，请切换到 ${publishBranch} 后再同步`);
   await assertWorktreeCleanForSync();
-  await run("git", ["fetch", "--quiet", publishRemote, publishBranch]);
+  await fetchPublishBranch();
   const remoteRef = `refs/remotes/${publishRemote}/${publishBranch}`;
   let sync = parseAheadBehind((await run("git", ["rev-list", "--left-right", "--count", `${remoteRef}...HEAD`])).output);
   if (sync.ahead && sync.behind) {
@@ -303,7 +312,7 @@ async function prepareGitHubPublish() {
     throw new Error(`当前分支是 ${branch}。为避免误发其他开发内容，请先把编辑器合并并切换到 ${publishBranch} 分支再发布`);
   }
   await assertOnlyPageContentChanged();
-  await run("git", ["fetch", "--quiet", publishRemote, publishBranch]);
+  await fetchPublishBranch();
   const remoteRef = `refs/remotes/${publishRemote}/${publishBranch}`;
   let sync = parseAheadBehind((await run("git", ["rev-list", "--left-right", "--count", `${remoteRef}...HEAD`])).output);
   if (sync.behind) {
