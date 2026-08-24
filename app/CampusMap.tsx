@@ -17,7 +17,7 @@ const hotspots = [
 
 function clamp(value: number, min: number, max: number) { return Math.min(max, Math.max(min, value)); }
 
-export default function CampusMap({ title, description, hint, mapAlt }: { title: string; description: string; hint: string; mapAlt: string }) {
+export default function CampusMap({ title, description, hint, mapAlt, hotspotHint }: { title: string; description: string; hint: string; mapAlt: string; hotspotHint: string }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
@@ -75,7 +75,7 @@ export default function CampusMap({ title, description, hint, mapAlt }: { title:
           {hotspots.map((hotspot) => <button type="button" key={hotspot.id} className={`campus-map-hotspot${active === hotspot.id ? " is-active" : ""}`} style={{ left: `${hotspot.left}%`, top: `${hotspot.top}%` }} onClick={(event) => { event.stopPropagation(); setActive(hotspot.id); }} aria-label={`定位：${hotspot.label}`}><span /></button>)}
         </div>
       </div>
-      <footer className="campus-map-footer"><div><Icon name="map" /><span><b>{selected.label}</b><small>点击地图光点切换位置</small></span></div><p>{hint}</p></footer>
+      <footer className="campus-map-footer"><div><Icon name="map" /><span><b>{selected.label}</b><small>{hotspotHint}</small></span></div><p>{hint}</p></footer>
     </div>
   </section>;
 }

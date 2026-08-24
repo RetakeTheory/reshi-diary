@@ -142,6 +142,38 @@ export function validateSiteDocument(candidate, baseline) {
   return next;
 }
 
+export function migrateAdditiveDraft(candidate, baseline) {
+  if (!isRecord(candidate) || candidate.schemaVersion !== 1) throw new Error("不支持的草稿配置版本");
+  if (!isRecord(candidate.globals?.navigation) || !isRecord(candidate.pages)) throw new Error("草稿页面配置格式无效");
+  const next = structuredClone(baseline);
+  for (const [key, value] of Object.entries(candidate.globals.navigation)) {
+    if (!(key in baseline.globals.navigation)) throw new Error(`草稿包含已移除的全局字段 ${key}`);
+    next.globals.navigation[key] = value;
+  }
+  for (const [pageId, draftPage] of Object.entries(candidate.pages)) {
+    const baselinePage = baseline.pages[pageId];
+    if (!baselinePage) throw new Error(`草稿包含已移除的页面 ${pageId}`);
+    if (!isRecord(draftPage) || draftPage.label !== baselinePage.label || draftPage.path !== baselinePage.path || !Array.isArray(draftPage.modules)) throw new Error(`页面 ${pageId} 的固定信息已改变`);
+    const baselineById = new Map(baselinePage.modules.map((item) => [item.id, item]));
+    const draftById = new Map();
+    for (const draftModule of draftPage.modules) {
+      const original = isRecord(draftModule) ? baselineById.get(draftModule.id) : null;
+      if (!original) throw new Error(`草稿页面 ${pageId} 包含已移除的模块`);
+      if (draftById.has(draftModule.id)) throw new Error(`草稿页面 ${pageId} 含有重复模块`);
+      for (const key of Object.keys(draftModule.fields || {})) if (!(key in original.fields)) throw new Error(`草稿模块 ${draftModule.id} 包含已移除的字段 ${key}`);
+      draftById.set(draftModule.id, draftModule);
+    }
+    const mergedModules = baselinePage.modules.map((original) => {
+      const draftModule = draftById.get(original.id);
+      if (!draftModule) return structuredClone(original);
+      return { ...structuredClone(original), hidden: draftModule.hidden, styles: { ...original.styles, ...draftModule.styles }, fields: { ...original.fields, ...draftModule.fields } };
+    });
+    const oldOrder = draftPage.modules.map((item) => item.id);
+    next.pages[pageId].modules = [...oldOrder.map((id) => mergedModules.find((item) => item.id === id)), ...mergedModules.filter((item) => !oldOrder.includes(item.id))];
+  }
+  return validateSiteDocument(next, baseline);
+}
+
 function run(command, args) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, { cwd: projectRoot, env: process.env, shell: false, windowsHide: true });
@@ -256,7 +288,12 @@ async function readPublished() {
 async function readDraftOrPublished(published) {
   try {
     const text = await readFile(draftPath, "utf8");
-    return { document: validateSiteDocument(JSON.parse(text), published.document), text, version: versionOf(text) };
+    const candidate = JSON.parse(text);
+    try {
+      return { document: validateSiteDocument(candidate, published.document), text, version: versionOf(text) };
+    } catch (validationError) {
+      return { document: migrateAdditiveDraft(candidate, published.document), text, version: versionOf(text), migrated: true, migrationReason: validationError instanceof Error ? validationError.message : "页面结构已更新" };
+    }
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       return { document: structuredClone(published.document), text: published.text, version: published.version };
@@ -378,6 +415,7 @@ export function createEditorServer() {
           draft: draft.document,
           version: published.version,
           draftVersion: draft.version,
+          draftMigrated: Boolean(draft.migrated),
           publishTarget: { branch: publishBranch, currentBranch: branch, remote: publishRemote },
         });
       }

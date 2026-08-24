@@ -76,5 +76,7 @@ test("ships Rust community, profile, ticket, Passkey, survey and notification ro
   assert.match(main, /\/api\/admin\/surveys\/\{id\}\/report/);
   assert.match(surveys, /enforce_survey_ip_limit|survey_ip_limit/);
   assert.match(surveys, /build_csv/);
+  assert.match(surveys, /survey_query_attempts/);
+  assert.match(surveys, /idx_survey_responses_attempt/);
   assert.match(nav, /mobile-menu-trigger/);
 });

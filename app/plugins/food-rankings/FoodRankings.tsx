@@ -1,0 +1,15 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { FoodRankingEntry, FoodRankingType } from "../../../lib/food-rankings";
+import Icon from "../../Icon";
+
+export default function FoodRankings() {
+  const [items, setItems] = useState<FoodRankingEntry[]>([]); const [query, setQuery] = useState(""); const [type, setType] = useState<"all" | FoodRankingType>("all"); const [category, setCategory] = useState("all"); const [message, setMessage] = useState("正在读取榜单…");
+  useEffect(() => { fetch("/api/food-rankings").then(async (response) => { const result = await response.json() as { entries?: FoodRankingEntry[]; error?: string }; if (!response.ok) throw new Error(result.error || "榜单加载失败"); setItems(result.entries || []); setMessage(""); }).catch((error) => setMessage(error instanceof Error ? error.message : "榜单加载失败")); }, []);
+  const categories = useMemo(() => [...new Set(items.map((item) => item.category).filter(Boolean))], [items]);
+  const shown = useMemo(() => { const needle = query.trim().toLocaleLowerCase("zh-CN"); return items.filter((item) => (type === "all" || item.listType === type) && (category === "all" || item.category === category) && (!needle || [item.restaurant, item.location, item.category, item.summary, item.details, ...item.tags].join(" ").toLocaleLowerCase("zh-CN").includes(needle))); }, [category, items, query, type]);
+  return <section className="food-rankings-widget"><div className="food-rankings-tools"><label><Icon name="search" /><span className="sr-only">搜索餐厅</span><input type="search" value={query} placeholder="搜索餐厅、位置或标签" onChange={(event) => setQuery(event.target.value)} /></label><div className="food-ranking-filters" aria-label="筛选榜单"><button type="button" className={type === "all" ? "is-active" : ""} onClick={() => setType("all")}>全部</button><button type="button" className={type === "red" ? "is-active is-red" : ""} onClick={() => setType("red")}>红榜</button><button type="button" className={type === "black" ? "is-active is-black" : ""} onClick={() => setType("black")}>黑榜</button></div><select aria-label="按分类筛选" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">全部分类</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></div>
+    {message ? <div className="food-rankings-empty"><p>{message}</p></div> : shown.length ? <div className="food-ranking-grid">{shown.map((item) => <article className={`food-ranking-card is-${item.listType}`} key={item.id}><header><span className={`food-ranking-badge is-${item.listType}`}>{item.listType === "red" ? "红榜推荐" : "黑榜避雷"}</span>{item.category && <small>{item.category}</small>}</header><h2>{item.restaurant}</h2>{item.location && <p className="food-ranking-location">{item.location}</p>}<strong>{item.summary}</strong>{item.details && <p>{item.details}</p>}{item.tags.length > 0 && <footer>{item.tags.map((tag) => <span key={tag}>{tag}</span>)}</footer>}</article>)}</div> : <div className="food-rankings-empty"><Icon name="search" /><b>没有找到符合条件的餐厅</b><span>换个关键词或清除筛选试试。</span></div>}
+  </section>;
+}

@@ -115,6 +115,11 @@ export const surveys = sqliteTable(
     description: text("description").notNull().default(""),
     status: text("status", { enum: ["draft", "published", "closed"] }).notNull().default("draft"),
     access: text("access", { enum: ["public", "registered"] }).notNull().default("public"),
+    kind: text("kind", { enum: ["standard", "exam", "information_query"] }).notNull().default("standard"),
+    durationMinutes: integer("duration_minutes").notNull().default(0),
+    examInstructions: text("exam_instructions").notNull().default(""),
+    examStartAt: integer("exam_start_at").notNull().default(0),
+    queryIdentityQuestionId: text("query_identity_question_id").notNull().default(""),
     ipLimit: integer("ip_limit").notNull().default(1),
     submitLabel: text("submit_label").notNull().default("提交答卷"),
     successMode: text("success_mode", { enum: ["message", "redirect"] }).notNull().default("message"),
@@ -153,10 +158,44 @@ export const surveyResponses = sqliteTable(
     id: text("id").primaryKey(),
     surveyId: text("survey_id").notNull(),
     ipHash: text("ip_hash").notNull(),
+    userId: text("user_id"),
+    lookupHash: text("lookup_hash"),
     answersJson: text("answers_json").notNull(),
+    score: integer("score"),
+    maxScore: integer("max_score"),
+    feedbackJson: text("feedback_json").notNull().default('{"status":"pending","title":"","modules":[],"updatedAt":null}'),
+    feedbackUpdatedAt: integer("feedback_updated_at", { mode: "timestamp_ms" }),
+    attemptId: text("attempt_id"),
+    manualScoresJson: text("manual_scores_json").notNull().default("{}"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("idx_survey_responses_survey_created_at").on(table.surveyId, table.createdAt), index("idx_survey_responses_ip").on(table.surveyId, table.ipHash)],
+  (table) => [index("idx_survey_responses_survey_created_at").on(table.surveyId, table.createdAt), index("idx_survey_responses_ip").on(table.surveyId, table.ipHash), uniqueIndex("idx_survey_responses_attempt").on(table.attemptId)],
+);
+
+export const surveyAttempts = sqliteTable(
+  "survey_attempts",
+  {
+    id: text("id").primaryKey(),
+    surveyId: text("survey_id").notNull(),
+    actorKey: text("actor_key").notNull(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    submittedAt: integer("submitted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [index("idx_survey_attempts_actor").on(table.surveyId, table.actorKey, table.expiresAt)],
+);
+
+export const surveyQueryAttempts = sqliteTable(
+  "survey_query_attempts",
+  {
+    id: text("id").primaryKey(),
+    surveyId: text("survey_id").notNull(),
+    ipHash: text("ip_hash").notNull(),
+    lookupHash: text("lookup_hash").notNull(),
+    success: integer("success", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("idx_survey_query_attempts_ip").on(table.surveyId, table.ipHash, table.createdAt), index("idx_survey_query_attempts_lookup").on(table.surveyId, table.lookupHash, table.success, table.createdAt)],
 );
 
 export type Post = typeof posts.$inferSelect;

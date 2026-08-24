@@ -22,6 +22,8 @@ pnpm run text:edit
 
 运行时密钥继续在 Cloudflare Worker 的 **Settings → Variables and Secrets** 中维护；工作流使用 `--keep-vars`，部署时不会覆盖这些值。
 
+管理员邮箱不写入公开仓库。部署前请在 Cloudflare Worker 的 **Settings → Variables and Secrets** 中添加加密变量 `ADMIN_EMAIL`，其值为实际管理员邮箱；`RESEND_API_KEY` 仍用于发送登录验证码。
+
 ## Learn More
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)

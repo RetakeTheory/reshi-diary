@@ -4,7 +4,7 @@ import { MouseEvent, useEffect, useRef, useState } from "react";
 import Icon from "../Icon";
 import { createAttachmentCard } from "../../lib/attachment-cards";
 
-export default function SurveyRichEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+export default function SurveyRichEditor({ value, onChange, label = "提交后自定义内容" }: { value: string; onChange: (value: string) => void; label?: string }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -97,6 +97,7 @@ export default function SurveyRichEditor({ value, onChange }: { value: string; o
   }
 
   return <div className="rich-editor-wrap survey-rich-editor">
+    <strong>{label}</strong>
     <div className="rich-editor-label"><span>提交后的提示内容</span><small>与文章编辑器一致，支持富文本和图片</small></div>
     <div className="rich-toolbar" role="toolbar" aria-label="提交后内容排版工具">
       <div className="toolbar-group">

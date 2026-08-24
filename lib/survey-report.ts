@@ -1,6 +1,6 @@
-import type { SurveyAnswers, SurveyQuestion } from "./surveys";
+import type { SurveyAnswers, SurveyFeedback, SurveyQuestion } from "./surveys";
 
-export type SurveyResponseResult = { id: string; answers: SurveyAnswers; createdAt: number };
+export type SurveyResponseResult = { id: string; answers: SurveyAnswers; createdAt: number; score?: number; maxScore?: number; manualScores?: Record<string, number>; manualPending?: boolean; feedback?: SurveyFeedback };
 export type SurveyQuestionReport = {
   id: string; title: string; type: SurveyQuestion["type"]; answered: number; total: number;
   options?: Array<{ id: string; label: string; count: number }>;
@@ -10,7 +10,7 @@ export type SurveyQuestionReport = {
 };
 
 export function buildSurveyQuestionReports(questions: SurveyQuestion[], responses: SurveyResponseResult[]): SurveyQuestionReport[] {
-  return questions.map((question) => {
+  return questions.filter((question) => question.type !== "heading").map((question) => {
     const values = responses.map((response) => ({ responseId: response.id, value: response.answers[question.id] })).filter((entry) => entry.value !== undefined && entry.value !== null && entry.value !== "");
     const base = { id: question.id, title: question.title, type: question.type, answered: values.length, total: responses.length };
     if (question.type === "single" || question.type === "multiple") {

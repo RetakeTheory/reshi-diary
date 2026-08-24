@@ -85,7 +85,8 @@ impl Config {
                 .unwrap_or_else(|_| PathBuf::from("data/uploads")),
             public_origin,
             admin_email: std::env::var("ADMIN_EMAIL")
-                .unwrap_or_else(|_| "reshi1417@163.com".into())
+                .context("ADMIN_EMAIL is required")?
+                .trim()
                 .to_lowercase(),
             session_secure: std::env::var("SESSION_SECURE")
                 .map(|value| value != "false" && value != "0")
@@ -164,6 +165,11 @@ fn routes(state: AppState) -> Router {
             get(surveys::get_public).post(surveys::submit_public),
         )
         .route("/api/surveys/{slug}/files", post(surveys::init_file_upload))
+        .route("/api/surveys/{slug}/attempt", post(surveys::start_attempt))
+        .route(
+            "/api/surveys/{slug}/query",
+            get(surveys::get_public_query).post(surveys::post_public_query),
+        )
         .route(
             "/api/surveys/{slug}/files/{upload_id}",
             axum::routing::put(surveys::upload_file),
@@ -222,6 +228,10 @@ fn routes(state: AppState) -> Router {
         .route(
             "/api/admin/surveys/{id}/results",
             get(surveys::results_admin),
+        )
+        .route(
+            "/api/admin/surveys/{id}/responses/{response_id}/feedback",
+            axum::routing::put(surveys::update_feedback_admin),
         )
         .route(
             "/api/admin/posts/{id}",
@@ -1041,7 +1051,7 @@ impl IntoResponse for AppError {
             Self::SurveyLimit(message) => (StatusCode::TOO_MANY_REQUESTS, message.as_str(), None),
             Self::PayloadTooLarge => (
                 StatusCode::PAYLOAD_TOO_LARGE,
-                "单个文件不能超过 20 MB",
+                "单个文件不能超过 100 MB",
                 None,
             ),
             Self::Unavailable(message) => (StatusCode::SERVICE_UNAVAILABLE, *message, None),

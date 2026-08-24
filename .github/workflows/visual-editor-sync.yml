@@ -1,0 +1,42 @@
+name: Visual editor sync
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "src/content/site-pages.json"
+      - "scripts/site-visual-editor.html"
+      - "scripts/visual-editor-server.mjs"
+      - "scripts/check-visual-editor-coverage.mjs"
+      - ".github/workflows/visual-editor-sync.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "src/content/site-pages.json"
+      - "scripts/site-visual-editor.html"
+      - "scripts/visual-editor-server.mjs"
+      - "scripts/check-visual-editor-coverage.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  sync-check:
+    name: Keep every editable page in sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate editor page coverage and additive draft migration
+        run: pnpm run editor:sync
+      - name: Build the same site that the editor publishes
+        run: pnpm run build
