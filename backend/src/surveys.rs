@@ -306,7 +306,7 @@ struct BatchScoreUpdate {
 }
 
 #[derive(Deserialize)]
-struct BatchScoreInput {
+pub(crate) struct BatchScoreInput {
     updates: Vec<BatchScoreUpdate>,
 }
 
@@ -748,13 +748,13 @@ pub(crate) async fn submit_public(
     } else {
         json!({ "mode": "message", "content": row.success_content })
     };
-    if let Value::Object(object) = &mut completion {
-        if row.query_enabled != 0 {
-            object.insert(
-                "queryUrl".into(),
-                json!(format!("/surveys/{}/query", row.slug)),
-            );
-        }
+    if let Value::Object(object) = &mut completion
+        && row.query_enabled != 0
+    {
+        object.insert(
+            "queryUrl".into(),
+            json!(format!("/surveys/{}/query", row.slug)),
+        );
     }
     Ok((
         StatusCode::CREATED,
@@ -1875,12 +1875,12 @@ fn apply_manual_scores(
             points,
             ..
         } = question
+            && scoring_mode == "manual"
+            && *points > 0
         {
-            if scoring_mode == "manual" && *points > 0 {
-                match manual_scores.get(id) {
-                    Some(value) if (0..=*points).contains(value) => score += value,
-                    _ => manual_pending = true,
-                }
+            match manual_scores.get(id) {
+                Some(value) if (0..=*points).contains(value) => score += value,
+                _ => manual_pending = true,
             }
         }
     }
