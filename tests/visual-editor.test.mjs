@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { gitCherryOnlyContainsUpstreamPatches, migrateAdditiveDraft, parseGitStatusPaths, validateSiteDocument } from "../scripts/visual-editor-server.mjs";
+import { gitCherryLocalCommitShas, gitCherryOnlyContainsUpstreamPatches, migrateAdditiveDraft, parseGitStatusPaths, validateSiteDocument } from "../scripts/visual-editor-server.mjs";
 
 const baseline = JSON.parse(await readFile(new URL("../src/content/site-pages.json", import.meta.url), "utf8"));
 const copy = () => structuredClone(baseline);
@@ -88,4 +88,5 @@ test("GitHub sync only rebases local commits whose patches already exist upstrea
   assert.equal(gitCherryOnlyContainsUpstreamPatches("- abc123\n- def456\n"), true);
   assert.equal(gitCherryOnlyContainsUpstreamPatches("- abc123\n+ def456\n"), false);
   assert.equal(gitCherryOnlyContainsUpstreamPatches(""), false);
+  assert.deepEqual(gitCherryLocalCommitShas("- abc123\n+ def456\n+ 789abc\n"), ["def456", "789abc"]);
 });

@@ -219,6 +219,10 @@ export function gitCherryOnlyContainsUpstreamPatches(output) {
   return lines.length > 0 && lines.every((line) => line.startsWith("- "));
 }
 
+export function gitCherryLocalCommitShas(output) {
+  return output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith("+ ")).map((line) => line.slice(2).trim()).filter(Boolean);
+}
+
 async function currentBranch() {
   const result = await run("git", ["branch", "--show-current"]);
   if (!result.output) throw new Error("当前 Git 处于 detached HEAD，不能自动发布");
@@ -260,10 +264,23 @@ async function syncFromGitHub() {
   let sync = parseAheadBehind((await run("git", ["rev-list", "--left-right", "--count", `${remoteRef}...HEAD`])).output);
   if (sync.ahead && sync.behind) {
     const cherry = await run("git", ["cherry", remoteRef, "HEAD"]);
-    if (!gitCherryOnlyContainsUpstreamPatches(cherry.output)) {
+    const localOnlyCommits = gitCherryLocalCommitShas(cherry.output);
+    const localOnlyPaths = new Set();
+    for (const commit of localOnlyCommits) {
+      const changed = await run("git", ["diff-tree", "--no-commit-id", "--name-only", "-r", commit]);
+      changed.output.split(/\r?\n/).map((path) => path.trim()).filter(Boolean).forEach((path) => localOnlyPaths.add(path));
+    }
+    const localOnlyFilesAlreadyMatch = localOnlyPaths.size > 0
+      && !(await run("git", ["diff", "--name-only", remoteRef, "HEAD", "--", ...localOnlyPaths])).output;
+    if (!gitCherryOnlyContainsUpstreamPatches(cherry.output) && !localOnlyFilesAlreadyMatch) {
       throw new Error(`本地与 GitHub 已分别产生提交（本地 ${sync.ahead}、GitHub ${sync.behind}），为避免丢失内容已停止自动同步`);
     }
-    await run("git", ["rebase", remoteRef]);
+    try {
+      await run("git", ["rebase", "--empty=drop", remoteRef]);
+    } catch (error) {
+      await run("git", ["rebase", "--abort"]).catch(() => {});
+      throw new Error(`自动对齐提交时发生冲突，已恢复同步前状态：${error instanceof Error ? error.message : "未知错误"}`);
+    }
     sync = { ahead: 0, behind: 0 };
   } else if (sync.ahead) {
     throw new Error(`本地有 ${sync.ahead} 个尚未推送的提交，请先发布或手动处理后再同步`);
