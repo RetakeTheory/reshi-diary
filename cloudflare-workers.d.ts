@@ -31,6 +31,7 @@ interface ReshiWorkerEnv {
   AWS_S3_BUCKET?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM?: string;
+  ADMIN_EMAIL?: string;
   RUST_BACKEND_ORIGIN?: string;
 }
 

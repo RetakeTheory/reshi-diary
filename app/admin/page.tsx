@@ -14,6 +14,7 @@ import TicketManager from "./TicketManager";
 import SurveyManager from "./SurveyManager";
 import UserManager from "./UserManager";
 import FoodRankingManager from "./FoodRankingManager";
+import AdminDashboardTabs, { type AdminDashboardTab } from "./AdminDashboardTabs";
 import EditableModule from "../EditableModule";
 import { pageDocument } from "../../lib/site-pages";
 
@@ -54,6 +55,20 @@ export default async function AdminPage() {
     "admin-food-rankings": <FoodRankingManager />,
     "admin-posts": <AdminEditor initialPosts={initialPosts} />,
   };
+  const tabMeta = {
+    "admin-notice": { description: "发布或撤下全站顶部通知", icon: "spark" },
+    "admin-passkeys": { description: "管理后台登录设备与密钥", icon: "key" },
+    "admin-tickets": { description: "查看工单并继续回复用户", icon: "comment" },
+    "admin-surveys": { description: "创建问卷、考试与结果查询", icon: "table" },
+    "admin-food-rankings": { description: "维护学校餐厅红榜与黑榜", icon: "ranking" },
+    "admin-posts": { description: "撰写、预览并发布文章", icon: "file" },
+  } as const;
+  const tabs: AdminDashboardTab[] = page.modules.flatMap((module) => {
+    const content = sections[module.id as keyof typeof sections];
+    const meta = tabMeta[module.id as keyof typeof tabMeta];
+    return content && meta ? [{ id: module.id, label: module.label, ...meta, content: <EditableModule module={module}>{content}</EditableModule> }] : [];
+  });
+  tabs.push({ id: "admin-users", label: "注册用户管理", description: "搜索用户并处理恶意账户", icon: "user", content: <UserManager /> });
 
   return (
     <main className="admin-shell">
@@ -61,10 +76,7 @@ export default async function AdminPage() {
         <a className="brand" href="/"><span>RE</span>reshi 的日记本</a>
         <div><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
-      {page.modules.map((module) => <EditableModule module={module} key={module.id}>
-        {sections[module.id as keyof typeof sections]}
-      </EditableModule>)}
-      <UserManager />
+      <AdminDashboardTabs items={tabs} />
     </main>
   );
 }

@@ -31,10 +31,11 @@ export default function EmailLogin({ email, passkeysEnabled = true }: { email: s
   }, [step]);
 
   async function sendCode() {
+    if (!email) { setMessage("管理员邮箱尚未配置，请先设置 ADMIN_EMAIL，或使用 Passkey 登录"); return; }
     setBusy(true); setMessage("");
     try {
       const response = await fetch("/api/admin/auth/send-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
-      const result = await response.json() as { ok?: boolean; error?: string; retryAfter?: number };
+      const result = await response.json().catch(() => ({ error: "邮件接口没有返回有效结果，请检查服务日志" })) as { ok?: boolean; error?: string; retryAfter?: number };
       if (!response.ok) throw new Error(result.error || "发送失败");
       setCode(Array(CODE_LENGTH).fill("")); setStep("code"); setCooldown(60); setMessage("验证码已发送，请检查收件箱和垃圾邮件");
     } catch (error) {
@@ -143,7 +144,7 @@ export default function EmailLogin({ email, passkeysEnabled = true }: { email: s
 
   return (
     <form className="login-form" onSubmit={verify} aria-busy={busy}>
-      <label><span>管理员邮箱</span><input value={email} readOnly aria-label="管理员邮箱" /></label>
+      <label><span>管理员邮箱</span><input value={email || "尚未配置"} readOnly aria-label="管理员邮箱" /></label>
       {step === "code" && <div className="otp-field">
         <span id="otp-label">6 位验证码</span>
         <div className="otp-inputs" role="group" aria-labelledby="otp-label" onPaste={handlePaste}>
@@ -165,7 +166,7 @@ export default function EmailLogin({ email, passkeysEnabled = true }: { email: s
       </div>}
       {message && <div className={`login-status ${message.startsWith("验证码已发送") ? "success" : ""}`} role="status" aria-live="polite">{message}</div>}
       {step === "email" ? <>
-        <button className="login-action" type="button" disabled={busy} onClick={sendCode}>{busy ? "正在发送…" : <>发送邮箱验证码 <ArrowIcon /></>}</button>
+        <button className="login-action" type="button" disabled={busy || !email} onClick={sendCode}>{busy ? "正在发送…" : <>发送邮箱验证码 <ArrowIcon /></>}</button>
         {passkeysEnabled && passkeySupported && <>
           <div className="login-divider"><span>或</span></div>
           <button className="login-passkey" type="button" disabled={busy} onClick={signInWithPasskey}><span className="passkey-symbol"><PasskeyIcon /></span> 使用 Passkey 登录</button>
