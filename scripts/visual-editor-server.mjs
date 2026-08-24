@@ -214,6 +214,11 @@ function parseAheadBehind(output) {
   return { ahead, behind };
 }
 
+export function gitCherryOnlyContainsUpstreamPatches(output) {
+  const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every((line) => line.startsWith("- "));
+}
+
 async function currentBranch() {
   const result = await run("git", ["branch", "--show-current"]);
   if (!result.output) throw new Error("当前 Git 处于 detached HEAD，不能自动发布");
@@ -227,6 +232,53 @@ async function assertOnlyPageContentChanged() {
   if (unrelated.length) {
     throw new Error(`项目还有其他未提交修改，已停止 GitHub 发布：${unrelated.slice(0, 5).join("、")}${unrelated.length > 5 ? " 等" : ""}`);
   }
+}
+
+async function assertWorktreeCleanForSync() {
+  const status = await run("git", ["status", "--porcelain", "--untracked-files=normal"]);
+  const paths = parseGitStatusPaths(status.output);
+  if (paths.length) {
+    throw new Error(`本地还有未提交修改，不能覆盖式同步：${paths.slice(0, 5).join("、")}${paths.length > 5 ? " 等" : ""}。请先保存、发布或手动处理`);
+  }
+}
+
+async function syncFromGitHub() {
+  const branch = await currentBranch();
+  if (branch !== publishBranch) throw new Error(`当前分支是 ${branch}，请切换到 ${publishBranch} 后再同步`);
+  await assertWorktreeCleanForSync();
+  await run("git", ["fetch", "--quiet", publishRemote, publishBranch]);
+  const remoteRef = `refs/remotes/${publishRemote}/${publishBranch}`;
+  let sync = parseAheadBehind((await run("git", ["rev-list", "--left-right", "--count", `${remoteRef}...HEAD`])).output);
+  if (sync.ahead && sync.behind) {
+    const cherry = await run("git", ["cherry", remoteRef, "HEAD"]);
+    if (!gitCherryOnlyContainsUpstreamPatches(cherry.output)) {
+      throw new Error(`本地与 GitHub 已分别产生提交（本地 ${sync.ahead}、GitHub ${sync.behind}），为避免丢失内容已停止自动同步`);
+    }
+    await run("git", ["rebase", remoteRef]);
+    sync = { ahead: 0, behind: 0 };
+  } else if (sync.ahead) {
+    throw new Error(`本地有 ${sync.ahead} 个尚未推送的提交，请先发布或手动处理后再同步`);
+  } else if (sync.behind) {
+    await run("git", ["merge", "--ff-only", remoteRef]);
+    sync = { ahead: 0, behind: 0 };
+  }
+  const published = await readPublished();
+  let draft = await readDraftOrPublished(published);
+  if (draft.migrated) {
+    await atomicWrite(draftPath, tempDraftPath, draft.document);
+    const text = await readFile(draftPath, "utf8");
+    draft = { ...draft, text, version: versionOf(text), migrated: false };
+  }
+  const commit = (await run("git", ["rev-parse", "HEAD"])).output;
+  return {
+    published: published.document,
+    draft: draft.document,
+    version: published.version,
+    draftVersion: draft.version,
+    publishTarget: { branch: publishBranch, currentBranch: branch, remote: publishRemote },
+    commit,
+    message: sync.ahead || sync.behind ? "同步未完成" : `本地项目已与 GitHub ${publishRemote}/${publishBranch} 对齐（${commit.slice(0, 7)}）`,
+  };
 }
 
 async function assertPendingCommitsAreEditorPublishes() {
@@ -430,6 +482,10 @@ export function createEditorServer() {
       if (request.method === "POST" && pathname === "/api/site-pages/reset-draft") {
         assertSameOrigin(request);
         return jsonResponse(response, 200, { ok: true, ...(await resetDraft()) });
+      }
+      if (request.method === "POST" && pathname === "/api/site-pages/sync-github") {
+        assertSameOrigin(request);
+        return jsonResponse(response, 200, { ok: true, ...(await syncFromGitHub()) });
       }
       if (pathname === "/figma/sync-text" || pathname === "/api/home-text") {
         return jsonResponse(response, 410, { ok: false, error: "旧版首页/Figma 接口已停用，请使用整站浏览器编辑器" });

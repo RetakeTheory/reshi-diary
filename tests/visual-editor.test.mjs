@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { migrateAdditiveDraft, parseGitStatusPaths, validateSiteDocument } from "../scripts/visual-editor-server.mjs";
+import { gitCherryOnlyContainsUpstreamPatches, migrateAdditiveDraft, parseGitStatusPaths, validateSiteDocument } from "../scripts/visual-editor-server.mjs";
 
 const baseline = JSON.parse(await readFile(new URL("../src/content/site-pages.json", import.meta.url), "utf8"));
 const copy = () => structuredClone(baseline);
@@ -82,4 +82,10 @@ test("Git publish status parsing keeps the exact changed file scope", () => {
   assert.deepEqual(parseGitStatusPaths("R  old.json -> src/content/site-pages.json\n"), [
     "src/content/site-pages.json",
   ]);
+});
+
+test("GitHub sync only rebases local commits whose patches already exist upstream", () => {
+  assert.equal(gitCherryOnlyContainsUpstreamPatches("- abc123\n- def456\n"), true);
+  assert.equal(gitCherryOnlyContainsUpstreamPatches("- abc123\n+ def456\n"), false);
+  assert.equal(gitCherryOnlyContainsUpstreamPatches(""), false);
 });

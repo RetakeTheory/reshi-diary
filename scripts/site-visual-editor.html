@@ -20,6 +20,7 @@
       <div class="spacer"></div>
       <div class="group"><button id="undo" class="icon-button" title="撤销 Ctrl+Z">↶</button><button id="redo" class="icon-button" title="重做 Ctrl+Shift+Z">↷</button></div>
       <button id="open-page" class="secondary page-open" title="在新标签页打开当前真实页面">打开页面 ↗</button>
+      <button id="sync-github" class="secondary" title="安全拉取 GitHub main 最新版本，并保留本机草稿">同步 GitHub</button>
       <button id="reset" class="secondary">恢复已发布</button>
       <button id="save-draft" class="secondary">保存草稿</button>
       <button id="publish" class="primary" title="构建成功后提交到 GitHub，并触发网站部署">发布并检查 · GitHub</button>
@@ -91,6 +92,7 @@
       $("#redo").disabled = busy || !redoStack.length;
       $("#save-draft").disabled = busy || !isDirty();
       $("#publish").disabled = busy;
+      $("#sync-github").disabled = busy;
       $("#reset").disabled = busy;
       const openPage=$("#open-page"); const previewPath=pagePreviewPath(); openPage.disabled=busy||!previewPath; openPage.title=previewPath?`打开 ${previewOrigin}${previewPath}`:"动态页面需要具体参数，请在网站中打开";
       if (!busy && announce) mark(isDirty() ? "dirty" : "success", isDirty() ? "有尚未保存的修改" : "草稿已保存");
@@ -233,6 +235,7 @@
     $("#undo").addEventListener("click",()=>restore(undoStack,redoStack)); $("#redo").addEventListener("click",()=>restore(redoStack,undoStack));
     $("#save-draft").addEventListener("click",()=>save("/api/site-pages/draft","正在保存本机草稿…"));
     $("#open-page").addEventListener("click",()=>{const path=pagePreviewPath();if(path)window.open(`${previewOrigin}${path}`,"_blank","noopener,noreferrer")});
+    $("#sync-github").addEventListener("click",async()=>{if(isDirty()){mark("error","请先保存当前草稿，再同步 GitHub");return}busy=true;updateState(false);mark("","正在检查并同步 GitHub main 最新版本…");try{const result=await request("/api/site-pages/sync-github",{method:"POST"});doc=clone(result.draft);published=clone(result.published);version=result.version;draftVersion=result.draftVersion;publishTarget=result.publishTarget;draftNeedsMigration=false;savedSnapshot=JSON.stringify(doc);undoStack=[];redoStack=[];selectedId=currentModules()[0]?.id||"";renderAll();mark("success",result.message)}catch(error){mark("error",error.message||"GitHub 同步失败")}finally{busy=false;updateState(false)}});
     $("#publish").addEventListener("click",()=>save("/api/site-pages/publish",`正在完整构建、提交并推送到 ${publishTarget?.remote||"origin"}/${publishTarget?.branch||"main"}；随后 GitHub Actions 会更新网站…`));
     $("#reset").addEventListener("click",async()=>{ if(!confirm("确定丢弃本机草稿，恢复为当前已发布内容吗？"))return; busy=true; updateState(false); try{const result=await request("/api/site-pages/reset-draft",{method:"POST"}); doc=clone(result.document); published=clone(result.document); version=result.version; draftVersion=result.draftVersion; draftNeedsMigration=false; savedSnapshot=JSON.stringify(doc); undoStack=[];redoStack=[];renderAll();mark("success",result.message)}catch(error){mark("error",error.message)}finally{busy=false;updateState(false)} });
     window.addEventListener("keydown",event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="z"){event.preventDefault();restore(event.shiftKey?redoStack:undoStack,event.shiftKey?undoStack:redoStack)}});

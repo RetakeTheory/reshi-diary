@@ -42,6 +42,7 @@ yarn-error.log*
 *.tsbuildinfo
 /src/content/site-pages.draft.json
 /src/content/site-pages.publish-backup.json
+/.codex-worktrees/
 
 # rust backend
 /backend/target/
