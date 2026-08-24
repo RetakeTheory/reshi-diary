@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import Link from "next/link";
 import type { FileQuestion, MatrixQuestion, PersonalInfoQuestion, Survey, SurveyAnswers, SurveyFileAnswer, SurveyQuestion } from "../../../lib/surveys";
 import { questionIsVisible, validateSurveyAnswers } from "../../../lib/surveys";
+import { serverClockNow, type ServerClockAnchor } from "../../../lib/server-clock";
 import Icon from "../../Icon";
 import RichPostContent from "../../posts/[slug]/RichPostContent";
 
@@ -97,6 +98,7 @@ function FileField({ slug, question, value, onChange }: { slug: string; question
 
 export default function SurveyForm({ slug }: { slug: string }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const serverClockRef = useRef<ServerClockAnchor | null>(null);
   const timeoutSubmittedRef = useRef(false);
   const timeoutRetryCountRef = useRef(0);
   const [survey, setSurvey] = useState<PublicSurvey | null>(null);
@@ -114,16 +116,35 @@ export default function SurveyForm({ slug }: { slug: string }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [timeoutRetryTick, setTimeoutRetryTick] = useState(0);
   const [acceptedInstructions, setAcceptedInstructions] = useState(false);
-  useEffect(() => { fetch(`/api/surveys/${encodeURIComponent(slug)}`, { cache: "no-store" }).then(async (response) => { const result = await response.json() as { survey?: PublicSurvey; error?: string; requiresLogin?: boolean; serverNow?: number }; if (!response.ok || !result.survey) { setRequiresLogin(result.requiresLogin === true); throw new Error(result.error || "问卷加载失败"); } setSurvey(result.survey); setNow(result.serverNow || Date.now()); }).catch((error) => setMessage(error instanceof Error ? error.message : "问卷加载失败")).finally(() => setLoading(false)); }, [slug]);
-  useEffect(() => { if (submitted || !survey || survey.kind !== "exam") return; const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [submitted, survey]);
+  const syncServerClock = useCallback((serverNow?: number) => {
+    if (typeof serverNow !== "number" || !Number.isFinite(serverNow)) return;
+    serverClockRef.current = { serverNow, monotonicNow: performance.now() };
+    setNow(serverNow);
+  }, []);
+  const readServerClock = useCallback(() => serverClockNow(serverClockRef.current, performance.now()), []);
+  useEffect(() => { fetch(`/api/surveys/${encodeURIComponent(slug)}`, { cache: "no-store" }).then(async (response) => { const result = await response.json() as { survey?: PublicSurvey; error?: string; requiresLogin?: boolean; serverNow?: number }; if (!response.ok || !result.survey) { setRequiresLogin(result.requiresLogin === true); throw new Error(result.error || "问卷加载失败"); } setSurvey(result.survey); syncServerClock(result.serverNow); }).catch((error) => setMessage(error instanceof Error ? error.message : "问卷加载失败")).finally(() => setLoading(false)); }, [slug, syncServerClock]);
+  useEffect(() => { if (submitted || !survey || survey.kind !== "exam") return; const refresh = () => setNow(readServerClock()); refresh(); const timer = window.setInterval(refresh, 1000); return () => window.clearInterval(timer); }, [submitted, survey, readServerClock]);
+  useEffect(() => {
+    if (submitted || !survey || survey.kind !== "exam") return;
+    const resync = async () => {
+      try {
+        const response = await fetch(`/api/surveys/${encodeURIComponent(slug)}`, { cache: "no-store" });
+        const result = await response.json() as { serverNow?: number };
+        if (response.ok) syncServerClock(result.serverNow);
+      } catch { /* The existing server anchor remains usable when a refresh fails. */ }
+    };
+    const timer = window.setInterval(() => void resync(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [slug, submitted, survey, syncServerClock]);
   async function startExam() {
     if (!survey || busy || !acceptedInstructions) return;
     setBusy(true); setMessage("");
     try {
       const response = await fetch(`/api/surveys/${encodeURIComponent(slug)}/attempt`, { method: "POST" });
       const result = await response.json() as { attempt?: { id: string; expiresAt: number }; error?: string; requiresLogin?: boolean; serverNow?: number };
+      syncServerClock(result.serverNow);
       if (!response.ok || !result.attempt) { setRequiresLogin(result.requiresLogin === true); throw new Error(result.error || "无法开始考试"); }
-      setAttemptId(result.attempt.id); setExpiresAt(result.attempt.expiresAt); setNow(result.serverNow || Date.now());
+      setAttemptId(result.attempt.id); setExpiresAt(result.attempt.expiresAt);
     } catch (error) { setMessage(error instanceof Error ? error.message : "无法开始考试"); }
     finally { setBusy(false); }
   }
