@@ -1,6 +1,6 @@
-// 210k keeps PBKDF2 above the accepted legacy floor while avoiding Worker CPU
-// exhaustion on desktop password setup. Existing 600k hashes remain verifiable.
-const ITERATIONS = 210_000;
+// Keep the Worker fallback at the accepted verification floor so password
+// setup fits Cloudflare CPU limits. Existing higher-cost hashes remain valid.
+const ITERATIONS = 100_000;
 const encoder = new TextEncoder();
 
 function hex(bytes: Uint8Array) { return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join(""); }

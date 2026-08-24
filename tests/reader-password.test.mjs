@@ -4,7 +4,7 @@ import { hashReaderPassword, validReaderPassword, verifyReaderPassword } from ".
 
 test("reader passwords round-trip with the Worker-safe PBKDF2 cost", async () => {
   const hash = await hashReaderPassword("correct-horse-2026");
-  assert.match(hash, /^pbkdf2-sha256\$210000\$/);
+  assert.match(hash, /^pbkdf2-sha256\$100000\$/);
   assert.equal(await verifyReaderPassword("correct-horse-2026", hash), true);
   assert.equal(await verifyReaderPassword("wrong-password", hash), false);
   assert.equal(validReaderPassword("short"), false);

@@ -383,3 +383,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-l
 
 /* Query pages use a focused header without navigation controls. */
 .survey-query-shell>header>p{margin-top:0}
+
+/* Keep the reader verification card centered even when editable intro content is hidden. */
+.user-auth-shell>[data-module-id="login-form"]{grid-column:2;width:100%;max-width:480px;justify-self:center}.user-auth-shell>[data-module-id="login-form"]:only-child{grid-column:1/-1}.user-auth-shell>[data-module-id="login-form"]>.user-auth-card{width:100%}
+@media(max-width:800px){.user-auth-shell>[data-module-id="login-form"]{grid-column:1}}
