@@ -197,6 +197,7 @@ export async function ensureDatabaseSchema() {
       status TEXT DEFAULT 'draft' NOT NULL,
       access TEXT DEFAULT 'public' NOT NULL,
       kind TEXT DEFAULT 'standard' NOT NULL,
+      query_enabled INTEGER DEFAULT 0 NOT NULL,
       duration_minutes INTEGER DEFAULT 0 NOT NULL,
       exam_instructions TEXT DEFAULT '' NOT NULL,
       exam_start_at INTEGER DEFAULT 0 NOT NULL,
@@ -334,6 +335,8 @@ export async function ensureDatabaseSchema() {
   if (!surveyNames.has("success_content")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_content TEXT DEFAULT '<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>' NOT NULL").run();
   if (!surveyNames.has("success_redirect_url")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_redirect_url TEXT DEFAULT '' NOT NULL").run();
   if (!surveyNames.has("kind")) await db.prepare("ALTER TABLE surveys ADD COLUMN kind TEXT DEFAULT 'standard' NOT NULL").run();
+  if (!surveyNames.has("query_enabled")) await db.prepare("ALTER TABLE surveys ADD COLUMN query_enabled INTEGER DEFAULT 0 NOT NULL").run();
+  await db.prepare("UPDATE surveys SET query_enabled = 1, kind = 'standard' WHERE kind = 'information_query'").run();
   if (!surveyNames.has("duration_minutes")) await db.prepare("ALTER TABLE surveys ADD COLUMN duration_minutes INTEGER DEFAULT 0 NOT NULL").run();
   if (!surveyNames.has("exam_instructions")) await db.prepare("ALTER TABLE surveys ADD COLUMN exam_instructions TEXT DEFAULT '' NOT NULL").run();
   if (!surveyNames.has("exam_start_at")) await db.prepare("ALTER TABLE surveys ADD COLUMN exam_start_at INTEGER DEFAULT 0 NOT NULL").run();

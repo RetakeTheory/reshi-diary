@@ -1,7 +1,7 @@
 export type SurveyStatus = "draft" | "published" | "closed";
 export type SurveyAccess = "public" | "registered";
 export type SurveySuccessMode = "message" | "redirect";
-export type SurveyKind = "standard" | "exam" | "information_query";
+export type SurveyKind = "standard" | "exam";
 export type QuestionType = "single" | "multiple" | "matrix_single" | "matrix_multiple" | "short_text" | "personal_info" | "heading" | "file";
 export type ShortTextType = "text" | "digits_fixed" | "id_card" | "name" | "english";
 export type ShortTextScoringMode = "exact" | "contains" | "manual";
@@ -32,7 +32,7 @@ export type HeadingQuestion = QuestionBase<"heading">;
 export type FileQuestion = QuestionBase<"file"> & { maxSizeMb: number };
 export type SurveyFileAnswer = { key: string; name: string; size: number; type: string };
 export type SurveyQuestion = ChoiceQuestion | MatrixQuestion | ShortTextQuestion | PersonalInfoQuestion | HeadingQuestion | FileQuestion;
-export type SurveyFeedbackModule = { id: string; title: string; content: string; tone: "neutral" | "positive" | "warning" };
+export type SurveyFeedbackModule = { id: string; title: string; content: string; tone: "neutral" | "positive" | "warning"; backgroundColor: string };
 export type SurveyFeedback = { status: "pending" | "ready"; title: string; modules: SurveyFeedbackModule[]; updatedAt: number | null };
 
 export type Survey = {
@@ -43,6 +43,7 @@ export type Survey = {
   status: SurveyStatus;
   access: SurveyAccess;
   kind: SurveyKind;
+  queryEnabled: boolean;
   durationMinutes: number;
   examInstructions: string;
   examStartAt: number;
@@ -58,7 +59,7 @@ export type Survey = {
   updatedAt: number;
 };
 
-export type SurveyInput = Pick<Survey, "slug" | "title" | "description" | "status" | "access" | "kind" | "durationMinutes" | "examInstructions" | "examStartAt" | "queryIdentityQuestionId" | "ipLimit" | "submitLabel" | "successMode" | "successContent" | "successRedirectUrl" | "questions">;
+export type SurveyInput = Pick<Survey, "slug" | "title" | "description" | "status" | "access" | "kind" | "queryEnabled" | "durationMinutes" | "examInstructions" | "examStartAt" | "queryIdentityQuestionId" | "ipLimit" | "submitLabel" | "successMode" | "successContent" | "successRedirectUrl" | "questions">;
 export type SurveyAnswers = Record<string, unknown>;
 
 const idPattern = /^[A-Za-z0-9_-]{1,80}$/;
@@ -86,17 +87,19 @@ function normalizeItems(value: unknown, label: string, min: number, max: number)
 
 export function normalizeSurveyInput(raw: unknown): SurveyInput {
   if (!raw || typeof raw !== "object") throw new Error("问卷内容无效");
-  const input = raw as Partial<SurveyInput>;
+  const input = raw as Partial<Omit<SurveyInput, "kind">> & { kind?: SurveyKind | "information_query" };
   const slug = text(input.slug, 64).toLowerCase();
   const title = text(input.title, 120);
   const description = text(input.description, 2000);
   const status: SurveyStatus = input.status === "published" || input.status === "closed" ? input.status : "draft";
   const access: SurveyAccess = input.access === "registered" ? "registered" : "public";
-  const kind: SurveyKind = input.kind === "exam" || input.kind === "information_query" ? input.kind : "standard";
+  const legacyInformationQuery = input.kind === "information_query";
+  const kind: SurveyKind = input.kind === "exam" ? "exam" : "standard";
+  const queryEnabled = input.queryEnabled === true || legacyInformationQuery;
   const durationMinutes = kind === "exam" ? Number(input.durationMinutes || 60) : 0;
   const examInstructions = kind === "exam" && typeof input.examInstructions === "string" ? input.examInstructions.slice(0, 100_000) : "";
   const examStartAt = kind === "exam" ? Number(input.examStartAt || 0) : 0;
-  const queryIdentityQuestionId = kind === "information_query" ? text(input.queryIdentityQuestionId, 80) : "";
+  const queryIdentityQuestionId = queryEnabled && access === "public" ? text(input.queryIdentityQuestionId, 80) : "";
   const submitLabel = text(input.submitLabel, 40) || "提交答卷";
   const successMode: SurveySuccessMode = input.successMode === "redirect" ? "redirect" : "message";
   const successContent = typeof input.successContent === "string" ? input.successContent.slice(0, 100_000) : "<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>";
@@ -173,11 +176,11 @@ export function normalizeSurveyInput(raw: unknown): SurveyInput {
     const allowed = new Set([...source.options.map((item) => item.id), ...(source.allowOther ? ["__other"] : [])]);
     if (!allowed.has(question.logic.optionId)) throw new Error(`第 ${index + 1} 题的显示条件选项无效`);
   });
-  if (kind === "information_query" && access === "public") {
+  if (queryEnabled && access === "public") {
     const identity = questions.find((question) => question.id === queryIdentityQuestionId);
     if (!identity || !isSurveyQueryIdentityQuestion(identity)) throw new Error("公开信息查询需使用始终显示的必答邮箱、学号/工号或身份证题作为查询凭证");
   }
-  return { slug, title, description, status, access, kind, durationMinutes, examInstructions, examStartAt, queryIdentityQuestionId, ipLimit, submitLabel, successMode, successContent, successRedirectUrl, questions };
+  return { slug, title, description, status, access, kind, queryEnabled, durationMinutes, examInstructions, examStartAt, queryIdentityQuestionId, ipLimit, submitLabel, successMode, successContent, successRedirectUrl, questions };
 }
 
 export function isSafeSurveyRedirect(value: string) {
@@ -238,8 +241,8 @@ export function normalizeSurveyLookupValue(value: string) {
   return value.normalize("NFKC").trim().toLocaleLowerCase("zh-CN").replace(/\s+/g, " ");
 }
 
-export function surveyLookupValue(survey: Pick<Survey, "kind" | "access" | "queryIdentityQuestionId" | "questions">, answers: SurveyAnswers) {
-  if (survey.kind !== "information_query" || survey.access === "registered") return "";
+export function surveyLookupValue(survey: Pick<Survey, "queryEnabled" | "access" | "queryIdentityQuestionId" | "questions">, answers: SurveyAnswers) {
+  if (!survey.queryEnabled || survey.access === "registered") return "";
   const question = survey.questions.find((item) => item.id === survey.queryIdentityQuestionId);
   if (!question || question.type !== "personal_info") return "";
   return normalizeSurveyLookupValue(typeof answers[question.id] === "string" ? answers[question.id] as string : "");

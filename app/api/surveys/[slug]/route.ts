@@ -25,7 +25,7 @@ export async function GET(request: Request, context: Context) {
   const full = surveyFromRow(row);
   const survey = {
     id: full.id, slug: full.slug, title: full.title, description: full.description,
-    status: full.status, access: full.access, kind: full.kind, durationMinutes: full.durationMinutes, examInstructions: full.examInstructions, examStartAt: full.examStartAt, ipLimit: full.ipLimit, submitLabel: full.submitLabel,
+    status: full.status, access: full.access, kind: full.kind, queryEnabled: full.queryEnabled, durationMinutes: full.durationMinutes, examInstructions: full.examInstructions, examStartAt: full.examStartAt, ipLimit: full.ipLimit, submitLabel: full.submitLabel,
     successMode: full.successMode, questions: publicSurveyQuestions(full.questions), createdAt: full.createdAt, updatedAt: full.updatedAt,
   };
   return Response.json({ survey, serverNow: Date.now() }, { headers: { "Cache-Control": "no-store" } });
@@ -87,7 +87,7 @@ export async function POST(request: Request, context: Context) {
       responseId: id,
       completion: { ...(survey.successMode === "redirect"
         ? { mode: "redirect", redirectUrl: survey.successRedirectUrl }
-        : { mode: "message", content: survey.successContent }), ...(survey.kind === "exam" ? score : {}), ...(survey.kind === "information_query" ? { queryUrl: `/surveys/${survey.slug}/query` } : {}) },
+        : { mode: "message", content: survey.successContent }), ...(survey.queryEnabled ? { queryUrl: `/surveys/${survey.slug}/query` } : {}) },
     }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "提交失败" }, { status: 400 });

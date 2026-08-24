@@ -16,7 +16,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       const moduleInput = item && typeof item === "object" ? item as Partial<SurveyFeedbackModule> : {};
       const moduleTitle = clean(moduleInput.title, 120); const content = clean(moduleInput.content, 5000);
       if (!moduleTitle || !content) throw new Error(`请完善第 ${index + 1} 个反馈模块`);
-      return { id: clean(moduleInput.id, 80) || crypto.randomUUID(), title: moduleTitle, content, tone: moduleInput.tone === "positive" || moduleInput.tone === "warning" ? moduleInput.tone : "neutral" };
+      const backgroundColor = clean(moduleInput.backgroundColor, 7) || "#f3f0ff";
+      if (!/^#[0-9a-f]{6}$/i.test(backgroundColor)) throw new Error(`第 ${index + 1} 个反馈模块底色无效`);
+      return { id: clean(moduleInput.id, 80) || crypto.randomUUID(), title: moduleTitle, content, tone: moduleInput.tone === "positive" || moduleInput.tone === "warning" ? moduleInput.tone : "neutral", backgroundColor };
     });
     const { id, responseId } = await context.params; const now = Date.now();
     await ensureDatabaseSchema(); const db = await getD1();

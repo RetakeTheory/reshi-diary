@@ -16,5 +16,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const grading = item.score === null ? null : applyManualSurveyScores(survey.questions, answers, manualScores);
     return { id: item.id, answers, createdAt: item.createdAt, ...(grading ? { score: grading.score, maxScore: grading.maxScore, manualScores, manualPending: grading.manualPending } : {}), feedback: item.feedbackJson ? { ...JSON.parse(item.feedbackJson), updatedAt: item.feedbackUpdatedAt } : undefined };
   });
-  return Response.json({ survey, reports: buildSurveyQuestionReports(survey.questions, responses), responses: responses.slice((page - 1) * pageSize, page * pageSize), total: responses.length, page, pageSize, truncated: survey.responseCount > 5000 }, { headers: { "Cache-Control": "no-store" } });
+  const finalScores = survey.kind === "exam" ? responses.filter((item) => item.score !== undefined && !item.manualPending).map((item) => item.score as number).sort((a, b) => a - b) : [];
+  const statistics = survey.kind === "exam" ? {
+    average: finalScores.length ? finalScores.reduce((sum, value) => sum + value, 0) / finalScores.length : null,
+    median: finalScores.length ? finalScores.length % 2 ? finalScores[(finalScores.length - 1) / 2] : (finalScores[finalScores.length / 2 - 1] + finalScores[finalScores.length / 2]) / 2 : null,
+    highest: finalScores.length ? finalScores[finalScores.length - 1] : null,
+    graded: finalScores.length,
+    total: responses.length,
+  } : null;
+  return Response.json({ survey, reports: buildSurveyQuestionReports(survey.questions, responses), responses: responses.slice((page - 1) * pageSize, page * pageSize), total: responses.length, page, pageSize, truncated: survey.responseCount > 5000, statistics }, { headers: { "Cache-Control": "no-store" } });
 }

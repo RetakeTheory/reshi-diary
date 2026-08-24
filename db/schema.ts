@@ -116,6 +116,7 @@ export const surveys = sqliteTable(
     status: text("status", { enum: ["draft", "published", "closed"] }).notNull().default("draft"),
     access: text("access", { enum: ["public", "registered"] }).notNull().default("public"),
     kind: text("kind", { enum: ["standard", "exam", "information_query"] }).notNull().default("standard"),
+    queryEnabled: integer("query_enabled", { mode: "boolean" }).notNull().default(false),
     durationMinutes: integer("duration_minutes").notNull().default(0),
     examInstructions: text("exam_instructions").notNull().default(""),
     examStartAt: integer("exam_start_at").notNull().default(0),
