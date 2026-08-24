@@ -926,7 +926,7 @@
             "loginTitle": "登录后查询",
             "loginAction": "登录 / 注册",
             "searchAction": "查询结果",
-            "pending": "管理员尚未发布反馈，请稍后再来查看。",
+            "pending": "未发布反馈",
             "emptyTitle": "没有找到答卷",
             "emptyBody": "请核对输入内容，或确认使用了填写时的账号。"
           },
