@@ -15,6 +15,7 @@ export default function PluginsPage() {
     "plugin-random-card": { className: "number-art", icon: "dice" as const, marker: "02" },
     "plugin-wheel-card": { className: "wheel-art", icon: "wheel" as const, marker: "03" },
     "plugin-map-card": { className: "map-art", icon: "map" as const, marker: "04" },
+    "plugin-food-rankings-card": { className: "ranking-art", icon: "ranking" as const, marker: "05" },
   };
   return (
     <main className="plugins-page">

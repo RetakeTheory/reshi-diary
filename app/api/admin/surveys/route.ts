@@ -18,13 +18,13 @@ export async function POST(request: Request) {
   if (!await getApiAdmin()) return Response.json({ error: "请先登录管理员账户" }, { status: 401 });
   try {
     let input = normalizeSurveyInput(await request.json());
-    input = normalizeSurveyInput({ ...input, successContent: sanitizeRichHtml(input.successContent) });
+    input = normalizeSurveyInput({ ...input, successContent: sanitizeRichHtml(input.successContent), examInstructions: sanitizeRichHtml(input.examInstructions) });
     await ensureDatabaseSchema();
     const db = await getD1();
     const id = crypto.randomUUID();
     const now = Date.now();
-    await db.prepare(`INSERT INTO surveys (id, slug, title, description, status, access, ip_limit, submit_label, success_mode, success_content, success_redirect_url, questions_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, input.slug, input.title, input.description, input.status, input.access, input.ipLimit, input.submitLabel, input.successMode, input.successContent, input.successRedirectUrl, JSON.stringify(input.questions), now, now).run();
+    await db.prepare(`INSERT INTO surveys (id, slug, title, description, status, access, kind, duration_minutes, exam_instructions, exam_start_at, query_identity_question_id, ip_limit, submit_label, success_mode, success_content, success_redirect_url, questions_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, input.slug, input.title, input.description, input.status, input.access, input.kind, input.durationMinutes, input.examInstructions, input.examStartAt, input.queryIdentityQuestionId, input.ipLimit, input.submitLabel, input.successMode, input.successContent, input.successRedirectUrl, JSON.stringify(input.questions), now, now).run();
     const row = await db.prepare(`${surveySelect} WHERE s.id = ? LIMIT 1`).bind(id).first<SurveyDbRow>();
     return Response.json({ survey: surveyFromRow(row!) }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {

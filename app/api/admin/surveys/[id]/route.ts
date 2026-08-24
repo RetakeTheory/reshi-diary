@@ -14,11 +14,11 @@ export async function PUT(request: Request, context: Context) {
   try {
     const { id } = await context.params;
     let input = normalizeSurveyInput(await request.json());
-    input = normalizeSurveyInput({ ...input, successContent: sanitizeRichHtml(input.successContent) });
+    input = normalizeSurveyInput({ ...input, successContent: sanitizeRichHtml(input.successContent), examInstructions: sanitizeRichHtml(input.examInstructions) });
     await ensureDatabaseSchema();
     const db = await getD1();
-    const result = await db.prepare(`UPDATE surveys SET slug = ?, title = ?, description = ?, status = ?, access = ?, ip_limit = ?, submit_label = ?, success_mode = ?, success_content = ?, success_redirect_url = ?, questions_json = ?, updated_at = ? WHERE id = ?`)
-      .bind(input.slug, input.title, input.description, input.status, input.access, input.ipLimit, input.submitLabel, input.successMode, input.successContent, input.successRedirectUrl, JSON.stringify(input.questions), Date.now(), id).run();
+    const result = await db.prepare(`UPDATE surveys SET slug = ?, title = ?, description = ?, status = ?, access = ?, kind = ?, duration_minutes = ?, exam_instructions = ?, exam_start_at = ?, query_identity_question_id = ?, ip_limit = ?, submit_label = ?, success_mode = ?, success_content = ?, success_redirect_url = ?, questions_json = ?, updated_at = ? WHERE id = ?`)
+      .bind(input.slug, input.title, input.description, input.status, input.access, input.kind, input.durationMinutes, input.examInstructions, input.examStartAt, input.queryIdentityQuestionId, input.ipLimit, input.submitLabel, input.successMode, input.successContent, input.successRedirectUrl, JSON.stringify(input.questions), Date.now(), id).run();
     if (!result.meta.changes) return Response.json({ error: "问卷不存在" }, { status: 404 });
     const row = await db.prepare(`${surveySelect} WHERE s.id = ? LIMIT 1`).bind(id).first<SurveyDbRow>();
     return Response.json({ survey: surveyFromRow(row!) }, { headers: { "Cache-Control": "no-store" } });
@@ -36,6 +36,7 @@ export async function DELETE(request: Request, context: Context) {
   const db = await getD1();
   const files = await db.prepare("SELECT key FROM survey_file_uploads WHERE survey_id = ?").bind(id).all<{ key: string }>();
   await db.batch([
+    db.prepare("DELETE FROM survey_attempts WHERE survey_id = ?").bind(id),
     db.prepare("DELETE FROM survey_file_uploads WHERE survey_id = ?").bind(id),
     db.prepare("DELETE FROM survey_responses WHERE survey_id = ?").bind(id),
     db.prepare("DELETE FROM surveys WHERE id = ?").bind(id),

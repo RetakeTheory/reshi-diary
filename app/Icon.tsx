@@ -2,7 +2,7 @@ export type IconName =
   | "spark" | "food" | "dice" | "wheel" | "menu" | "close" | "user" | "key"
   | "heart" | "insight" | "reply" | "comment" | "zoom-in" | "zoom-out" | "reset"
   | "plus" | "minus" | "trash" | "formula" | "table" | "code" | "image" | "file" | "check"
-  | "external" | "shield" | "map";
+  | "external" | "shield" | "map" | "arrow-left" | "search" | "ranking";
 
 export default function Icon({ name, className }: { name: IconName; className?: string }) {
   const common = { className, viewBox: "0 0 24 24", "aria-hidden": true } as const;
@@ -34,5 +34,8 @@ export default function Icon({ name, className }: { name: IconName; className?: 
     case "external": return <svg {...common}><path d="M13 5h6v6M19 5l-8 8" /><path d="M16 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h5" /></svg>;
     case "shield": return <svg {...common}><path d="M12 3 5 6v5c0 4.4 2.7 7.8 7 10 4.3-2.2 7-5.6 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-4" /></svg>;
     case "map": return <svg {...common}><path d="m4 6 5-2 6 2 5-2v14l-5 2-6-2-5 2V6Z" /><path d="M9 4v14M15 6v14" /></svg>;
+    case "arrow-left": return <svg {...common}><path d="m10 6-6 6 6 6M4 12h16" /></svg>;
+    case "search": return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 4.5 4.5" /></svg>;
+    case "ranking": return <svg {...common}><path d="M5 20V10h4v10M10 20V4h4v16M15 20v-7h4v7M3 20h18" /><path d="m6 6 2-2 2 2 2-2 2 2 2-2 2 2" /></svg>;
   }
 }

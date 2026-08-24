@@ -7,6 +7,7 @@ type LoginCode = { id: number; code_hash: string; salt: string; attempts: number
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: "请求来源无效" }, { status: 403 });
+  try {
   const body = await request.json().catch(() => ({})) as { email?: string; code?: string; password?: string; intent?: string };
   const email = normalizeReaderEmail(body.email || ""); const code = body.code?.trim() || ""; const password = body.password || "";
   const intent = body.intent === "set_password" ? "set_password" : "reset_password";
@@ -27,4 +28,8 @@ export async function POST(request: Request) {
     db.prepare("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?").bind(await hashReaderPassword(password), now, user.id),
   ]);
   return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    console.error("password reset failed", error);
+    return Response.json({ error: "密码保存失败，请重新获取验证码后再试" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  }
 }

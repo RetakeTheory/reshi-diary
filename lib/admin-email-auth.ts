@@ -1,4 +1,4 @@
-export const ADMIN_EMAIL = "reshi1417@163.com";
+export const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
 export const ADMIN_SESSION_COOKIE = "reshi_admin_session";
 export const CODE_TTL_MS = 10 * 60 * 1000;
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;

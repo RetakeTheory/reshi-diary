@@ -13,6 +13,7 @@ import NotificationManager from "./NotificationManager";
 import TicketManager from "./TicketManager";
 import SurveyManager from "./SurveyManager";
 import UserManager from "./UserManager";
+import FoodRankingManager from "./FoodRankingManager";
 import EditableModule from "../EditableModule";
 import { pageDocument } from "../../lib/site-pages";
 
@@ -50,6 +51,7 @@ export default async function AdminPage() {
     "admin-passkeys": <PasskeyManager />,
     "admin-tickets": <TicketManager />,
     "admin-surveys": <SurveyManager />,
+    "admin-food-rankings": <FoodRankingManager />,
     "admin-posts": <AdminEditor initialPosts={initialPosts} />,
   };
 

@@ -17,7 +17,9 @@
       "wheelTitle": "自定义抽奖",
       "wheelCaption": "概率与权重",
       "mapTitle": "动画校园地图",
-      "mapCaption": "松江校区缩放导览"
+      "mapCaption": "松江校区缩放导览",
+      "rankingTitle": "学校干饭红黑榜",
+      "rankingCaption": "搜索推荐与避雷"
     }
   },
   "pages": {
@@ -84,8 +86,8 @@
             "socialLabel": "小红书 · reshi_",
             "githubLabel": "GitHub · RetakeTheory",
             "githubHref": "https://github.com/RetakeTheory",
-            "emailLabel": "reshi1417@163.com",
-            "emailHref": "mailto:reshi1417@163.com"
+            "emailLabel": "站内联系",
+            "emailHref": "/account"
           },
           "styles": {
             "spacing": "default",
@@ -127,8 +129,8 @@
             "social": "小红书 reshi_",
             "github": "GitHub",
             "githubHref": "https://github.com/RetakeTheory",
-            "email": "邮箱",
-            "emailHref": "mailto:reshi1417@163.com",
+            "email": "站内联系",
+            "emailHref": "/account",
             "backTop": "回到顶部"
           },
           "styles": {
@@ -359,6 +361,51 @@
             "align": "inherit",
             "width": "default"
           }
+        },
+        {
+          "id": "plugin-food-rankings-card",
+          "type": "pluginCard",
+          "label": "学校干饭红黑榜卡片",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "CAMPUS FOOD / 05",
+            "title": "学校干饭红黑榜",
+            "description": "管理员整理的校内餐厅推荐与避雷，可搜索和筛选",
+            "cta": "打开榜单",
+            "href": "/plugins/food-rankings"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        }
+      ]
+    },
+    "foodRankings": {
+      "label": "学校干饭红黑榜",
+      "path": "/plugins/food-rankings",
+      "modules": [
+        {
+          "id": "food-rankings-widget",
+          "type": "foodRankingsWidget",
+          "label": "学校干饭红黑榜（内容由管理员维护）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": true,
+          "fields": {
+            "back": "返回插件目录",
+            "eyebrow": "CAMPUS FOOD / 干饭情报",
+            "title": "学校干饭红黑榜",
+            "description": "红榜用绿色标记值得推荐的餐厅，黑榜用红色标记需要避雷的餐厅。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "wide"
+          }
         }
       ]
     },
@@ -374,10 +421,13 @@
           "canMove": false,
           "canHide": true,
           "fields": {
+            "breadcrumbHome": "小插件仓库",
+            "breadcrumbCurrent": "动画校园地图",
             "title": "松江校区，慢慢看。",
             "description": "滚轮或按钮缩放，放大后拖拽浏览；双击可快速切换视野。",
             "hint": "地图内容以校方最新发布版本为准。",
-            "mapAlt": "东华大学松江校区新主校区总览图"
+            "mapAlt": "东华大学松江校区新主校区总览图",
+            "hotspotHint": "点击地图光点切换位置"
           },
           "styles": {
             "spacing": "default",
@@ -712,6 +762,36 @@
         }
       ]
     },
+    "externalLink": {
+      "label": "外链安全提示",
+      "path": "/out",
+      "modules": [
+        {
+          "id": "external-link-warning",
+          "type": "externalLinkWarning",
+          "label": "外链隐私与安全提示",
+          "hidden": false,
+          "canMove": false,
+          "canHide": false,
+          "fields": {
+            "validTitle": "即将离开 reshi 的日记本",
+            "invalidTitle": "这个外链无法打开",
+            "validDescription": "你将访问第三方网站。对方可能使用独立的隐私政策、Cookie 与账户系统，请确认网址后再继续。",
+            "invalidDescription": "链接缺失、格式错误，或使用了不安全的协议。",
+            "targetLabel": "目标网站",
+            "back": "返回本站",
+            "backHref": "/",
+            "continue": "确认并继续",
+            "privacyNote": "本站不会向目标网站主动传送你的账户资料；离开后请勿在陌生页面输入验证码或密码。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "narrow"
+          }
+        }
+      ]
+    },
     "admin": {
       "label": "管理后台",
       "path": "/admin",
@@ -773,6 +853,20 @@
           }
         },
         {
+          "id": "admin-food-rankings",
+          "type": "adminFoodRankings",
+          "label": "学校干饭红黑榜管理",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {},
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "wide"
+          }
+        },
+        {
           "id": "admin-posts",
           "type": "adminPosts",
           "label": "文章编辑器",
@@ -808,6 +902,71 @@
             "spacing": "default",
             "align": "inherit",
             "width": "narrow"
+          }
+        }
+      ]
+    },
+    "surveyQuery": {
+      "label": "问卷信息查询",
+      "path": "/surveys/[slug]/query",
+      "modules": [
+        {
+          "id": "survey-query",
+          "type": "surveyQuery",
+          "label": "信息查询与模块化反馈（动态）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": false,
+          "fields": {
+            "back": "返回问卷",
+            "eyebrow": "INFORMATION LOOKUP",
+            "description": "查询管理员为你的答卷提供的模块化反馈",
+            "loading": "正在打开查询页面…",
+            "loadError": "查询页面加载失败",
+            "loginTitle": "登录后查询",
+            "loginAction": "登录 / 注册",
+            "searchAction": "查询结果",
+            "pending": "管理员尚未发布反馈，请稍后再来查看。",
+            "emptyTitle": "没有找到答卷",
+            "emptyBody": "请核对输入内容，或确认使用了填写时的账号。"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "narrow"
+          }
+        }
+      ]
+    },
+    "surveyResults": {
+      "label": "问卷在线报表",
+      "path": "/admin/surveys/[id]/results",
+      "modules": [
+        {
+          "id": "survey-results",
+          "type": "surveyResults",
+          "label": "问卷报表与单答卷结果（动态）",
+          "hidden": false,
+          "canMove": false,
+          "canHide": false,
+          "fields": {
+            "brand": "问卷报表",
+            "back": "返回管理端",
+            "eyebrow": "RESULTS / 在线报表",
+            "download": "下载 CSV",
+            "loading": "正在生成在线报表…",
+            "loadError": "报表加载失败",
+            "responseTitle": "单答卷结果",
+            "responseEyebrow": "RESPONSE",
+            "close": "关闭",
+            "unanswered": "未作答",
+            "answerCount": "人作答",
+            "truncated": "当前统计最近 5000 份"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "wide"
           }
         }
       ]

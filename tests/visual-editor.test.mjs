@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { parseGitStatusPaths, validateSiteDocument } from "../scripts/visual-editor-server.mjs";
+import { migrateAdditiveDraft, parseGitStatusPaths, validateSiteDocument } from "../scripts/visual-editor-server.mjs";
 
 const baseline = JSON.parse(await readFile(new URL("../src/content/site-pages.json", import.meta.url), "utf8"));
 const copy = () => structuredClone(baseline);
@@ -57,6 +57,21 @@ test("navigation fields remain editable while their schema stays fixed", () => {
 
   delete candidate.globals.navigation.posts;
   assert.throws(() => validateSiteDocument(candidate, baseline), /字段结构已改变/);
+});
+
+test("older drafts gain newly published pages, modules, and fields without losing edits", () => {
+  const older = structuredClone(baseline);
+  older.globals.navigation.home = "回首页";
+  delete older.pages.externalLink;
+  delete older.pages.surveyResults;
+  delete older.pages.surveyQuery;
+  delete older.pages.campusMap.modules[0].fields.hotspotHint;
+  const migrated = migrateAdditiveDraft(older, baseline);
+  assert.equal(migrated.globals.navigation.home, "回首页");
+  assert.equal(migrated.pages.externalLink.path, "/out");
+  assert.equal(migrated.pages.surveyResults.path, "/admin/surveys/[id]/results");
+  assert.equal(migrated.pages.surveyQuery.path, "/surveys/[slug]/query");
+  assert.equal(migrated.pages.campusMap.modules[0].fields.hotspotHint, "点击地图光点切换位置");
 });
 
 test("Git publish status parsing keeps the exact changed file scope", () => {

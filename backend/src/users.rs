@@ -842,10 +842,10 @@ fn decode_hex(value: &str) -> Option<Vec<u8>> {
 fn make_password_hash(password: &str) -> String {
     let salt = *Uuid::new_v4().as_bytes();
     let mut output = [0u8; 32];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, 600_000, &mut output);
+    pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, 210_000, &mut output);
     let salt_hex = hex_bytes(&salt);
     let hash_hex = hex_bytes(&output);
-    format!("pbkdf2-sha256$600000${}${}", salt_hex, hash_hex)
+    format!("pbkdf2-sha256$210000${}${}", salt_hex, hash_hex)
 }
 fn verify_password_hash(password: &str, stored: &str) -> bool {
     let parts: Vec<&str> = stored.split('$').collect();

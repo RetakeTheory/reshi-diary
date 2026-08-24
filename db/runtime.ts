@@ -196,6 +196,11 @@ export async function ensureDatabaseSchema() {
       description TEXT DEFAULT '' NOT NULL,
       status TEXT DEFAULT 'draft' NOT NULL,
       access TEXT DEFAULT 'public' NOT NULL,
+      kind TEXT DEFAULT 'standard' NOT NULL,
+      duration_minutes INTEGER DEFAULT 0 NOT NULL,
+      exam_instructions TEXT DEFAULT '' NOT NULL,
+      exam_start_at INTEGER DEFAULT 0 NOT NULL,
+      query_identity_question_id TEXT DEFAULT '' NOT NULL,
       ip_limit INTEGER DEFAULT 1 NOT NULL,
       submit_label TEXT DEFAULT '提交答卷' NOT NULL,
       success_mode TEXT DEFAULT 'message' NOT NULL,
@@ -210,12 +215,54 @@ export async function ensureDatabaseSchema() {
       id TEXT PRIMARY KEY NOT NULL,
       survey_id TEXT NOT NULL,
       ip_hash TEXT NOT NULL,
+      user_id TEXT,
+      lookup_hash TEXT,
       answers_json TEXT NOT NULL,
+      score INTEGER,
+      max_score INTEGER,
+      feedback_json TEXT DEFAULT '{"status":"pending","title":"","modules":[],"updatedAt":null}' NOT NULL,
+      feedback_updated_at INTEGER,
+      attempt_id TEXT,
+      manual_scores_json TEXT DEFAULT '{}' NOT NULL,
       created_at INTEGER NOT NULL,
       FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_survey_created_at ON survey_responses (survey_id, created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_ip ON survey_responses (survey_id, ip_hash)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS survey_attempts (
+      id TEXT PRIMARY KEY NOT NULL,
+      survey_id TEXT NOT NULL,
+      actor_key TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      submitted_at INTEGER,
+      FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_attempts_actor ON survey_attempts (survey_id, actor_key, expires_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS survey_query_attempts (
+      id TEXT PRIMARY KEY NOT NULL,
+      survey_id TEXT NOT NULL,
+      ip_hash TEXT NOT NULL,
+      lookup_hash TEXT NOT NULL,
+      success INTEGER DEFAULT 0 NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_query_attempts_ip ON survey_query_attempts (survey_id, ip_hash, created_at DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_query_attempts_lookup ON survey_query_attempts (survey_id, lookup_hash, success, created_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS food_rankings (
+      id TEXT PRIMARY KEY NOT NULL,
+      list_type TEXT NOT NULL,
+      restaurant TEXT NOT NULL,
+      location TEXT DEFAULT '' NOT NULL,
+      category TEXT DEFAULT '' NOT NULL,
+      summary TEXT NOT NULL,
+      details TEXT DEFAULT '' NOT NULL,
+      tags_json TEXT DEFAULT '[]' NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_food_rankings_type_updated ON food_rankings (list_type, updated_at DESC)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS survey_file_uploads (
       key TEXT PRIMARY KEY NOT NULL,
       survey_id TEXT NOT NULL,
@@ -286,6 +333,24 @@ export async function ensureDatabaseSchema() {
   if (!surveyNames.has("success_mode")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_mode TEXT DEFAULT 'message' NOT NULL").run();
   if (!surveyNames.has("success_content")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_content TEXT DEFAULT '<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>' NOT NULL").run();
   if (!surveyNames.has("success_redirect_url")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_redirect_url TEXT DEFAULT '' NOT NULL").run();
+  if (!surveyNames.has("kind")) await db.prepare("ALTER TABLE surveys ADD COLUMN kind TEXT DEFAULT 'standard' NOT NULL").run();
+  if (!surveyNames.has("duration_minutes")) await db.prepare("ALTER TABLE surveys ADD COLUMN duration_minutes INTEGER DEFAULT 0 NOT NULL").run();
+  if (!surveyNames.has("exam_instructions")) await db.prepare("ALTER TABLE surveys ADD COLUMN exam_instructions TEXT DEFAULT '' NOT NULL").run();
+  if (!surveyNames.has("exam_start_at")) await db.prepare("ALTER TABLE surveys ADD COLUMN exam_start_at INTEGER DEFAULT 0 NOT NULL").run();
+  if (!surveyNames.has("query_identity_question_id")) await db.prepare("ALTER TABLE surveys ADD COLUMN query_identity_question_id TEXT DEFAULT '' NOT NULL").run();
+  const surveyResponseColumns = await db.prepare("PRAGMA table_info(survey_responses)").all<{ name: string }>();
+  const surveyResponseNames = new Set((surveyResponseColumns.results || []).map((column) => column.name));
+  if (!surveyResponseNames.has("user_id")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN user_id TEXT").run();
+  if (!surveyResponseNames.has("lookup_hash")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN lookup_hash TEXT").run();
+  if (!surveyResponseNames.has("score")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN score INTEGER").run();
+  if (!surveyResponseNames.has("max_score")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN max_score INTEGER").run();
+  if (!surveyResponseNames.has("feedback_json")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN feedback_json TEXT DEFAULT '{\"status\":\"pending\",\"title\":\"\",\"modules\":[],\"updatedAt\":null}' NOT NULL").run();
+  if (!surveyResponseNames.has("feedback_updated_at")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN feedback_updated_at INTEGER").run();
+  if (!surveyResponseNames.has("attempt_id")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN attempt_id TEXT").run();
+  if (!surveyResponseNames.has("manual_scores_json")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN manual_scores_json TEXT DEFAULT '{}' NOT NULL").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_user ON survey_responses (survey_id, user_id, created_at DESC)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_lookup ON survey_responses (survey_id, lookup_hash, created_at DESC)").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_responses_attempt ON survey_responses (attempt_id)").run();
   await db.prepare("PRAGMA optimize").run();
   initialized = true;
 }
