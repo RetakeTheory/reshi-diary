@@ -811,13 +811,30 @@ pub(crate) async fn results_admin(
         let (score, max_score, manual_pending) = if survey.kind == "exam" { apply_manual_scores(&questions, answers.as_object().ok_or(AppError::Internal)?, &manual_scores) } else { (0, 0, false) };
         Ok(json!({"id":row.id,"answers":answers,"score":(survey.kind == "exam").then_some(score),"maxScore":(survey.kind == "exam").then_some(max_score),"manualScores":manual_scores,"manualPending":manual_pending,"feedback":row.feedback_json.as_ref().map(|value| serde_json::from_str::<Value>(value)).transpose().map_err(|_| AppError::Internal)?.map(|mut value| { value["updatedAt"]=json!(row.feedback_updated_at); value }),"createdAt":row.created_at}))
     }).collect::<Result<_,AppError>>()?;
-    let mut final_scores = responses.iter().filter(|item| item.get("manualPending").and_then(Value::as_bool) == Some(false)).filter_map(|item| item.get("score").and_then(Value::as_i64)).collect::<Vec<_>>();
+    let mut final_scores = responses
+        .iter()
+        .filter(|item| item.get("manualPending").and_then(Value::as_bool) == Some(false))
+        .filter_map(|item| item.get("score").and_then(Value::as_i64))
+        .collect::<Vec<_>>();
     final_scores.sort_unstable();
     let statistics = if survey.kind == "exam" {
-        let average = (!final_scores.is_empty()).then(|| final_scores.iter().sum::<i64>() as f64 / final_scores.len() as f64);
-        let median = if final_scores.is_empty() { None } else if final_scores.len() % 2 == 1 { Some(final_scores[final_scores.len()/2] as f64) } else { Some((final_scores[final_scores.len()/2-1] + final_scores[final_scores.len()/2]) as f64 / 2.0) };
+        let average = (!final_scores.is_empty())
+            .then(|| final_scores.iter().sum::<i64>() as f64 / final_scores.len() as f64);
+        let median = if final_scores.is_empty() {
+            None
+        } else if final_scores.len() % 2 == 1 {
+            Some(final_scores[final_scores.len() / 2] as f64)
+        } else {
+            Some(
+                (final_scores[final_scores.len() / 2 - 1] + final_scores[final_scores.len() / 2])
+                    as f64
+                    / 2.0,
+            )
+        };
         json!({"average":average,"median":median,"highest":final_scores.last(),"graded":final_scores.len(),"total":responses.len()})
-    } else { Value::Null };
+    } else {
+        Value::Null
+    };
     Ok(Json(
         json!({"survey":survey_json(&survey)?,"reports":build_question_reports(&questions,&responses),"responses":responses.into_iter().take(100).collect::<Vec<_>>(),"total":rows.len(),"page":1,"pageSize":100,"truncated":survey.response_count>5000,"statistics":statistics}),
     ))
@@ -832,7 +849,9 @@ fn query_result(row: &ResponseRecord, is_exam: bool) -> Result<Value, AppError> 
         json!({"status":"pending","title":"等待管理员反馈","modules":[],"updatedAt":null})
     };
     let ready = feedback.get("status").and_then(Value::as_str) == Some("ready");
-    Ok(json!({"id":row.id,"createdAt":row.created_at,"score":if is_exam && ready { row.score } else { None },"maxScore":if is_exam && ready { row.max_score } else { None },"feedback":feedback}))
+    Ok(
+        json!({"id":row.id,"createdAt":row.created_at,"score":if is_exam && ready { row.score } else { None },"maxScore":if is_exam && ready { row.max_score } else { None },"feedback":feedback}),
+    )
 }
 
 pub(crate) async fn get_public_query(
@@ -843,8 +862,7 @@ pub(crate) async fn get_public_query(
     let survey = find_survey(&state, "slug", &slug)
         .await?
         .filter(|item| {
-            item.query_enabled != 0
-                && matches!(item.status.as_str(), "published" | "closed")
+            item.query_enabled != 0 && matches!(item.status.as_str(), "published" | "closed")
         })
         .ok_or(AppError::NotFound("此问卷未开启结果查询"))?;
     if survey.access == "public" {
@@ -876,8 +894,7 @@ pub(crate) async fn post_public_query(
     let survey = find_survey(&state, "slug", &slug)
         .await?
         .filter(|item| {
-            item.query_enabled != 0
-                && matches!(item.status.as_str(), "published" | "closed")
+            item.query_enabled != 0 && matches!(item.status.as_str(), "published" | "closed")
         })
         .ok_or(AppError::NotFound("此问卷未开启结果查询"))?;
     if survey.access != "public" {
@@ -933,7 +950,9 @@ pub(crate) async fn update_feedback_admin(
         module.background_color = module.background_color.trim().to_owned();
         if module.background_color.len() != 7
             || !module.background_color.starts_with('#')
-            || !module.background_color[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !module.background_color[1..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
         {
             return Err(AppError::BadRequest("反馈卡片底色无效".into()));
         }
@@ -960,15 +979,27 @@ pub(crate) async fn batch_score_admin(
     if !(1..=100).contains(&input.updates.len()) {
         return Err(AppError::BadRequest("请提交 1–100 份人工评分".into()));
     }
-    let survey = find_survey(&state, "id", &id).await?.ok_or(AppError::NotFound("问卷不存在"))?;
+    let survey = find_survey(&state, "id", &id)
+        .await?
+        .ok_or(AppError::NotFound("问卷不存在"))?;
     if survey.kind != "exam" {
         return Err(AppError::BadRequest("只有考试答卷可以评分".into()));
     }
-    let questions: Vec<SurveyQuestion> = serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
-    let manual_questions = questions.iter().filter_map(|question| match question {
-        SurveyQuestion::ShortText { id, title, scoring_mode, points, .. } if scoring_mode == "manual" && *points > 0 => Some((id, title, *points)),
-        _ => None,
-    }).collect::<Vec<_>>();
+    let questions: Vec<SurveyQuestion> =
+        serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
+    let manual_questions = questions
+        .iter()
+        .filter_map(|question| match question {
+            SurveyQuestion::ShortText {
+                id,
+                title,
+                scoring_mode,
+                points,
+                ..
+            } if scoring_mode == "manual" && *points > 0 => Some((id, title, *points)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     if manual_questions.is_empty() {
         return Err(AppError::BadRequest("此考试没有人工评分题".into()));
     }
@@ -979,16 +1010,31 @@ pub(crate) async fn batch_score_admin(
             return Err(AppError::BadRequest("批量评分数据无效或重复".into()));
         }
         for (question_id, title, points) in &manual_questions {
-            let score = update.scores.get(*question_id).copied().ok_or_else(|| AppError::BadRequest(format!("“{title}”尚未评分")))?;
+            let score = update
+                .scores
+                .get(*question_id)
+                .copied()
+                .ok_or_else(|| AppError::BadRequest(format!("“{title}”尚未评分")))?;
             if !(0..=*points).contains(&score) {
-                return Err(AppError::BadRequest(format!("“{title}”评分需为 0–{points} 的整数")));
+                return Err(AppError::BadRequest(format!(
+                    "“{title}”评分需为 0–{points} 的整数"
+                )));
             }
         }
-        let answers_json = sqlx::query_scalar::<_, String>("SELECT answers_json FROM survey_responses WHERE id = ? AND survey_id = ? LIMIT 1")
-            .bind(&update.response_id).bind(&id).fetch_optional(&state.db).await?
-            .ok_or_else(|| AppError::BadRequest(format!("答卷 {} 不存在", update.response_id)))?;
+        let answers_json = sqlx::query_scalar::<_, String>(
+            "SELECT answers_json FROM survey_responses WHERE id = ? AND survey_id = ? LIMIT 1",
+        )
+        .bind(&update.response_id)
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::BadRequest(format!("答卷 {} 不存在", update.response_id)))?;
         let answers: Value = serde_json::from_str(&answers_json).map_err(|_| AppError::Internal)?;
-        let grading = apply_manual_scores(&questions, answers.as_object().ok_or(AppError::Internal)?, &update.scores);
+        let grading = apply_manual_scores(
+            &questions,
+            answers.as_object().ok_or(AppError::Internal)?,
+            &update.scores,
+        );
         prepared.push((update, grading));
     }
     let mut transaction = state.db.begin().await?;
@@ -1177,24 +1223,23 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
             let source = input.questions[..index]
                 .iter()
                 .find(|item| item.id() == logic.source_question_id);
-            let valid = !logic_option_ids.is_empty() && source.is_some_and(|item| match item {
-                SurveyQuestion::Single {
-                    options,
-                    allow_other,
-                    ..
-                }
-                | SurveyQuestion::Multiple {
-                    options,
-                    allow_other,
-                    ..
-                } => {
-                    logic_option_ids.iter().all(|logic_option_id| {
+            let valid = !logic_option_ids.is_empty()
+                && source.is_some_and(|item| match item {
+                    SurveyQuestion::Single {
+                        options,
+                        allow_other,
+                        ..
+                    }
+                    | SurveyQuestion::Multiple {
+                        options,
+                        allow_other,
+                        ..
+                    } => logic_option_ids.iter().all(|logic_option_id| {
                         options.iter().any(|option| option.id == *logic_option_id)
                             || *allow_other && *logic_option_id == "__other"
-                    })
-                }
-                _ => false,
-            });
+                    }),
+                    _ => false,
+                });
             if !valid {
                 return Err(AppError::BadRequest(format!(
                     "第 {} 题的显示条件无效",
@@ -1824,7 +1869,13 @@ fn apply_manual_scores(
         if !question_visible(question, answers, questions) {
             continue;
         }
-        if let SurveyQuestion::ShortText { id, scoring_mode, points, .. } = question {
+        if let SurveyQuestion::ShortText {
+            id,
+            scoring_mode,
+            points,
+            ..
+        } = question
+        {
             if scoring_mode == "manual" && *points > 0 {
                 match manual_scores.get(id) {
                     Some(value) if (0..=*points).contains(value) => score += value,
