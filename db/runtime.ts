@@ -197,6 +197,7 @@ export async function ensureDatabaseSchema() {
       status TEXT DEFAULT 'draft' NOT NULL,
       access TEXT DEFAULT 'public' NOT NULL,
       kind TEXT DEFAULT 'standard' NOT NULL,
+      query_enabled INTEGER DEFAULT 0 NOT NULL,
       duration_minutes INTEGER DEFAULT 0 NOT NULL,
       exam_instructions TEXT DEFAULT '' NOT NULL,
       exam_start_at INTEGER DEFAULT 0 NOT NULL,
@@ -259,10 +260,22 @@ export async function ensureDatabaseSchema() {
       summary TEXT NOT NULL,
       details TEXT DEFAULT '' NOT NULL,
       tags_json TEXT DEFAULT '[]' NOT NULL,
+      image_url TEXT DEFAULT '' NOT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_food_rankings_type_updated ON food_rankings (list_type, updated_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS food_ranking_votes (
+      entry_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      vote TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (entry_id, user_id),
+      FOREIGN KEY (entry_id) REFERENCES food_rankings(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_food_ranking_votes_entry ON food_ranking_votes (entry_id, vote)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS survey_file_uploads (
       key TEXT PRIMARY KEY NOT NULL,
       survey_id TEXT NOT NULL,
@@ -334,6 +347,8 @@ export async function ensureDatabaseSchema() {
   if (!surveyNames.has("success_content")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_content TEXT DEFAULT '<h2>提交成功</h2><p>感谢填写，你的答卷已记录。</p>' NOT NULL").run();
   if (!surveyNames.has("success_redirect_url")) await db.prepare("ALTER TABLE surveys ADD COLUMN success_redirect_url TEXT DEFAULT '' NOT NULL").run();
   if (!surveyNames.has("kind")) await db.prepare("ALTER TABLE surveys ADD COLUMN kind TEXT DEFAULT 'standard' NOT NULL").run();
+  if (!surveyNames.has("query_enabled")) await db.prepare("ALTER TABLE surveys ADD COLUMN query_enabled INTEGER DEFAULT 0 NOT NULL").run();
+  await db.prepare("UPDATE surveys SET query_enabled = 1, kind = 'standard' WHERE kind = 'information_query'").run();
   if (!surveyNames.has("duration_minutes")) await db.prepare("ALTER TABLE surveys ADD COLUMN duration_minutes INTEGER DEFAULT 0 NOT NULL").run();
   if (!surveyNames.has("exam_instructions")) await db.prepare("ALTER TABLE surveys ADD COLUMN exam_instructions TEXT DEFAULT '' NOT NULL").run();
   if (!surveyNames.has("exam_start_at")) await db.prepare("ALTER TABLE surveys ADD COLUMN exam_start_at INTEGER DEFAULT 0 NOT NULL").run();
@@ -348,6 +363,9 @@ export async function ensureDatabaseSchema() {
   if (!surveyResponseNames.has("feedback_updated_at")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN feedback_updated_at INTEGER").run();
   if (!surveyResponseNames.has("attempt_id")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN attempt_id TEXT").run();
   if (!surveyResponseNames.has("manual_scores_json")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN manual_scores_json TEXT DEFAULT '{}' NOT NULL").run();
+  const foodRankingColumns = await db.prepare("PRAGMA table_info(food_rankings)").all<{ name: string }>();
+  const foodRankingNames = new Set((foodRankingColumns.results || []).map((item) => item.name));
+  if (!foodRankingNames.has("image_url")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN image_url TEXT DEFAULT '' NOT NULL").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_user ON survey_responses (survey_id, user_id, created_at DESC)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_lookup ON survey_responses (survey_id, lookup_hash, created_at DESC)").run();
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_responses_attempt ON survey_responses (attempt_id)").run();

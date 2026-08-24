@@ -26,7 +26,20 @@ struct ChoiceItem {
 #[serde(rename_all = "camelCase")]
 struct QuestionLogic {
     source_question_id: String,
-    option_id: String,
+    #[serde(default)]
+    option_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    option_id: Option<String>,
+}
+
+impl QuestionLogic {
+    fn selected_option_ids(&self) -> Vec<&str> {
+        if self.option_ids.is_empty() {
+            self.option_id.as_deref().into_iter().collect()
+        } else {
+            self.option_ids.iter().map(String::as_str).collect()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,6 +245,8 @@ pub(crate) struct SurveyInput {
     #[serde(default = "default_kind")]
     kind: String,
     #[serde(default)]
+    query_enabled: bool,
+    #[serde(default)]
     duration_minutes: i64,
     #[serde(default)]
     exam_instructions: String,
@@ -267,17 +282,32 @@ pub(crate) struct QueryInput {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct FeedbackModule {
     id: String,
     title: String,
     content: String,
     tone: String,
+    #[serde(default = "default_feedback_background")]
+    background_color: String,
 }
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct FeedbackInput {
     title: String,
     modules: Vec<FeedbackModule>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchScoreUpdate {
+    response_id: String,
+    scores: std::collections::HashMap<String, i64>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct BatchScoreInput {
+    updates: Vec<BatchScoreUpdate>,
 }
 
 #[derive(Deserialize)]
@@ -299,6 +329,7 @@ struct SurveyRecord {
     status: String,
     access: String,
     kind: String,
+    query_enabled: i64,
     duration_minutes: i64,
     exam_instructions: String,
     exam_start_at: i64,
@@ -322,10 +353,11 @@ struct ResponseRecord {
     max_score: Option<i64>,
     feedback_json: Option<String>,
     feedback_updated_at: Option<i64>,
+    manual_scores_json: String,
     created_at: i64,
 }
 
-const SURVEY_SELECT: &str = "SELECT s.id, s.slug, s.title, s.description, s.status, s.access, s.kind, s.duration_minutes, s.exam_instructions, s.exam_start_at, s.query_identity_question_id, s.ip_limit, s.submit_label, s.success_mode, s.success_content, s.success_redirect_url, s.questions_json, s.created_at, s.updated_at, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id = s.id) AS response_count FROM surveys s";
+const SURVEY_SELECT: &str = "SELECT s.id, s.slug, s.title, s.description, s.status, s.access, s.kind, s.query_enabled, s.duration_minutes, s.exam_instructions, s.exam_start_at, s.query_identity_question_id, s.ip_limit, s.submit_label, s.success_mode, s.success_content, s.success_redirect_url, s.questions_json, s.created_at, s.updated_at, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id = s.id) AS response_count FROM surveys s";
 
 pub(crate) async fn list_admin(
     State(state): State<AppState>,
@@ -352,9 +384,9 @@ pub(crate) async fn create_admin(
     let id = Uuid::new_v4().to_string();
     let now = now_ms();
     let questions = serde_json::to_string(&input.questions).map_err(|_| AppError::Internal)?;
-    let result = sqlx::query("INSERT INTO surveys (id, slug, title, description, status, access, kind, duration_minutes, exam_instructions, exam_start_at, query_identity_question_id, ip_limit, submit_label, success_mode, success_content, success_redirect_url, questions_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    let result = sqlx::query("INSERT INTO surveys (id, slug, title, description, status, access, kind, query_enabled, duration_minutes, exam_instructions, exam_start_at, query_identity_question_id, ip_limit, submit_label, success_mode, success_content, success_redirect_url, questions_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(&id).bind(&input.slug).bind(&input.title).bind(&input.description).bind(&input.status)
-        .bind(&input.access).bind(&input.kind).bind(input.duration_minutes).bind(&input.exam_instructions).bind(input.exam_start_at).bind(&input.query_identity_question_id).bind(input.ip_limit).bind(&input.submit_label).bind(&input.success_mode)
+        .bind(&input.access).bind(&input.kind).bind(input.query_enabled).bind(input.duration_minutes).bind(&input.exam_instructions).bind(input.exam_start_at).bind(&input.query_identity_question_id).bind(input.ip_limit).bind(&input.submit_label).bind(&input.success_mode)
         .bind(&input.success_content).bind(&input.success_redirect_url).bind(questions).bind(now).bind(now).execute(&state.db).await;
     if let Err(error) = result {
         if error.to_string().to_ascii_lowercase().contains("unique") {
@@ -381,9 +413,9 @@ pub(crate) async fn update_admin(
     require_admin(&state, &headers).await?;
     validate_survey(&mut input)?;
     let questions = serde_json::to_string(&input.questions).map_err(|_| AppError::Internal)?;
-    let result = sqlx::query("UPDATE surveys SET slug = ?, title = ?, description = ?, status = ?, access = ?, kind = ?, duration_minutes = ?, exam_instructions = ?, exam_start_at = ?, query_identity_question_id = ?, ip_limit = ?, submit_label = ?, success_mode = ?, success_content = ?, success_redirect_url = ?, questions_json = ?, updated_at = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE surveys SET slug = ?, title = ?, description = ?, status = ?, access = ?, kind = ?, query_enabled = ?, duration_minutes = ?, exam_instructions = ?, exam_start_at = ?, query_identity_question_id = ?, ip_limit = ?, submit_label = ?, success_mode = ?, success_content = ?, success_redirect_url = ?, questions_json = ?, updated_at = ? WHERE id = ?")
         .bind(&input.slug).bind(&input.title).bind(&input.description).bind(&input.status)
-        .bind(&input.access).bind(&input.kind).bind(input.duration_minutes).bind(&input.exam_instructions).bind(input.exam_start_at).bind(&input.query_identity_question_id).bind(input.ip_limit).bind(&input.submit_label).bind(&input.success_mode)
+        .bind(&input.access).bind(&input.kind).bind(input.query_enabled).bind(input.duration_minutes).bind(&input.exam_instructions).bind(input.exam_start_at).bind(&input.query_identity_question_id).bind(input.ip_limit).bind(&input.submit_label).bind(&input.success_mode)
         .bind(&input.success_content).bind(&input.success_redirect_url).bind(questions).bind(now_ms()).bind(&id).execute(&state.db).await;
     let result = match result {
         Ok(result) => result,
@@ -667,12 +699,12 @@ pub(crate) async fn submit_public(
             return Err(AppError::BadRequest("文件上传记录无效或未完成".into()));
         }
     }
-    let (score, max_score, manual_pending) = if row.kind == "exam" {
+    let (score, max_score, _manual_pending) = if row.kind == "exam" {
         score_answers(&questions, answers.as_object().unwrap())
     } else {
         (0, 0, false)
     };
-    let lookup_hash = if row.kind == "information_query" && row.access == "public" {
+    let lookup_hash = if row.query_enabled != 0 && row.access == "public" {
         answers
             .get(&row.query_identity_question_id)
             .and_then(Value::as_str)
@@ -716,18 +748,13 @@ pub(crate) async fn submit_public(
     } else {
         json!({ "mode": "message", "content": row.success_content })
     };
-    if let Value::Object(object) = &mut completion {
-        if row.kind == "exam" {
-            object.insert("score".into(), json!(score));
-            object.insert("maxScore".into(), json!(max_score));
-            object.insert("manualPending".into(), json!(manual_pending));
-        }
-        if row.kind == "information_query" {
-            object.insert(
-                "queryUrl".into(),
-                json!(format!("/surveys/{}/query", row.slug)),
-            );
-        }
+    if let Value::Object(object) = &mut completion
+        && row.query_enabled != 0
+    {
+        object.insert(
+            "queryUrl".into(),
+            json!(format!("/surveys/{}/query", row.slug)),
+        );
     }
     Ok((
         StatusCode::CREATED,
@@ -746,7 +773,7 @@ pub(crate) async fn report_admin(
         .ok_or(AppError::NotFound("问卷不存在"))?;
     let questions: Vec<SurveyQuestion> =
         serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
-    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, score, max_score, feedback_json, feedback_updated_at, created_at FROM survey_responses WHERE survey_id = ? ORDER BY created_at ASC")
+    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, score, max_score, feedback_json, feedback_updated_at, manual_scores_json, created_at FROM survey_responses WHERE survey_id = ? ORDER BY created_at ASC")
         .bind(&id).fetch_all(&state.db).await?;
     let csv = build_csv(&questions, &rows)?;
     let filename = safe_filename(&format!("{}-答卷.csv", survey.title));
@@ -777,14 +804,43 @@ pub(crate) async fn results_admin(
         .ok_or(AppError::NotFound("问卷不存在"))?;
     let questions: Vec<SurveyQuestion> =
         serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
-    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, score, max_score, feedback_json, feedback_updated_at, created_at FROM survey_responses WHERE survey_id = ? ORDER BY created_at DESC LIMIT 5000").bind(&id).fetch_all(&state.db).await?;
-    let responses: Vec<Value> = rows.iter().map(|row| Ok(json!({"id":row.id,"answers":serde_json::from_str::<Value>(&row.answers_json).map_err(|_| AppError::Internal)?,"score":row.score,"maxScore":row.max_score,"feedback":row.feedback_json.as_ref().map(|value| serde_json::from_str::<Value>(value)).transpose().map_err(|_| AppError::Internal)?.map(|mut value| { value["updatedAt"]=json!(row.feedback_updated_at); value }),"createdAt":row.created_at}))).collect::<Result<_,AppError>>()?;
+    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, score, max_score, feedback_json, feedback_updated_at, manual_scores_json, created_at FROM survey_responses WHERE survey_id = ? ORDER BY created_at DESC LIMIT 5000").bind(&id).fetch_all(&state.db).await?;
+    let responses: Vec<Value> = rows.iter().map(|row| {
+        let answers = serde_json::from_str::<Value>(&row.answers_json).map_err(|_| AppError::Internal)?;
+        let manual_scores = serde_json::from_str::<std::collections::HashMap<String, i64>>(&row.manual_scores_json).unwrap_or_default();
+        let (score, max_score, manual_pending) = if survey.kind == "exam" { apply_manual_scores(&questions, answers.as_object().ok_or(AppError::Internal)?, &manual_scores) } else { (0, 0, false) };
+        Ok(json!({"id":row.id,"answers":answers,"score":(survey.kind == "exam").then_some(score),"maxScore":(survey.kind == "exam").then_some(max_score),"manualScores":manual_scores,"manualPending":manual_pending,"feedback":row.feedback_json.as_ref().map(|value| serde_json::from_str::<Value>(value)).transpose().map_err(|_| AppError::Internal)?.map(|mut value| { value["updatedAt"]=json!(row.feedback_updated_at); value }),"createdAt":row.created_at}))
+    }).collect::<Result<_,AppError>>()?;
+    let mut final_scores = responses
+        .iter()
+        .filter(|item| item.get("manualPending").and_then(Value::as_bool) == Some(false))
+        .filter_map(|item| item.get("score").and_then(Value::as_i64))
+        .collect::<Vec<_>>();
+    final_scores.sort_unstable();
+    let statistics = if survey.kind == "exam" {
+        let average = (!final_scores.is_empty())
+            .then(|| final_scores.iter().sum::<i64>() as f64 / final_scores.len() as f64);
+        let median = if final_scores.is_empty() {
+            None
+        } else if final_scores.len() % 2 == 1 {
+            Some(final_scores[final_scores.len() / 2] as f64)
+        } else {
+            Some(
+                (final_scores[final_scores.len() / 2 - 1] + final_scores[final_scores.len() / 2])
+                    as f64
+                    / 2.0,
+            )
+        };
+        json!({"average":average,"median":median,"highest":final_scores.last(),"graded":final_scores.len(),"total":responses.len()})
+    } else {
+        Value::Null
+    };
     Ok(Json(
-        json!({"survey":survey_json(&survey)?,"reports":build_question_reports(&questions,&responses),"responses":responses.into_iter().take(100).collect::<Vec<_>>(),"total":rows.len(),"page":1,"pageSize":100,"truncated":survey.response_count>5000}),
+        json!({"survey":survey_json(&survey)?,"reports":build_question_reports(&questions,&responses),"responses":responses.into_iter().take(100).collect::<Vec<_>>(),"total":rows.len(),"page":1,"pageSize":100,"truncated":survey.response_count>5000,"statistics":statistics}),
     ))
 }
 
-fn query_result(row: &ResponseRecord) -> Result<Value, AppError> {
+fn query_result(row: &ResponseRecord, is_exam: bool) -> Result<Value, AppError> {
     let feedback = if let Some(raw) = &row.feedback_json {
         let mut value: Value = serde_json::from_str(raw).map_err(|_| AppError::Internal)?;
         value["updatedAt"] = json!(row.feedback_updated_at);
@@ -792,8 +848,9 @@ fn query_result(row: &ResponseRecord) -> Result<Value, AppError> {
     } else {
         json!({"status":"pending","title":"等待管理员反馈","modules":[],"updatedAt":null})
     };
+    let ready = feedback.get("status").and_then(Value::as_str) == Some("ready");
     Ok(
-        json!({"id":row.id,"createdAt":row.created_at,"score":row.score,"maxScore":row.max_score,"feedback":feedback}),
+        json!({"id":row.id,"createdAt":row.created_at,"score":if is_exam && ready { row.score } else { None },"maxScore":if is_exam && ready { row.max_score } else { None },"feedback":feedback}),
     )
 }
 
@@ -805,10 +862,9 @@ pub(crate) async fn get_public_query(
     let survey = find_survey(&state, "slug", &slug)
         .await?
         .filter(|item| {
-            item.kind == "information_query"
-                && matches!(item.status.as_str(), "published" | "closed")
+            item.query_enabled != 0 && matches!(item.status.as_str(), "published" | "closed")
         })
-        .ok_or(AppError::NotFound("信息查询问卷不存在"))?;
+        .ok_or(AppError::NotFound("此问卷未开启结果查询"))?;
     if survey.access == "public" {
         let questions: Vec<SurveyQuestion> =
             serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
@@ -822,9 +878,9 @@ pub(crate) async fn get_public_query(
         ));
     }
     let user = users::require_user(&state, &headers).await?;
-    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, score, max_score, feedback_json, feedback_updated_at, created_at FROM survey_responses WHERE survey_id = ? AND user_id = ? ORDER BY created_at DESC").bind(&survey.id).bind(&user.id).fetch_all(&state.db).await?;
+    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, score, max_score, feedback_json, feedback_updated_at, manual_scores_json, created_at FROM survey_responses WHERE survey_id = ? AND user_id = ? ORDER BY created_at DESC").bind(&survey.id).bind(&user.id).fetch_all(&state.db).await?;
     Ok(Json(
-        json!({"survey":{"title":survey.title,"access":"registered"},"results":rows.iter().map(query_result).collect::<Result<Vec<_>,_>>()?}),
+        json!({"survey":{"title":survey.title,"access":"registered"},"results":rows.iter().map(|row| query_result(row, survey.kind == "exam")).collect::<Result<Vec<_>,_>>()?}),
     ))
 }
 
@@ -838,10 +894,9 @@ pub(crate) async fn post_public_query(
     let survey = find_survey(&state, "slug", &slug)
         .await?
         .filter(|item| {
-            item.kind == "information_query"
-                && matches!(item.status.as_str(), "published" | "closed")
+            item.query_enabled != 0 && matches!(item.status.as_str(), "published" | "closed")
         })
-        .ok_or(AppError::NotFound("信息查询问卷不存在"))?;
+        .ok_or(AppError::NotFound("此问卷未开启结果查询"))?;
     if survey.access != "public" {
         return Err(AppError::BadRequest("此问卷需登录后查询".into()));
     }
@@ -857,10 +912,10 @@ pub(crate) async fn post_public_query(
     if recent_ip >= 20 || repeated_failure >= 5 {
         return Err(AppError::RateLimited(600));
     }
-    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, score, max_score, feedback_json, feedback_updated_at, created_at FROM survey_responses WHERE survey_id = ? AND lookup_hash = ? ORDER BY created_at DESC").bind(&survey.id).bind(lookup_hash).fetch_all(&state.db).await?;
+    let rows = sqlx::query_as::<_, ResponseRecord>("SELECT id, answers_json, score, max_score, feedback_json, feedback_updated_at, manual_scores_json, created_at FROM survey_responses WHERE survey_id = ? AND lookup_hash = ? ORDER BY created_at DESC").bind(&survey.id).bind(lookup_hash).fetch_all(&state.db).await?;
     sqlx::query("INSERT INTO survey_query_attempts (id, survey_id, ip_hash, lookup_hash, success, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(Uuid::new_v4().to_string()).bind(&survey.id).bind(ip_hash).bind(hash_value(&format!("{}:lookup:{identity}", survey.id))).bind(if rows.is_empty() { 0_i64 } else { 1_i64 }).bind(now).execute(&state.db).await?;
     Ok(Json(
-        json!({"survey":{"title":survey.title,"access":"public"},"results":rows.iter().map(query_result).collect::<Result<Vec<_>,_>>()?}),
+        json!({"survey":{"title":survey.title,"access":"public"},"results":rows.iter().map(|row| query_result(row, survey.kind == "exam")).collect::<Result<Vec<_>,_>>()?}),
     ))
 }
 
@@ -892,6 +947,15 @@ pub(crate) async fn update_feedback_admin(
         if !matches!(module.tone.as_str(), "neutral" | "positive" | "warning") {
             module.tone = "neutral".into();
         }
+        module.background_color = module.background_color.trim().to_owned();
+        if module.background_color.len() != 7
+            || !module.background_color.starts_with('#')
+            || !module.background_color[1..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(AppError::BadRequest("反馈卡片底色无效".into()));
+        }
     }
     let now = now_ms();
     let feedback = json!({"status":"ready","title":input.title,"modules":input.modules});
@@ -902,6 +966,87 @@ pub(crate) async fn update_feedback_admin(
     let mut response = feedback;
     response["updatedAt"] = json!(now);
     Ok(Json(json!({"feedback":response})))
+}
+
+pub(crate) async fn batch_score_admin(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<BatchScoreInput>,
+) -> Result<Json<Value>, AppError> {
+    verify_origin(&state.config, &headers)?;
+    require_admin(&state, &headers).await?;
+    if !(1..=100).contains(&input.updates.len()) {
+        return Err(AppError::BadRequest("请提交 1–100 份人工评分".into()));
+    }
+    let survey = find_survey(&state, "id", &id)
+        .await?
+        .ok_or(AppError::NotFound("问卷不存在"))?;
+    if survey.kind != "exam" {
+        return Err(AppError::BadRequest("只有考试答卷可以评分".into()));
+    }
+    let questions: Vec<SurveyQuestion> =
+        serde_json::from_str(&survey.questions_json).map_err(|_| AppError::Internal)?;
+    let manual_questions = questions
+        .iter()
+        .filter_map(|question| match question {
+            SurveyQuestion::ShortText {
+                id,
+                title,
+                scoring_mode,
+                points,
+                ..
+            } if scoring_mode == "manual" && *points > 0 => Some((id, title, *points)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if manual_questions.is_empty() {
+        return Err(AppError::BadRequest("此考试没有人工评分题".into()));
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut prepared = Vec::with_capacity(input.updates.len());
+    for update in input.updates {
+        if update.response_id.is_empty() || !seen.insert(update.response_id.clone()) {
+            return Err(AppError::BadRequest("批量评分数据无效或重复".into()));
+        }
+        for (question_id, title, points) in &manual_questions {
+            let score = update
+                .scores
+                .get(*question_id)
+                .copied()
+                .ok_or_else(|| AppError::BadRequest(format!("“{title}”尚未评分")))?;
+            if !(0..=*points).contains(&score) {
+                return Err(AppError::BadRequest(format!(
+                    "“{title}”评分需为 0–{points} 的整数"
+                )));
+            }
+        }
+        let answers_json = sqlx::query_scalar::<_, String>(
+            "SELECT answers_json FROM survey_responses WHERE id = ? AND survey_id = ? LIMIT 1",
+        )
+        .bind(&update.response_id)
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::BadRequest(format!("答卷 {} 不存在", update.response_id)))?;
+        let answers: Value = serde_json::from_str(&answers_json).map_err(|_| AppError::Internal)?;
+        let grading = apply_manual_scores(
+            &questions,
+            answers.as_object().ok_or(AppError::Internal)?,
+            &update.scores,
+        );
+        prepared.push((update, grading));
+    }
+    let mut transaction = state.db.begin().await?;
+    let mut results = Vec::with_capacity(prepared.len());
+    for (update, (score, max_score, manual_pending)) in prepared {
+        let scores_json = serde_json::to_string(&update.scores).map_err(|_| AppError::Internal)?;
+        sqlx::query("UPDATE survey_responses SET manual_scores_json = ?, score = ?, max_score = ? WHERE id = ? AND survey_id = ?")
+            .bind(scores_json).bind(score).bind(max_score).bind(&update.response_id).bind(&id).execute(&mut *transaction).await?;
+        results.push(json!({"responseId":update.response_id,"scores":update.scores,"score":score,"maxScore":max_score,"manualPending":manual_pending}));
+    }
+    transaction.commit().await?;
+    Ok(Json(json!({"results":results})))
 }
 
 fn build_question_reports(questions: &[SurveyQuestion], responses: &[Value]) -> Vec<Value> {
@@ -940,7 +1085,7 @@ fn survey_json(row: &SurveyRecord) -> Result<Value, AppError> {
         serde_json::from_str(&row.questions_json).map_err(|_| AppError::Internal)?;
     Ok(json!({
         "id": row.id, "slug": row.slug, "title": row.title, "description": row.description,
-        "status": row.status, "access": row.access, "kind": row.kind, "durationMinutes": row.duration_minutes,
+        "status": row.status, "access": row.access, "kind": if row.kind == "exam" { "exam" } else { "standard" }, "queryEnabled": row.query_enabled != 0, "durationMinutes": row.duration_minutes,
         "examInstructions": row.exam_instructions, "examStartAt": row.exam_start_at,
         "queryIdentityQuestionId": row.query_identity_question_id, "ipLimit": row.ip_limit,
         "submitLabel": row.submit_label, "successMode": row.success_mode,
@@ -981,7 +1126,14 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
     input.description = input.description.trim().to_owned();
     input.access = input.access.trim().to_owned();
     input.kind = input.kind.trim().to_owned();
+    if input.kind == "information_query" {
+        input.kind = "standard".into();
+        input.query_enabled = true;
+    }
     input.query_identity_question_id = input.query_identity_question_id.trim().to_owned();
+    if !input.query_enabled || input.access == "registered" {
+        input.query_identity_question_id.clear();
+    }
     input.submit_label = input.submit_label.trim().to_owned();
     input.success_mode = input.success_mode.trim().to_owned();
     input.success_redirect_url = input.success_redirect_url.trim().to_owned();
@@ -1015,10 +1167,7 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
     if !matches!(input.access.as_str(), "public" | "registered") {
         return Err(AppError::BadRequest("访问权限无效".into()));
     }
-    if !matches!(
-        input.kind.as_str(),
-        "standard" | "exam" | "information_query"
-    ) {
+    if !matches!(input.kind.as_str(), "standard" | "exam") {
         return Err(AppError::BadRequest("问卷类型无效".into()));
     }
     if input.kind == "exam" && !(1..=1440).contains(&input.duration_minutes) {
@@ -1070,25 +1219,27 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
             )));
         }
         if let Some(logic) = question.logic() {
+            let logic_option_ids = logic.selected_option_ids();
             let source = input.questions[..index]
                 .iter()
                 .find(|item| item.id() == logic.source_question_id);
-            let valid = source.is_some_and(|item| match item {
-                SurveyQuestion::Single {
-                    options,
-                    allow_other,
-                    ..
-                }
-                | SurveyQuestion::Multiple {
-                    options,
-                    allow_other,
-                    ..
-                } => {
-                    options.iter().any(|option| option.id == logic.option_id)
-                        || *allow_other && logic.option_id == "__other"
-                }
-                _ => false,
-            });
+            let valid = !logic_option_ids.is_empty()
+                && source.is_some_and(|item| match item {
+                    SurveyQuestion::Single {
+                        options,
+                        allow_other,
+                        ..
+                    }
+                    | SurveyQuestion::Multiple {
+                        options,
+                        allow_other,
+                        ..
+                    } => logic_option_ids.iter().all(|logic_option_id| {
+                        options.iter().any(|option| option.id == *logic_option_id)
+                            || *allow_other && *logic_option_id == "__other"
+                    }),
+                    _ => false,
+                });
             if !valid {
                 return Err(AppError::BadRequest(format!(
                     "第 {} 题的显示条件无效",
@@ -1196,7 +1347,7 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
             }
         }
     }
-    if input.kind == "information_query" && input.access == "public" {
+    if input.query_enabled && input.access == "public" {
         let identity = input
             .questions
             .iter()
@@ -1204,7 +1355,7 @@ fn validate_survey(input: &mut SurveyInput) -> Result<(), AppError> {
         if !matches!(identity, Some(SurveyQuestion::PersonalInfo { required: true, logic: None, info_type, .. }) if matches!(info_type.as_str(), "email" | "student_id" | "id_card"))
         {
             return Err(AppError::BadRequest(
-                "公开信息查询需使用始终显示的必答邮箱、学号/工号或身份证题".into(),
+                "公开结果查询需使用始终显示的必答邮箱、学号/工号或身份证题".into(),
             ));
         }
     }
@@ -1265,6 +1416,9 @@ fn default_access() -> String {
 fn default_kind() -> String {
     "standard".into()
 }
+fn default_feedback_background() -> String {
+    "#f3f0ff".into()
+}
 fn default_scoring_mode() -> String {
     "exact".into()
 }
@@ -1301,9 +1455,12 @@ fn question_visible(
         let source = questions
             .iter()
             .find(|item| item.id() == logic.source_question_id);
+        let selected = selected_option_ids(answers.get(&logic.source_question_id));
         source.is_none_or(|item| question_visible(item, answers, questions))
-            && selected_option_ids(answers.get(&logic.source_question_id))
-                .contains(&logic.option_id.as_str())
+            && logic
+                .selected_option_ids()
+                .iter()
+                .any(|option_id| selected.contains(option_id))
     })
 }
 
@@ -1695,6 +1852,36 @@ fn score_answers(questions: &[SurveyQuestion], answers: &Map<String, Value>) -> 
         };
         if correct {
             score += question.points();
+        }
+    }
+    (score, max_score, manual_pending)
+}
+
+fn apply_manual_scores(
+    questions: &[SurveyQuestion],
+    answers: &Map<String, Value>,
+    manual_scores: &std::collections::HashMap<String, i64>,
+) -> (i64, i64, bool) {
+    let (automatic, max_score, _) = score_answers(questions, answers);
+    let mut score = automatic;
+    let mut manual_pending = false;
+    for question in questions {
+        if !question_visible(question, answers, questions) {
+            continue;
+        }
+        if let SurveyQuestion::ShortText {
+            id,
+            scoring_mode,
+            points,
+            ..
+        } = question
+            && scoring_mode == "manual"
+            && *points > 0
+        {
+            match manual_scores.get(id) {
+                Some(value) if (0..=*points).contains(value) => score += value,
+                _ => manual_pending = true,
+            }
         }
     }
     (score, max_score, manual_pending)

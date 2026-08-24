@@ -8,6 +8,7 @@ export type SurveyDbRow = {
   status: "draft" | "published" | "closed";
   access: "public" | "registered";
   kind: "standard" | "exam" | "information_query";
+  queryEnabled: number;
   durationMinutes: number;
   examInstructions: string;
   examStartAt: number;
@@ -32,7 +33,8 @@ export function surveyFromRow(row: SurveyDbRow): Survey {
     description: row.description,
     status: row.status,
     access: row.access,
-    kind: row.kind || "standard",
+    kind: row.kind === "exam" ? "exam" : "standard",
+    queryEnabled: Boolean(row.queryEnabled) || row.kind === "information_query",
     durationMinutes: Number(row.durationMinutes || 0),
     examInstructions: row.examInstructions || "",
     examStartAt: Number(row.examStartAt || 0),
@@ -50,7 +52,7 @@ export function surveyFromRow(row: SurveyDbRow): Survey {
 }
 
 export const surveySelect = `SELECT s.id, s.slug, s.title, s.description, s.status, s.access, s.ip_limit AS ipLimit,
-  s.kind, s.duration_minutes AS durationMinutes, s.exam_instructions AS examInstructions, s.exam_start_at AS examStartAt, s.query_identity_question_id AS queryIdentityQuestionId,
+  s.kind, s.query_enabled AS queryEnabled, s.duration_minutes AS durationMinutes, s.exam_instructions AS examInstructions, s.exam_start_at AS examStartAt, s.query_identity_question_id AS queryIdentityQuestionId,
   s.submit_label AS submitLabel, s.success_mode AS successMode, s.success_content AS successContent,
   s.success_redirect_url AS successRedirectUrl,
   s.questions_json AS questionsJson, s.created_at AS createdAt, s.updated_at AS updatedAt,

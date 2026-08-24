@@ -8,7 +8,7 @@ import Icon from "../../Icon";
 import RichPostContent from "../../posts/[slug]/RichPostContent";
 
 type PublicSurvey = Omit<Survey, "responseCount" | "successContent" | "successRedirectUrl">;
-type Completion = ({ mode: "message"; content: string } | { mode: "redirect"; redirectUrl: string }) & { score?: number; maxScore?: number; manualPending?: boolean; queryUrl?: string };
+type Completion = ({ mode: "message"; content: string } | { mode: "redirect"; redirectUrl: string }) & { queryUrl?: string };
 
 const questionTypeLabels: Record<SurveyQuestion["type"], string> = {
   single: "单选题",
@@ -156,7 +156,7 @@ export default function SurveyForm({ slug }: { slug: string }) {
   function jumpTo(questionId: string) { document.getElementById(`survey-question-${questionId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); setSheetOpen(false); }
   if (loading) return <div className="survey-public-state"><span className="survey-loader" /><p>正在加载问卷…</p></div>;
   if (!survey) return <div className="survey-public-state"><Icon name="table" /><h1>无法打开问卷</h1><p>{message}</p>{requiresLogin && <Link href={`/login?returnTo=${encodeURIComponent(`/surveys/${slug}`)}`}>登录 / 注册后填写</Link>}</div>;
-  if (submitted) return <div className="survey-public-state survey-success"><Icon name="check" />{completion?.maxScore !== undefined && <><div className="survey-score-result"><b>{completion.score}</b><span>/ {completion.maxScore} 分</span></div>{completion.manualPending && <p>以上为客观题暂得分，简答题人工评分完成后才是最终成绩。</p>}</>}<RichPostContent html={successContent} />{completion?.queryUrl && <Link className="survey-query-link" href={completion.queryUrl}>查询管理员反馈</Link>}</div>;
+  if (submitted) return <div className="survey-public-state survey-success"><Icon name="check" /><RichPostContent html={successContent} />{completion?.queryUrl && <Link className="survey-query-link" href={completion.queryUrl}>查询反馈与结果</Link>}</div>;
   const waitingSeconds = survey.examStartAt ? Math.max(0, Math.ceil((survey.examStartAt - now) / 1000)) : 0;
   if (survey.kind === "exam" && !attemptId) return <main className="survey-exam-lobby">
     <section>

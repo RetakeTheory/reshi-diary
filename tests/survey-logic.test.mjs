@@ -81,5 +81,26 @@ test("public information lookup rejects low-entropy identity fields", () => {
   input.questions = [{ id: "identity", type: "personal_info", title: "姓名", description: "", required: true, logic: null, points: 0, infoType: "name", maxLength: 50 }];
   assert.throws(() => normalizeSurveyInput(input), /邮箱、学号\/工号或身份证/);
   input.questions[0].infoType = "student_id";
-  assert.doesNotThrow(() => normalizeSurveyInput(input));
+  const normalized = normalizeSurveyInput(input);
+  assert.equal(normalized.kind, "standard");
+  assert.equal(normalized.queryEnabled, true);
+});
+
+test("conditional questions can be triggered by any of several selected options", () => {
+  const survey = exam(); const conditional = survey.questions[1];
+  conditional.logic = { sourceQuestionId: "q1", optionIds: ["a", "b"] };
+  assert.equal(questionIsVisible(conditional, { q1: { selected: "a" } }, survey.questions), true);
+  assert.equal(questionIsVisible(conditional, { q1: { selected: "b" } }, survey.questions), true);
+  assert.equal(questionIsVisible(conditional, { q1: { selected: "missing" } }, survey.questions), false);
+});
+
+test("result query is a companion setting for both surveys and exams", () => {
+  const input = exam();
+  input.queryEnabled = true;
+  input.queryIdentityQuestionId = "identity";
+  input.questions.unshift({ id: "identity", type: "personal_info", title: "学号", description: "", required: true, logic: null, points: 0, infoType: "student_id", maxLength: 50 });
+  const normalized = normalizeSurveyInput(input);
+  assert.equal(normalized.kind, "exam");
+  assert.equal(normalized.queryEnabled, true);
+  assert.equal(normalized.queryIdentityQuestionId, "identity");
 });
