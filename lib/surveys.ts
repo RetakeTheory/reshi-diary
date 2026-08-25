@@ -1,3 +1,5 @@
+import { isSurveyFileKey } from "./survey-file-key.ts";
+
 export type SurveyStatus = "draft" | "published" | "closed";
 export type SurveyAccess = "public" | "registered";
 export type SurveySuccessMode = "message" | "redirect";
@@ -351,7 +353,7 @@ export function validateSurveyAnswers(questions: SurveyQuestion[], raw: unknown,
       if (!value) { if (required) throw new Error(`${prefix}为必答题`); continue; }
       const file = value && typeof value === "object" && !Array.isArray(value) ? value as Partial<SurveyFileAnswer> : {};
       const key = text(file.key, 240); const name = text(file.name, 240); const type = text(file.type, 160) || "application/octet-stream"; const size = Number(file.size);
-      if (!/^survey-files\/[A-Za-z0-9_-]{1,80}\/[a-f0-9-]{20,80}$/.test(key) || !name || !Number.isSafeInteger(size) || size < 1 || size > question.maxSizeMb * 1024 * 1024) throw new Error(`${prefix}文件无效或超过 ${question.maxSizeMb} MB`);
+      if (!isSurveyFileKey(key) || !name || !Number.isSafeInteger(size) || size < 1 || size > question.maxSizeMb * 1024 * 1024) throw new Error(`${prefix}文件无效或超过 ${question.maxSizeMb} MB`);
       answers[question.id] = { key, name, size, type } satisfies SurveyFileAnswer;
       continue;
     }
