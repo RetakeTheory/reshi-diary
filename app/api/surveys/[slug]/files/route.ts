@@ -4,6 +4,7 @@ import { previewModeFor } from "../../../../../lib/file-preview";
 import { readerFromRequest } from "../../../../../lib/reader-auth";
 import { putS3Object } from "../../../../../lib/s3-storage";
 import { surveyFromRow, surveySelect, type SurveyDbRow } from "../../../../../lib/survey-d1";
+import { SURVEY_FILE_STORAGE_PREFIX } from "../../../../../lib/survey-file-key";
 
 const MAX_BYTES = 100 * 1024 * 1024;
 function clientIp(request: Request) { return request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"; }
@@ -20,7 +21,9 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
   if (row.access === "registered" && !await readerFromRequest(request)) return Response.json({ error: "此问卷仅限注册用户填写" }, { status: 401 });
   const survey = surveyFromRow(row); const question = survey.questions.find((item) => item.id === body.questionId);
   if (!question || question.type !== "file" || size > question.maxSizeMb * 1024 * 1024) return Response.json({ error: `文件超过题目允许的 ${question?.type === "file" ? question.maxSizeMb : 100} MB` }, { status: 413 });
-  const key = `survey-files/${survey.id}/${crypto.randomUUID()}`; const now = Date.now();
+  // Keep survey objects below the already-authorized uploads/ IAM prefix.
+  // The nested surveys/ namespace remains private in the file-serving routes.
+  const key = `${SURVEY_FILE_STORAGE_PREFIX}/${survey.id}/${crypto.randomUUID()}`; const now = Date.now();
   await db.prepare("INSERT INTO survey_file_uploads (key, survey_id, question_id, filename, content_type, size, ip_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
     .bind(key, survey.id, question.id, name, contentType, size, await hashValue(`${survey.id}:${clientIp(request)}`), now).run();
   const uploadUrl = `/api/surveys/${encodeURIComponent(slug)}/files?key=${encodeURIComponent(key)}`;
@@ -46,7 +49,12 @@ export async function PUT(request: Request, context: { params: Promise<{ slug: s
   if (body.byteLength !== reservation.size || body.byteLength > MAX_BYTES) return Response.json({ error: "文件大小与上传任务不一致" }, { status: 400 });
   try {
     const uploaded = await putS3Object(key, { body, filename: reservation.filename, contentType: reservation.content_type, previewable: previewModeFor(reservation.content_type, reservation.filename) !== null });
-    if (!uploaded.ok) return Response.json({ error: "文件存储暂时拒绝上传，请稍后重试" }, { status: 502 });
+    if (!uploaded.ok) {
+      const responseBody = await uploaded.text().catch(() => "");
+      const storageCode = responseBody.match(/<Code>([^<]{1,120})<\/Code>/)?.[1] || "unknown";
+      console.error(JSON.stringify({ event: "survey_file_upload_failed", status: uploaded.status, storageCode }));
+      return Response.json({ error: "文件存储暂时拒绝上传，请稍后重试" }, { status: 502 });
+    }
     return Response.json({ ok: true }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error && error.message === "S3_STORAGE_NOT_CONFIGURED" ? "文件存储尚未配置" : "文件上传服务暂时不可用" }, { status: 503 });

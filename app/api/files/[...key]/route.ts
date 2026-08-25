@@ -1,6 +1,7 @@
 import { findUpload, uploadBody } from "../../../../db/uploads";
 import { previewModeFor } from "../../../../lib/file-preview";
 import { decodeS3Filename, getS3Object } from "../../../../lib/s3-storage";
+import { isSurveyFileKey } from "../../../../lib/survey-file-key";
 import { getApiAdmin } from "../../../admin/admin-auth";
 
 type RouteContext = { params: Promise<{ key: string[] }> };
@@ -14,7 +15,7 @@ export async function GET(request: Request, context: RouteContext) {
   const key = (await context.params).key.join("/");
   const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
   let s3Response: Response | null = null;
-  if (key.startsWith("survey-files/") && !await getApiAdmin()) return new Response("请先登录管理员账户", { status: 401 });
+  if (isSurveyFileKey(key) && !await getApiAdmin()) return new Response("请先登录管理员账户", { status: 401 });
   if (key.startsWith("uploads/") || key.startsWith("survey-files/")) {
     try {
       s3Response = await getS3Object(key, request.headers.get("range"));

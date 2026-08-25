@@ -4,6 +4,8 @@ import SiteNav from "../../SiteNav";
 import { getFilePreviewMetadata } from "../../../lib/file-preview";
 import EditableModule from "../../EditableModule";
 import { pageDocument, pageModule } from "../../../lib/site-pages";
+import { isSurveyFileKey } from "../../../lib/survey-file-key";
+import { getApiAdmin } from "../../admin/admin-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,7 @@ function fileSize(size: number) {
 export default async function FilePreviewPage({ params, searchParams }: PageProps) {
   const keyParts = (await params).key;
   const key = keyParts.join("/");
+  if (isSurveyFileKey(key) && !await getApiAdmin()) notFound();
   const metadata = await getFilePreviewMetadata(key);
   if (!metadata) notFound();
 

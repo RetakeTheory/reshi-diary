@@ -40,7 +40,7 @@ function client(retries: number) {
 }
 
 export async function putS3Object(key: string, upload: S3Upload) {
-  const { aws, config } = client(0);
+  const { aws, config } = client(2);
   return aws.fetch(objectUrl(config.bucket, config.region, key), {
     method: "PUT",
     headers: {
