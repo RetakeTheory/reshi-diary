@@ -891,10 +891,9 @@ fn build_answer_report(
 ) -> Result<Value, AppError> {
     let answers: Value = serde_json::from_str(&row.answers_json).map_err(|_| AppError::Internal)?;
     let answers = answers.as_object().ok_or(AppError::Internal)?;
-    let manual_scores = serde_json::from_str::<std::collections::HashMap<String, i64>>(
-        &row.manual_scores_json,
-    )
-    .unwrap_or_default();
+    let manual_scores =
+        serde_json::from_str::<std::collections::HashMap<String, i64>>(&row.manual_scores_json)
+            .unwrap_or_default();
     let (score, max_score, manual_pending) =
         apply_manual_scores(questions, answers, &manual_scores);
     let mut number = 0;
@@ -930,7 +929,15 @@ fn build_answer_report(
                 .iter()
                 .map(|row| {
                     let value = display_answer(question, value, Some(&row.id));
-                    format!("{}：{}", row.label, if value.is_empty() { "未作答" } else { &value })
+                    format!(
+                        "{}：{}",
+                        row.label,
+                        if value.is_empty() {
+                            "未作答"
+                        } else {
+                            &value
+                        }
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join("\n"),
@@ -974,14 +981,13 @@ fn query_result(
         json!({"status":"pending","title":"等待管理员反馈","modules":[],"includeReport":false,"updatedAt":null})
     };
     let ready = feedback.get("status").and_then(Value::as_str) == Some("ready");
-    let answer_report = if is_exam
-        && ready
-        && feedback.get("includeReport").and_then(Value::as_bool) == Some(true)
-    {
-        Some(build_answer_report(row, questions)?)
-    } else {
-        None
-    };
+    let answer_report =
+        if is_exam && ready && feedback.get("includeReport").and_then(Value::as_bool) == Some(true)
+        {
+            Some(build_answer_report(row, questions)?)
+        } else {
+            None
+        };
     Ok(
         json!({"id":row.id,"createdAt":row.created_at,"score":if is_exam && ready { row.score } else { None },"maxScore":if is_exam && ready { row.max_score } else { None },"feedback":feedback,"answerReport":answer_report}),
     )
@@ -1112,8 +1118,13 @@ pub(crate) async fn update_feedback_admin(
     let response_ids = if let Some(group) = target_group {
         sqlx::query("UPDATE survey_responses SET feedback_json = ?, feedback_updated_at = ? WHERE survey_id = ? AND feedback_group = ?")
             .bind(feedback.to_string()).bind(now).bind(&id).bind(&group).execute(&state.db).await?;
-        sqlx::query_scalar::<_, String>("SELECT id FROM survey_responses WHERE survey_id = ? AND feedback_group = ?")
-            .bind(&id).bind(&group).fetch_all(&state.db).await?
+        sqlx::query_scalar::<_, String>(
+            "SELECT id FROM survey_responses WHERE survey_id = ? AND feedback_group = ?",
+        )
+        .bind(&id)
+        .bind(&group)
+        .fetch_all(&state.db)
+        .await?
     } else {
         sqlx::query("UPDATE survey_responses SET feedback_json = ?, feedback_updated_at = ? WHERE id = ? AND survey_id = ?")
             .bind(feedback.to_string()).bind(now).bind(&response_id).bind(&id).execute(&state.db).await?;
@@ -1121,7 +1132,9 @@ pub(crate) async fn update_feedback_admin(
     };
     let mut response = feedback;
     response["updatedAt"] = json!(now);
-    Ok(Json(json!({"feedback":response,"responseIds":response_ids})))
+    Ok(Json(
+        json!({"feedback":response,"responseIds":response_ids}),
+    ))
 }
 
 pub(crate) async fn update_response_group_admin(
@@ -1164,11 +1177,18 @@ pub(crate) async fn update_response_group_admin(
     let mut transaction = state.db.begin().await?;
     if group.is_empty() {
         for response_id in &response_ids {
-            sqlx::query("UPDATE survey_responses SET feedback_group = NULL WHERE survey_id = ? AND id = ?")
-                .bind(&id).bind(response_id).execute(&mut *transaction).await?;
+            sqlx::query(
+                "UPDATE survey_responses SET feedback_group = NULL WHERE survey_id = ? AND id = ?",
+            )
+            .bind(&id)
+            .bind(response_id)
+            .execute(&mut *transaction)
+            .await?;
         }
         transaction.commit().await?;
-        return Ok(Json(json!({"group":Value::Null,"responseIds":response_ids})));
+        return Ok(Json(
+            json!({"group":Value::Null,"responseIds":response_ids}),
+        ));
     }
     let existing = sqlx::query_as::<_, (Option<String>, Option<i64>)>(
         "SELECT feedback_json, feedback_updated_at FROM survey_responses WHERE survey_id = ? AND feedback_group = ? ORDER BY feedback_updated_at DESC LIMIT 1",
@@ -1177,7 +1197,8 @@ pub(crate) async fn update_response_group_admin(
     .bind(&group)
     .fetch_optional(&mut *transaction)
     .await?;
-    let (feedback_json, feedback_updated_at) = if let Some((Some(feedback), updated_at)) = existing {
+    let (feedback_json, feedback_updated_at) = if let Some((Some(feedback), updated_at)) = existing
+    {
         (feedback, updated_at)
     } else {
         let source = selected
@@ -1186,7 +1207,10 @@ pub(crate) async fn update_response_group_admin(
         (
             source
                 .and_then(|(_, feedback, _)| feedback.clone())
-                .unwrap_or_else(|| "{\"status\":\"pending\",\"title\":\"\",\"modules\":[],\"includeReport\":false}".into()),
+                .unwrap_or_else(|| {
+                    "{\"status\":\"pending\",\"title\":\"\",\"modules\":[],\"includeReport\":false}"
+                        .into()
+                }),
             source.and_then(|(_, _, updated_at)| *updated_at),
         )
     };
@@ -1196,7 +1220,9 @@ pub(crate) async fn update_response_group_admin(
     }
     transaction.commit().await?;
     let feedback: Value = serde_json::from_str(&feedback_json).map_err(|_| AppError::Internal)?;
-    Ok(Json(json!({"group":group,"responseIds":response_ids,"feedback":feedback})))
+    Ok(Json(
+        json!({"group":group,"responseIds":response_ids,"feedback":feedback}),
+    ))
 }
 
 pub(crate) async fn batch_score_admin(
@@ -2128,8 +2154,12 @@ fn apply_manual_scores(
             continue;
         }
         let manual = match question {
-            SurveyQuestion::ShortText { id, scoring_mode, points, .. }
-                if scoring_mode == "manual" && *points > 0 => Some((id, *points)),
+            SurveyQuestion::ShortText {
+                id,
+                scoring_mode,
+                points,
+                ..
+            } if scoring_mode == "manual" && *points > 0 => Some((id, *points)),
             SurveyQuestion::File { id, points, .. } if *points > 0 => Some((id, *points)),
             _ => None,
         };
