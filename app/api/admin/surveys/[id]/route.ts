@@ -14,7 +14,12 @@ export async function PUT(request: Request, context: Context) {
   try {
     const { id } = await context.params;
     let input = normalizeSurveyInput(await request.json());
-    input = normalizeSurveyInput({ ...input, successContent: sanitizeRichHtml(input.successContent), examInstructions: sanitizeRichHtml(input.examInstructions) });
+    input = normalizeSurveyInput({
+      ...input,
+      successContent: sanitizeRichHtml(input.successContent),
+      examInstructions: sanitizeRichHtml(input.examInstructions),
+      questions: input.questions.map((question) => question.type === "heading" ? question : { ...question, description: sanitizeRichHtml(question.description) }),
+    });
     await ensureDatabaseSchema();
     const db = await getD1();
     const result = await db.prepare(`UPDATE surveys SET slug = ?, title = ?, description = ?, status = ?, access = ?, kind = ?, query_enabled = ?, duration_minutes = ?, exam_instructions = ?, exam_start_at = ?, query_identity_question_id = ?, ip_limit = ?, submit_label = ?, success_mode = ?, success_content = ?, success_redirect_url = ?, questions_json = ?, updated_at = ? WHERE id = ?`)

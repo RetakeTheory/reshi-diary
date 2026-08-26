@@ -10,11 +10,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const row = await db.prepare(`${surveySelect} WHERE s.id = ? LIMIT 1`).bind(id).first<SurveyDbRow>();
   if (!row) return Response.json({ error: "问卷不存在" }, { status: 404 });
   const survey = surveyFromRow(row); const url = new URL(request.url); const page = Math.max(1, Number(url.searchParams.get("page")) || 1); const pageSize = 100;
-  const all = await db.prepare("SELECT id, answers_json AS answersJson, score, max_score AS maxScore, manual_scores_json AS manualScoresJson, feedback_json AS feedbackJson, feedback_updated_at AS feedbackUpdatedAt, created_at AS createdAt FROM survey_responses WHERE survey_id = ? ORDER BY created_at DESC LIMIT 5000").bind(id).all<{ id: string; answersJson: string; score: number | null; maxScore: number | null; manualScoresJson: string | null; feedbackJson: string | null; feedbackUpdatedAt: number | null; createdAt: number }>();
+  const all = await db.prepare("SELECT id, answers_json AS answersJson, score, max_score AS maxScore, manual_scores_json AS manualScoresJson, feedback_json AS feedbackJson, feedback_updated_at AS feedbackUpdatedAt, feedback_group AS feedbackGroup, created_at AS createdAt FROM survey_responses WHERE survey_id = ? ORDER BY created_at DESC LIMIT 5000").bind(id).all<{ id: string; answersJson: string; score: number | null; maxScore: number | null; manualScoresJson: string | null; feedbackJson: string | null; feedbackUpdatedAt: number | null; feedbackGroup: string | null; createdAt: number }>();
   const responses: SurveyResponseResult[] = (all.results || []).map((item) => {
     const answers = JSON.parse(item.answersJson) as SurveyAnswers; const manualScores = JSON.parse(item.manualScoresJson || "{}") as Record<string, number>;
     const grading = item.score === null ? null : applyManualSurveyScores(survey.questions, answers, manualScores);
-    return { id: item.id, answers, createdAt: item.createdAt, ...(grading ? { score: grading.score, maxScore: grading.maxScore, manualScores, manualPending: grading.manualPending } : {}), feedback: item.feedbackJson ? { ...JSON.parse(item.feedbackJson), updatedAt: item.feedbackUpdatedAt } : undefined };
+    const storedFeedback = item.feedbackJson ? JSON.parse(item.feedbackJson) as Record<string, unknown> : null;
+    return { id: item.id, answers, createdAt: item.createdAt, feedbackGroup: item.feedbackGroup, ...(grading ? { score: grading.score, maxScore: grading.maxScore, manualScores, manualPending: grading.manualPending } : {}), feedback: storedFeedback ? { ...storedFeedback, includeReport: storedFeedback.includeReport === true, updatedAt: item.feedbackUpdatedAt } : undefined } as SurveyResponseResult;
   });
   const finalScores = survey.kind === "exam" ? responses.filter((item) => item.score !== undefined && !item.manualPending).map((item) => item.score as number).sort((a, b) => a - b) : [];
   const statistics = survey.kind === "exam" ? {

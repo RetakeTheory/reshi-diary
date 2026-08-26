@@ -1,7 +1,7 @@
 import { ensureDatabaseSchema, getD1 } from "../../../../../../db/runtime";
 import { sameOrigin } from "../../../../../../lib/admin-email-auth";
 import { getApiAdmin } from "../../../../../admin/admin-auth";
-import { applyManualSurveyScores, type SurveyAnswers } from "../../../../../../lib/surveys";
+import { applyManualSurveyScores, isManualScoringQuestion, type SurveyAnswers } from "../../../../../../lib/surveys";
 import { surveyFromRow, surveySelect, type SurveyDbRow } from "../../../../../../lib/survey-d1";
 
 type UpdateInput = { responseId?: unknown; scores?: unknown };
@@ -19,7 +19,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (!row) return Response.json({ error: "问卷不存在" }, { status: 404 });
     const survey = surveyFromRow(row);
     if (survey.kind !== "exam") throw new Error("只有考试答卷可以评分");
-    const manualQuestions = survey.questions.filter((question) => question.type === "short_text" && question.scoringMode === "manual" && question.points > 0);
+    const manualQuestions = survey.questions.filter(isManualScoringQuestion);
     if (!manualQuestions.length) throw new Error("此考试没有人工评分题");
     const seen = new Set<string>();
     const updates = [];

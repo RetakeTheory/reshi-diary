@@ -1,6 +1,6 @@
 import type { SurveyAnswers, SurveyFeedback, SurveyQuestion } from "./surveys";
 
-export type SurveyResponseResult = { id: string; answers: SurveyAnswers; createdAt: number; score?: number; maxScore?: number; manualScores?: Record<string, number>; manualPending?: boolean; feedback?: SurveyFeedback };
+export type SurveyResponseResult = { id: string; answers: SurveyAnswers; createdAt: number; score?: number; maxScore?: number; manualScores?: Record<string, number>; manualPending?: boolean; feedback?: SurveyFeedback; feedbackGroup?: string | null };
 export type SurveyQuestionReport = {
   id: string; title: string; type: SurveyQuestion["type"]; answered: number; total: number;
   options?: Array<{ id: string; label: string; count: number }>;

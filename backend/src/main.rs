@@ -234,6 +234,10 @@ fn routes(state: AppState) -> Router {
             axum::routing::put(surveys::batch_score_admin),
         )
         .route(
+            "/api/admin/surveys/{id}/groups",
+            axum::routing::put(surveys::update_response_group_admin),
+        )
+        .route(
             "/api/admin/surveys/{id}/responses/{response_id}/feedback",
             axum::routing::put(surveys::update_feedback_admin),
         )
