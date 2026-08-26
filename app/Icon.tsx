@@ -2,7 +2,9 @@ export type IconName =
   | "spark" | "food" | "dice" | "wheel" | "menu" | "close" | "user" | "key"
   | "heart" | "insight" | "reply" | "comment" | "zoom-in" | "zoom-out" | "reset"
   | "plus" | "minus" | "trash" | "formula" | "table" | "code" | "image" | "file" | "check"
-  | "external" | "shield" | "map" | "arrow-left" | "search" | "ranking" | "thumb-up" | "thumb-down";
+  | "external" | "shield" | "map" | "arrow-left" | "search" | "ranking" | "thumb-up" | "thumb-down"
+  | "heading" | "paragraph" | "bold" | "italic" | "align-left" | "align-center" | "align-right"
+  | "list-unordered" | "list-ordered" | "link";
 
 export default function Icon({ name, className }: { name: IconName; className?: string }) {
   const common = { className, viewBox: "0 0 24 24", "aria-hidden": true } as const;
@@ -25,6 +27,16 @@ export default function Icon({ name, className }: { name: IconName; className?: 
     case "plus": return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>;
     case "minus": return <svg {...common}><path d="M5 12h14" /></svg>;
     case "trash": return <svg {...common}><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13M10 10v6M14 10v6" /></svg>;
+    case "heading": return <svg {...common}><path d="M4 5v14M12 5v14M4 12h8M16 9a2 2 0 0 1 4 0c0 2-4 2.5-4 5h4" /></svg>;
+    case "paragraph": return <svg {...common}><path d="M13 5v14M17 5v14M13 5H9a4 4 0 0 0 0 8h4" /></svg>;
+    case "bold": return <svg {...common}><path d="M7 5h6a4 4 0 0 1 0 8H7V5Zm0 8h7a3 3 0 0 1 0 6H7v-6Z" /></svg>;
+    case "italic": return <svg {...common}><path d="M10 5h7M7 19h7M14 5l-4 14" /></svg>;
+    case "align-left": return <svg {...common}><path d="M4 6h16M4 10h11M4 14h16M4 18h13" /></svg>;
+    case "align-center": return <svg {...common}><path d="M4 6h16M7 10h10M4 14h16M6 18h12" /></svg>;
+    case "align-right": return <svg {...common}><path d="M4 6h16M9 10h11M4 14h16M7 18h13" /></svg>;
+    case "list-unordered": return <svg {...common}><circle cx="5" cy="6" r="1" /><circle cx="5" cy="12" r="1" /><circle cx="5" cy="18" r="1" /><path d="M10 6h10M10 12h10M10 18h10" /></svg>;
+    case "list-ordered": return <svg {...common}><path d="M4 5.2 5.2 4v4M3.8 11.6c.2-.8 2.5-1.1 2.5.3 0 .9-2.4 1.4-2.4 2.6h2.5M3.9 17.1c.5-.5 2.4-.4 2.4.7 0 .8-.8 1.1-1.6 1.1.8 0 1.7.3 1.7 1.1 0 1.2-2 1.3-2.6.7M10 6h10M10 12h10M10 18h10" /></svg>;
+    case "link": return <svg {...common}><path d="M10 13a5 5 0 0 0 7.1.1l2-2A5 5 0 0 0 12 4l-1.1 1.1M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1" /></svg>;
     case "formula": return <svg {...common}><path d="M17.5 5H8l5 7-5 7h9.5M15 9h4M15 15h4" /></svg>;
     case "table": return <svg {...common}><rect x="4" y="5" width="16" height="14" rx="1.5" /><path d="M4 10h16M10 5v14M15 5v14" /></svg>;
     case "code": return <svg {...common}><path d="m9 7-5 5 5 5M15 7l5 5-5 5M13.5 4 10.5 20" /></svg>;

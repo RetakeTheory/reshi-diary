@@ -100,25 +100,25 @@ export default function SurveyRichEditor({ value, onChange, label = "提交后�
     <div className="rich-editor-label"><span>{label}</span><small>{description}</small></div>
     <div className="rich-toolbar" role="toolbar" aria-label={`${label}排版工具`}>
       <div className="toolbar-group">
-        <button type="button" title="标题" onMouseDown={(event) => command(event, "formatBlock", "h2")}>H2</button>
-        <button type="button" title="正文" onMouseDown={(event) => command(event, "formatBlock", "p")}>P</button>
-        <button type="button" title="加粗" onMouseDown={(event) => command(event, "bold")}><b>B</b></button>
-        <button type="button" title="倾斜" onMouseDown={(event) => command(event, "italic")}><i>I</i></button>
+        <button type="button" title="标题" aria-label="标题" onMouseDown={(event) => command(event, "formatBlock", "h2")}><Icon name="heading" className="toolbar-flat-icon" /></button>
+        <button type="button" title="正文" aria-label="正文" onMouseDown={(event) => command(event, "formatBlock", "p")}><Icon name="paragraph" className="toolbar-flat-icon" /></button>
+        <button type="button" title="加粗" aria-label="加粗" onMouseDown={(event) => command(event, "bold")}><Icon name="bold" className="toolbar-flat-icon" /></button>
+        <button type="button" title="倾斜" aria-label="倾斜" onMouseDown={(event) => command(event, "italic")}><Icon name="italic" className="toolbar-flat-icon" /></button>
       </div>
       <div className="toolbar-group">
-        <button type="button" title="左对齐" onMouseDown={(event) => command(event, "justifyLeft")}>左</button>
-        <button type="button" title="居中" onMouseDown={(event) => command(event, "justifyCenter")}>中</button>
-        <button type="button" title="右对齐" onMouseDown={(event) => command(event, "justifyRight")}>右</button>
+        <button type="button" title="左对齐" aria-label="左对齐" onMouseDown={(event) => command(event, "justifyLeft")}><Icon name="align-left" className="toolbar-flat-icon" /></button>
+        <button type="button" title="居中" aria-label="居中" onMouseDown={(event) => command(event, "justifyCenter")}><Icon name="align-center" className="toolbar-flat-icon" /></button>
+        <button type="button" title="右对齐" aria-label="右对齐" onMouseDown={(event) => command(event, "justifyRight")}><Icon name="align-right" className="toolbar-flat-icon" /></button>
       </div>
       <div className="toolbar-group toolbar-insert">
-        <button type="button" title="无序列表" onMouseDown={(event) => command(event, "insertUnorderedList")}>列表</button>
-        <button type="button" title="有序列表" onMouseDown={(event) => command(event, "insertOrderedList")}>编号</button>
-        <button type="button" title="链接" onMouseDown={addLink}>链接</button>
-        <button type="button" title="公式" onMouseDown={addFormula}><Icon name="formula" /> 公式</button>
-        <button type="button" title="表格" onMouseDown={addTable}><Icon name="table" /> 表格</button>
-        <button type="button" title="代码" onMouseDown={addCode}><Icon name="code" /> 代码</button>
-        <button type="button" title="插入图片" onMouseDown={(event) => { event.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}><Icon name="image" /> 图片</button>
-        <button type="button" title="插入文件" onMouseDown={(event) => { event.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><Icon name="file" /> 文件</button>
+        <button type="button" title="无序列表" aria-label="无序列表" onMouseDown={(event) => command(event, "insertUnorderedList")}><Icon name="list-unordered" className="toolbar-flat-icon" /></button>
+        <button type="button" title="有序列表" aria-label="有序列表" onMouseDown={(event) => command(event, "insertOrderedList")}><Icon name="list-ordered" className="toolbar-flat-icon" /></button>
+        <button type="button" title="链接" aria-label="插入链接" onMouseDown={addLink}><Icon name="link" className="toolbar-flat-icon" /></button>
+        <button type="button" title="公式" aria-label="插入公式" onMouseDown={addFormula}><Icon name="formula" className="toolbar-flat-icon" /></button>
+        <button type="button" title="表格" aria-label="插入表格" onMouseDown={addTable}><Icon name="table" className="toolbar-flat-icon" /></button>
+        <button type="button" title="代码" aria-label="插入代码" onMouseDown={addCode}><Icon name="code" className="toolbar-flat-icon" /></button>
+        <button type="button" title="插入图片" aria-label="插入图片" onMouseDown={(event) => { event.preventDefault(); rememberSelection(); imageInputRef.current?.click(); }}><Icon name="image" className="toolbar-flat-icon" /></button>
+        <button type="button" title="插入文件" aria-label="插入文件" onMouseDown={(event) => { event.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><Icon name="file" className="toolbar-flat-icon" /></button>
       </div>
     </div>
     <div ref={editorRef} className="rich-editor" contentEditable role="textbox" tabIndex={0} aria-label={label} aria-multiline="true" suppressContentEditableWarning data-placeholder={placeholder} onInput={emit} onKeyUp={rememberSelection} onMouseUp={rememberSelection} />
