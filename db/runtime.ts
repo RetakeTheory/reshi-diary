@@ -221,8 +221,9 @@ export async function ensureDatabaseSchema() {
       answers_json TEXT NOT NULL,
       score INTEGER,
       max_score INTEGER,
-      feedback_json TEXT DEFAULT '{"status":"pending","title":"","modules":[],"updatedAt":null}' NOT NULL,
+      feedback_json TEXT DEFAULT '{"status":"pending","title":"","modules":[],"includeReport":false,"updatedAt":null}' NOT NULL,
       feedback_updated_at INTEGER,
+      feedback_group TEXT,
       attempt_id TEXT,
       manual_scores_json TEXT DEFAULT '{}' NOT NULL,
       created_at INTEGER NOT NULL,
@@ -359,8 +360,9 @@ export async function ensureDatabaseSchema() {
   if (!surveyResponseNames.has("lookup_hash")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN lookup_hash TEXT").run();
   if (!surveyResponseNames.has("score")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN score INTEGER").run();
   if (!surveyResponseNames.has("max_score")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN max_score INTEGER").run();
-  if (!surveyResponseNames.has("feedback_json")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN feedback_json TEXT DEFAULT '{\"status\":\"pending\",\"title\":\"\",\"modules\":[],\"updatedAt\":null}' NOT NULL").run();
+  if (!surveyResponseNames.has("feedback_json")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN feedback_json TEXT DEFAULT '{\"status\":\"pending\",\"title\":\"\",\"modules\":[],\"includeReport\":false,\"updatedAt\":null}' NOT NULL").run();
   if (!surveyResponseNames.has("feedback_updated_at")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN feedback_updated_at INTEGER").run();
+  if (!surveyResponseNames.has("feedback_group")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN feedback_group TEXT").run();
   if (!surveyResponseNames.has("attempt_id")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN attempt_id TEXT").run();
   if (!surveyResponseNames.has("manual_scores_json")) await db.prepare("ALTER TABLE survey_responses ADD COLUMN manual_scores_json TEXT DEFAULT '{}' NOT NULL").run();
   const foodRankingColumns = await db.prepare("PRAGMA table_info(food_rankings)").all<{ name: string }>();
@@ -368,6 +370,7 @@ export async function ensureDatabaseSchema() {
   if (!foodRankingNames.has("image_url")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN image_url TEXT DEFAULT '' NOT NULL").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_user ON survey_responses (survey_id, user_id, created_at DESC)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_lookup ON survey_responses (survey_id, lookup_hash, created_at DESC)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_feedback_group ON survey_responses (survey_id, feedback_group)").run();
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_responses_attempt ON survey_responses (attempt_id)").run();
   await db.prepare("PRAGMA optimize").run();
   initialized = true;

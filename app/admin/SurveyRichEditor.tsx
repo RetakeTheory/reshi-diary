@@ -4,7 +4,7 @@ import { MouseEvent, useEffect, useRef, useState } from "react";
 import Icon from "../Icon";
 import { createAttachmentCard } from "../../lib/attachment-cards";
 
-export default function SurveyRichEditor({ value, onChange, label = "提交后自定义内容" }: { value: string; onChange: (value: string) => void; label?: string }) {
+export default function SurveyRichEditor({ value, onChange, label = "提交后自定义内容", description = "与文章编辑器一致，支持排版、公式、表格、代码、链接、图片和附件", placeholder = "开始编辑内容……", compact = false }: { value: string; onChange: (value: string) => void; label?: string; description?: string; placeholder?: string; compact?: boolean }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,10 +96,9 @@ export default function SurveyRichEditor({ value, onChange, label = "提交后�
     finally { if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
 
-  return <div className="rich-editor-wrap survey-rich-editor">
-    <strong>{label}</strong>
-    <div className="rich-editor-label"><span>提交后的提示内容</span><small>与文章编辑器一致，支持富文本和图片</small></div>
-    <div className="rich-toolbar" role="toolbar" aria-label="提交后内容排版工具">
+  return <div className={`rich-editor-wrap survey-rich-editor${compact ? " is-compact" : ""}`}>
+    <div className="rich-editor-label"><span>{label}</span><small>{description}</small></div>
+    <div className="rich-toolbar" role="toolbar" aria-label={`${label}排版工具`}>
       <div className="toolbar-group">
         <button type="button" title="标题" onMouseDown={(event) => command(event, "formatBlock", "h2")}>H2</button>
         <button type="button" title="正文" onMouseDown={(event) => command(event, "formatBlock", "p")}>P</button>
@@ -122,7 +121,7 @@ export default function SurveyRichEditor({ value, onChange, label = "提交后�
         <button type="button" title="插入文件" onMouseDown={(event) => { event.preventDefault(); rememberSelection(); fileInputRef.current?.click(); }}><Icon name="file" /> 文件</button>
       </div>
     </div>
-    <div ref={editorRef} className="rich-editor" contentEditable role="textbox" tabIndex={0} aria-multiline="true" suppressContentEditableWarning data-placeholder="填写提交成功后的提示……" onInput={emit} onKeyUp={rememberSelection} onMouseUp={rememberSelection} />
+    <div ref={editorRef} className="rich-editor" contentEditable role="textbox" tabIndex={0} aria-label={label} aria-multiline="true" suppressContentEditableWarning data-placeholder={placeholder} onInput={emit} onKeyUp={rememberSelection} onMouseUp={rememberSelection} />
     <small>{uploading || "内容会在服务端清理危险代码"}</small>
     <input ref={imageInputRef} className="sr-only" type="file" accept="image/*" onChange={(event) => event.target.files?.[0] && addImage(event.target.files[0])} />
     <input ref={fileInputRef} className="sr-only" type="file" onChange={(event) => event.target.files?.[0] && addFile(event.target.files[0])} />

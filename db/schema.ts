@@ -164,13 +164,14 @@ export const surveyResponses = sqliteTable(
     answersJson: text("answers_json").notNull(),
     score: integer("score"),
     maxScore: integer("max_score"),
-    feedbackJson: text("feedback_json").notNull().default('{"status":"pending","title":"","modules":[],"updatedAt":null}'),
+    feedbackJson: text("feedback_json").notNull().default('{"status":"pending","title":"","modules":[],"includeReport":false,"updatedAt":null}'),
     feedbackUpdatedAt: integer("feedback_updated_at", { mode: "timestamp_ms" }),
+    feedbackGroup: text("feedback_group"),
     attemptId: text("attempt_id"),
     manualScoresJson: text("manual_scores_json").notNull().default("{}"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("idx_survey_responses_survey_created_at").on(table.surveyId, table.createdAt), index("idx_survey_responses_ip").on(table.surveyId, table.ipHash), uniqueIndex("idx_survey_responses_attempt").on(table.attemptId)],
+  (table) => [index("idx_survey_responses_survey_created_at").on(table.surveyId, table.createdAt), index("idx_survey_responses_ip").on(table.surveyId, table.ipHash), index("idx_survey_responses_feedback_group").on(table.surveyId, table.feedbackGroup), uniqueIndex("idx_survey_responses_attempt").on(table.attemptId)],
 );
 
 export const surveyAttempts = sqliteTable(

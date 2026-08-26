@@ -18,7 +18,12 @@ export async function POST(request: Request) {
   if (!await getApiAdmin()) return Response.json({ error: "请先登录管理员账户" }, { status: 401 });
   try {
     let input = normalizeSurveyInput(await request.json());
-    input = normalizeSurveyInput({ ...input, successContent: sanitizeRichHtml(input.successContent), examInstructions: sanitizeRichHtml(input.examInstructions) });
+    input = normalizeSurveyInput({
+      ...input,
+      successContent: sanitizeRichHtml(input.successContent),
+      examInstructions: sanitizeRichHtml(input.examInstructions),
+      questions: input.questions.map((question) => question.type === "heading" ? question : { ...question, description: sanitizeRichHtml(question.description) }),
+    });
     await ensureDatabaseSchema();
     const db = await getD1();
     const id = crypto.randomUUID();

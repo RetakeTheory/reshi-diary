@@ -34,8 +34,12 @@ export type HeadingQuestion = QuestionBase<"heading">;
 export type FileQuestion = QuestionBase<"file"> & { maxSizeMb: number };
 export type SurveyFileAnswer = { key: string; name: string; size: number; type: string };
 export type SurveyQuestion = ChoiceQuestion | MatrixQuestion | ShortTextQuestion | PersonalInfoQuestion | HeadingQuestion | FileQuestion;
+export type ManuallyScoredQuestion = ShortTextQuestion | FileQuestion;
+export type SurveyAnswerStatus = "correct" | "partial" | "incorrect" | "ungraded";
+export type SurveyAnswerReportItem = { id: string; number: number; title: string; type: SurveyQuestion["type"]; answer: string; score: number | null; maxScore: number; status: SurveyAnswerStatus };
+export type SurveyAnswerReport = { score: number; maxScore: number; manualPending: boolean; items: SurveyAnswerReportItem[] };
 export type SurveyFeedbackModule = { id: string; title: string; content: string; tone: "neutral" | "positive" | "warning"; backgroundColor: string };
-export type SurveyFeedback = { status: "pending" | "ready"; title: string; modules: SurveyFeedbackModule[]; updatedAt: number | null };
+export type SurveyFeedback = { status: "pending" | "ready"; title: string; modules: SurveyFeedbackModule[]; includeReport: boolean; updatedAt: number | null };
 
 export type Survey = {
   id: string;
@@ -135,7 +139,7 @@ export function normalizeSurveyInput(raw: unknown): SurveyInput {
     const rawPoints = Number(question.points || 0);
     if (!Number.isSafeInteger(rawPoints) || rawPoints < 0 || rawPoints > 1000) throw new Error(`第 ${index + 1} 题分数需为 0–1000`);
     const points = kind === "exam" ? rawPoints : 0;
-    const base = { id, type, title: questionTitle, description: text(question.description, 500), required: question.required === true, logic, points };
+    const base = { id, type, title: questionTitle, description: text(question.description, 20_000), required: question.required === true, logic, points };
     if (type === "heading") return { ...base, type, description: "", required: false, logic: null, points: 0 };
     if (type === "single" || type === "multiple") {
       const choice = question as Partial<ChoiceQuestion>;
@@ -154,7 +158,7 @@ export function normalizeSurveyInput(raw: unknown): SurveyInput {
       const file = question as Partial<FileQuestion>;
       const maxSizeMb = Number(file.maxSizeMb || 100);
       if (!Number.isSafeInteger(maxSizeMb) || maxSizeMb < 1 || maxSizeMb > 100) throw new Error(`第 ${index + 1} 题文件上限需为 1–100 MB`);
-      return { ...base, type: "file", points: 0, maxSizeMb };
+      return { ...base, type: "file", maxSizeMb };
     }
     if (type === "personal_info") {
       const personal = question as Partial<PersonalInfoQuestion>;
@@ -260,23 +264,33 @@ export function isSurveyQueryIdentityQuestion(question: SurveyQuestion) {
   return question.type === "personal_info" && question.required && !question.logic && (question.infoType === "email" || question.infoType === "student_id" || question.infoType === "id_card");
 }
 
+export function isManualScoringQuestion(question: SurveyQuestion): question is ManuallyScoredQuestion {
+  return question.points > 0 && (question.type === "file" || question.type === "short_text" && question.scoringMode === "manual");
+}
+
+function automaticQuestionScore(question: SurveyQuestion, answers: SurveyAnswers) {
+  if (question.type === "single" || question.type === "multiple") {
+    const selected = [...new Set(selectedOptionIds(answers[question.id]))].sort();
+    const correct = [...question.correctOptionIds].sort();
+    return selected.length === correct.length && selected.every((item, index) => item === correct[index]) ? question.points : 0;
+  }
+  if (question.type === "short_text" && question.scoringMode !== "manual") {
+    const actual = String(answers[question.id] || "").trim();
+    const expected = question.correctAnswer.trim();
+    const comparableActual = question.textType === "english" ? actual.toLocaleLowerCase("en") : actual;
+    const comparableExpected = question.textType === "english" ? expected.toLocaleLowerCase("en") : expected;
+    return question.scoringMode === "contains" ? comparableActual.includes(comparableExpected) ? question.points : 0 : comparableActual === comparableExpected ? question.points : 0;
+  }
+  return 0;
+}
+
 export function scoreSurveyAnswers(questions: SurveyQuestion[], answers: SurveyAnswers) {
   let score = 0; let maxScore = 0; let manualPending = false;
   for (const question of visibleSurveyQuestions(questions, answers)) {
     if (!question.points) continue;
     maxScore += question.points;
-    if (question.type === "single" || question.type === "multiple") {
-      const selected = [...new Set(selectedOptionIds(answers[question.id]))].sort();
-      const correct = [...question.correctOptionIds].sort();
-      if (selected.length === correct.length && selected.every((item, index) => item === correct[index])) score += question.points;
-    } else if (question.type === "short_text") {
-      const actual = String(answers[question.id] || "").trim();
-      const expected = question.correctAnswer.trim();
-      if (question.scoringMode === "manual") { manualPending = true; continue; }
-      const comparableActual = question.textType === "english" ? actual.toLocaleLowerCase("en") : actual;
-      const comparableExpected = question.textType === "english" ? expected.toLocaleLowerCase("en") : expected;
-      if (question.scoringMode === "contains" ? comparableActual.includes(comparableExpected) : comparableActual === comparableExpected) score += question.points;
-    }
+    if (isManualScoringQuestion(question)) { manualPending = true; continue; }
+    score += automaticQuestionScore(question, answers);
   }
   return { score, maxScore, manualPending };
 }
@@ -286,12 +300,29 @@ export function applyManualSurveyScores(questions: SurveyQuestion[], answers: Su
   let manual = 0;
   let pending = false;
   for (const question of visibleSurveyQuestions(questions, answers)) {
-    if (question.type !== "short_text" || question.scoringMode !== "manual" || !question.points) continue;
+    if (!isManualScoringQuestion(question)) continue;
     const value = manualScores[question.id];
     if (!Number.isSafeInteger(value) || value < 0 || value > question.points) pending = true;
     else manual += value;
   }
   return { score: automatic.score + manual, maxScore: automatic.maxScore, manualPending: pending };
+}
+
+export function buildSurveyAnswerReport(questions: SurveyQuestion[], answers: SurveyAnswers, manualScores: Record<string, number>): SurveyAnswerReport {
+  const grading = applyManualSurveyScores(questions, answers, manualScores);
+  const items = visibleSurveyQuestions(questions, answers).filter((question) => question.type !== "heading").map((question, index): SurveyAnswerReportItem => {
+    const manualScore = isManualScoringQuestion(question) ? manualScores[question.id] : undefined;
+    const score = question.points <= 0 ? null : isManualScoringQuestion(question)
+      ? Number.isSafeInteger(manualScore) && manualScore! >= 0 && manualScore! <= question.points ? manualScore! : null
+      : automaticQuestionScore(question, answers);
+    const status: SurveyAnswerStatus = score === null ? "ungraded" : score >= question.points ? "correct" : score > 0 ? "partial" : "incorrect";
+    const value = answers[question.id];
+    const answer = question.type === "matrix_single" || question.type === "matrix_multiple"
+      ? question.rows.map((row) => `${row.label}：${displaySurveyAnswer(question, value, row.id) || "未作答"}`).join("\n")
+      : displaySurveyAnswer(question, value) || "未作答";
+    return { id: question.id, number: index + 1, title: question.title, type: question.type, answer, score, maxScore: question.points, status };
+  });
+  return { ...grading, items };
 }
 
 export function validateSurveyAnswers(questions: SurveyQuestion[], raw: unknown, options: { allowIncomplete?: boolean } = {}): SurveyAnswers {

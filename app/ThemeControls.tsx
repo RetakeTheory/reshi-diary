@@ -19,6 +19,16 @@ function applyTheme(choice: ThemeChoice) {
   const dark = choice === "dark" || (choice === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   document.documentElement.dataset.themeChoice = choice;
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  document.documentElement.style.backgroundColor = dark ? "#0b0d17" : "#eef0f7";
+  let themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][data-reshi-theme]');
+  if (!themeColor) {
+    themeColor = document.createElement("meta");
+    themeColor.name = "theme-color";
+    themeColor.dataset.reshiTheme = "";
+    document.head.append(themeColor);
+  }
+  themeColor.content = dark ? "#0b0d17" : "#eef0f7";
 }
 
 function normalizeHex(value: string) {
@@ -69,8 +79,13 @@ export default function ThemeControls() {
     }, 0);
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const sync = () => { if ((localStorage.getItem("reshi-theme") || "system") === "system") applyTheme("system"); };
-    media.addEventListener("change", sync);
-    return () => { window.clearTimeout(hydrateControls); media.removeEventListener("change", sync); };
+    if (typeof media.addEventListener === "function") media.addEventListener("change", sync);
+    else media.addListener(sync);
+    return () => {
+      window.clearTimeout(hydrateControls);
+      if (typeof media.removeEventListener === "function") media.removeEventListener("change", sync);
+      else media.removeListener(sync);
+    };
   }, []);
 
   useEffect(() => {

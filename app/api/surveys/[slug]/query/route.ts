@@ -1,14 +1,19 @@
 import { ensureDatabaseSchema, getD1 } from "../../../../../db/runtime";
 import { hashValue, sameOrigin } from "../../../../../lib/admin-email-auth";
-import { normalizeSurveyLookupValue, type SurveyFeedback } from "../../../../../lib/surveys";
+import { buildSurveyAnswerReport, normalizeSurveyLookupValue, type Survey, type SurveyAnswers, type SurveyFeedback } from "../../../../../lib/surveys";
 import { surveyFromRow, surveySelect, type SurveyDbRow } from "../../../../../lib/survey-d1";
 import { readerFromRequest } from "../../../../../lib/reader-auth";
 
 type Context = { params: Promise<{ slug: string }> };
-type QueryRow = { id: string; score: number | null; maxScore: number | null; feedbackJson: string | null; feedbackUpdatedAt: number | null; createdAt: number };
-function result(row: QueryRow, kind: "standard" | "exam") {
-  const feedback = row.feedbackJson ? { ...JSON.parse(row.feedbackJson) as SurveyFeedback, updatedAt: row.feedbackUpdatedAt } : { status: "pending" as const, title: "等待管理员反馈", modules: [], updatedAt: null };
-  return { id: row.id, createdAt: row.createdAt, score: kind === "exam" && feedback.status === "ready" ? row.score : null, maxScore: kind === "exam" && feedback.status === "ready" ? row.maxScore : null, feedback };
+type QueryRow = { id: string; answersJson: string; manualScoresJson: string | null; score: number | null; maxScore: number | null; feedbackJson: string | null; feedbackUpdatedAt: number | null; createdAt: number };
+function result(row: QueryRow, survey: Survey) {
+  const storedFeedback = row.feedbackJson ? JSON.parse(row.feedbackJson) as Partial<SurveyFeedback> : null;
+  const feedback: SurveyFeedback = storedFeedback ? { status: storedFeedback.status === "ready" ? "ready" : "pending", title: storedFeedback.title || "等待管理员反馈", modules: Array.isArray(storedFeedback.modules) ? storedFeedback.modules : [], includeReport: storedFeedback.includeReport === true, updatedAt: row.feedbackUpdatedAt } : { status: "pending", title: "等待管理员反馈", modules: [], includeReport: false, updatedAt: null };
+  const canShowResult = survey.kind === "exam" && feedback.status === "ready";
+  const answerReport = canShowResult && feedback.includeReport
+    ? buildSurveyAnswerReport(survey.questions, JSON.parse(row.answersJson) as SurveyAnswers, JSON.parse(row.manualScoresJson || "{}") as Record<string, number>)
+    : null;
+  return { id: row.id, createdAt: row.createdAt, score: canShowResult ? row.score : null, maxScore: canShowResult ? row.maxScore : null, feedback, answerReport };
 }
 function clientIp(request: Request) { return request.headers.get("cf-connecting-ip")?.trim() || request.headers.get("x-forwarded-for")?.split(",")[0].trim() || request.headers.get("x-real-ip")?.trim() || "unknown"; }
 
@@ -25,8 +30,8 @@ export async function GET(request: Request, context: Context) {
     if (survey.access !== "registered") return Response.json({ survey: { title: survey.title, access: survey.access, identityLabel: survey.questions.find((item) => item.id === survey.queryIdentityQuestionId)?.title || "查询凭证" } });
     const reader = await readerFromRequest(request);
     if (!reader) return Response.json({ error: "请先登录填写问卷时使用的账号", requiresLogin: true }, { status: 401 });
-    const rows = await db.prepare("SELECT id, score, max_score AS maxScore, feedback_json AS feedbackJson, feedback_updated_at AS feedbackUpdatedAt, created_at AS createdAt FROM survey_responses WHERE survey_id = ? AND user_id = ? ORDER BY created_at DESC").bind(survey.id, reader.id).all<QueryRow>();
-    return Response.json({ survey: { title: survey.title, access: survey.access }, results: (rows.results || []).map((row) => result(row, survey.kind)) }, { headers: { "Cache-Control": "no-store" } });
+    const rows = await db.prepare("SELECT id, answers_json AS answersJson, manual_scores_json AS manualScoresJson, score, max_score AS maxScore, feedback_json AS feedbackJson, feedback_updated_at AS feedbackUpdatedAt, created_at AS createdAt FROM survey_responses WHERE survey_id = ? AND user_id = ? ORDER BY created_at DESC").bind(survey.id, reader.id).all<QueryRow>();
+    return Response.json({ survey: { title: survey.title, access: survey.access }, results: (rows.results || []).map((row) => result(row, survey)) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "查询失败" }, { status: 404 }); }
 }
 
@@ -42,8 +47,8 @@ export async function POST(request: Request, context: Context) {
     const recentIp = await db.prepare("SELECT COUNT(*) AS count FROM survey_query_attempts WHERE survey_id = ? AND ip_hash = ? AND created_at > ?").bind(survey.id, ipHash, now - 10 * 60_000).first<{ count: number }>();
     const repeatedFailure = await db.prepare("SELECT COUNT(*) AS count FROM survey_query_attempts WHERE survey_id = ? AND lookup_hash = ? AND success = 0 AND created_at > ?").bind(survey.id, lookupHash, now - 30 * 60_000).first<{ count: number }>();
     if ((recentIp?.count || 0) >= 20 || (repeatedFailure?.count || 0) >= 5) return Response.json({ error: "查询尝试过多，请稍后再试" }, { status: 429, headers: { "Retry-After": "600" } });
-    const rows = await db.prepare("SELECT id, score, max_score AS maxScore, feedback_json AS feedbackJson, feedback_updated_at AS feedbackUpdatedAt, created_at AS createdAt FROM survey_responses WHERE survey_id = ? AND lookup_hash = ? ORDER BY created_at DESC").bind(survey.id, lookupHash).all<QueryRow>();
+    const rows = await db.prepare("SELECT id, answers_json AS answersJson, manual_scores_json AS manualScoresJson, score, max_score AS maxScore, feedback_json AS feedbackJson, feedback_updated_at AS feedbackUpdatedAt, created_at AS createdAt FROM survey_responses WHERE survey_id = ? AND lookup_hash = ? ORDER BY created_at DESC").bind(survey.id, lookupHash).all<QueryRow>();
     await db.prepare("INSERT INTO survey_query_attempts (id, survey_id, ip_hash, lookup_hash, success, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), survey.id, ipHash, lookupHash, rows.results?.length ? 1 : 0, now).run();
-    return Response.json({ survey: { title: survey.title, access: survey.access }, results: (rows.results || []).map((row) => result(row, survey.kind)) }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ survey: { title: survey.title, access: survey.access }, results: (rows.results || []).map((row) => result(row, survey)) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "查询失败" }, { status: 400 }); }
 }

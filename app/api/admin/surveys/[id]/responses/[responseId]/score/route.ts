@@ -1,7 +1,7 @@
 import { ensureDatabaseSchema, getD1 } from "../../../../../../../../db/runtime";
 import { sameOrigin } from "../../../../../../../../lib/admin-email-auth";
 import { getApiAdmin } from "../../../../../../../admin/admin-auth";
-import { applyManualSurveyScores, type SurveyAnswers } from "../../../../../../../../lib/surveys";
+import { applyManualSurveyScores, isManualScoringQuestion, type SurveyAnswers } from "../../../../../../../../lib/surveys";
 import { surveyFromRow, surveySelect, type SurveyDbRow } from "../../../../../../../../lib/survey-d1";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string; responseId: string }> }) {
@@ -18,7 +18,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (survey.kind !== "exam") throw new Error("只有考试答卷可以评分");
     const response = await db.prepare("SELECT answers_json AS answersJson FROM survey_responses WHERE id = ? AND survey_id = ? LIMIT 1").bind(responseId, id).first<{ answersJson: string }>();
     if (!response) return Response.json({ error: "答卷不存在" }, { status: 404 });
-    const manualQuestions = survey.questions.filter((question) => question.type === "short_text" && question.scoringMode === "manual" && question.points > 0);
+    const manualQuestions = survey.questions.filter(isManualScoringQuestion);
     const scores: Record<string, number> = {};
     for (const question of manualQuestions) {
       const value = Number((body.scores as Record<string, unknown>)[question.id]);
