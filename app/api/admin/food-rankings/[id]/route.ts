@@ -9,7 +9,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   try {
     const input = normalizeFoodRankingInput(await request.json()); const { id } = await context.params;
     await ensureDatabaseSchema(); const db = await getD1();
-    const result = await db.prepare("UPDATE food_rankings SET list_type = ?, restaurant = ?, location = ?, category = ?, summary = ?, details = ?, tags_json = ?, image_url = ?, updated_at = ? WHERE id = ?").bind(input.listType, input.restaurant, input.location, input.category, input.summary, input.details, JSON.stringify(input.tags), input.imageUrl, Date.now(), id).run();
+    const result = await db.prepare("UPDATE food_rankings SET list_type = ?, restaurant = ?, location = ?, category = ?, summary = ?, details = ?, tags_json = ?, image_url = ?, latitude = ?, longitude = ?, updated_at = ? WHERE id = ?").bind(input.listType, input.restaurant, input.location, input.category, input.summary, input.details, JSON.stringify(input.tags), input.imageUrl, input.latitude, input.longitude, Date.now(), id).run();
     if (!result.meta.changes) return Response.json({ error: "榜单条目不存在" }, { status: 404 });
     const row = await db.prepare(`${foodRankingSelect} WHERE id = ?`).bind(id).first<Record<string, unknown>>();
     return Response.json({ entry: foodRankingFromRow(row!) });
@@ -22,3 +22,4 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const { id } = await context.params; await ensureDatabaseSchema(); const db = await getD1();
   await db.prepare("DELETE FROM food_rankings WHERE id = ?").bind(id).run(); return Response.json({ ok: true });
 }
+
