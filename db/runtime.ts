@@ -262,6 +262,8 @@ export async function ensureDatabaseSchema() {
       details TEXT DEFAULT '' NOT NULL,
       tags_json TEXT DEFAULT '[]' NOT NULL,
       image_url TEXT DEFAULT '' NOT NULL,
+      latitude REAL,
+      longitude REAL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )`),
@@ -368,6 +370,8 @@ export async function ensureDatabaseSchema() {
   const foodRankingColumns = await db.prepare("PRAGMA table_info(food_rankings)").all<{ name: string }>();
   const foodRankingNames = new Set((foodRankingColumns.results || []).map((item) => item.name));
   if (!foodRankingNames.has("image_url")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN image_url TEXT DEFAULT '' NOT NULL").run();
+  if (!foodRankingNames.has("latitude")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN latitude REAL").run();
+  if (!foodRankingNames.has("longitude")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN longitude REAL").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_user ON survey_responses (survey_id, user_id, created_at DESC)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_lookup ON survey_responses (survey_id, lookup_hash, created_at DESC)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_feedback_group ON survey_responses (survey_id, feedback_group)").run();
@@ -375,3 +379,4 @@ export async function ensureDatabaseSchema() {
   await db.prepare("PRAGMA optimize").run();
   initialized = true;
 }
+
