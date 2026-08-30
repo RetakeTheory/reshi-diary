@@ -32,8 +32,6 @@ interface ReshiWorkerEnv {
   RESEND_API_KEY?: string;
   RESEND_FROM?: string;
   ADMIN_EMAIL?: string;
-  GITHUB_TOKEN?: string;
-  GITHUB_REPOSITORY?: string;
   RUST_BACKEND_ORIGIN?: string;
 }
 
