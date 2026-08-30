@@ -51,15 +51,7 @@
     const canvas = $("#canvas");
     const status = $("#status");
     const statusDot = $("#status-dot");
-    const online = location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
-    const apiRoot = online ? "/api/admin/site-pages" : "/api/site-pages";
-    const previewOrigin = online ? "https://rettheory.top" : "http://localhost:3000";
-    if (online) {
-      $("#save-draft").textContent = "保存管理端草稿";
-      $("#publish").textContent = "创建发布 PR";
-      $("#publish").title = "创建仅含页面配置的 GitHub PR，Actions 通过后再合并";
-      $("#sync-github").title = "重新读取 GitHub main 的页面配置";
-    }
+    const previewOrigin = "http://localhost:3000";
     const fieldLabels = {
       eyebrow:"眉题",kicker:"顶部小标题",title:"标题",subtitle:"介绍文字",description:"说明",cta:"按钮文字",ctaHref:"按钮链接",href:"跳转链接",
       paragraph1:"第一段",paragraph2:"第二段",placeholder:"输入提示",button:"按钮",buttonBusy:"处理中按钮",empty:"空状态",note:"补充说明",back:"返回文字",
@@ -229,23 +221,23 @@
       return result;
     }
     async function load() {
-      try { const result=await request(apiRoot); doc=clone(result.draft); published=clone(result.published); version=result.version; draftVersion=result.draftVersion; publishTarget=result.publishTarget; draftNeedsMigration=Boolean(result.draftMigrated); savedSnapshot=JSON.stringify(doc); selectedId=doc.pages.home.modules[0].id; renderAll(); const ready=online||publishTarget.currentBranch===publishTarget.branch; mark(result.draftMigrated?"dirty":ready?"success":"dirty",result.draftMigrated?`旧草稿已兼容最新 ${Object.keys(doc.pages).length} 个页面；点击保存草稿即可完成升级`:ready?`已读取 ${Object.keys(doc.pages).length} 个页面；${online?"发布将创建 GitHub PR":"发布将推送到 "+publishTarget.remote+"/"+publishTarget.branch}`:`当前是 ${publishTarget.currentBranch} 分支；保存草稿可用，GitHub 发布需先合并并切换到 ${publishTarget.branch}`); }
+      try { const result=await request("/api/site-pages"); doc=clone(result.draft); published=clone(result.published); version=result.version; draftVersion=result.draftVersion; publishTarget=result.publishTarget; draftNeedsMigration=Boolean(result.draftMigrated); savedSnapshot=JSON.stringify(doc); selectedId=doc.pages.home.modules[0].id; renderAll(); const ready=publishTarget.currentBranch===publishTarget.branch; mark(result.draftMigrated?"dirty":ready?"success":"dirty",result.draftMigrated?`旧草稿已兼容最新 ${Object.keys(doc.pages).length} 个页面；点击保存草稿即可完成升级`:ready?`已读取 ${Object.keys(doc.pages).length} 个页面；发布将推送到 ${publishTarget.remote}/${publishTarget.branch}`:`当前是 ${publishTarget.currentBranch} 分支；保存草稿可用，GitHub 发布需先合并并切换到 ${publishTarget.branch}`); }
       catch(error){ mark("error",error.message||"读取失败"); }
     }
     async function save(path, label) {
       busy=true; updateState(false); mark("",label);
-      try { const result=await request(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({document:doc,version,draftVersion})}); doc=clone(result.document); version=result.version; draftVersion=result.draftVersion; draftNeedsMigration=false; savedSnapshot=JSON.stringify(doc); undoStack=[]; redoStack=[]; renderAll(); mark("success",result.message); if(result.pullRequestUrl)window.open(result.pullRequestUrl,"_blank","noopener,noreferrer"); }
+      try { const result=await request(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({document:doc,version,draftVersion})}); doc=clone(result.document); version=result.version; draftVersion=result.draftVersion; draftNeedsMigration=false; savedSnapshot=JSON.stringify(doc); undoStack=[]; redoStack=[]; renderAll(); mark("success",result.message); }
       catch(error){ mark("error",error.message||"保存失败"); }
       finally{ busy=false; updateState(false); }
     }
     pageSelect.addEventListener("change",()=>{ pageId=pageSelect.value; selectedId=""; renderAll(); });
     document.querySelectorAll(".view-button").forEach(button=>button.addEventListener("click",()=>{ document.querySelectorAll(".view-button").forEach(x=>x.classList.remove("active")); button.classList.add("active"); canvas.className=`canvas-frame ${button.dataset.view}`; }));
     $("#undo").addEventListener("click",()=>restore(undoStack,redoStack)); $("#redo").addEventListener("click",()=>restore(redoStack,undoStack));
-    $("#save-draft").addEventListener("click",()=>save(`${apiRoot}/draft`,online?"正在保存管理端草稿…":"正在保存本机草稿…"));
+    $("#save-draft").addEventListener("click",()=>save("/api/site-pages/draft","正在保存本机草稿…"));
     $("#open-page").addEventListener("click",()=>{const path=pagePreviewPath();if(path)window.open(`${previewOrigin}${path}`,"_blank","noopener,noreferrer")});
-    $("#sync-github").addEventListener("click",async()=>{if(isDirty()){mark("error","请先保存当前草稿，再同步 GitHub");return}busy=true;updateState(false);mark("","正在检查并同步 GitHub main 最新版本…");try{const result=await request(`${apiRoot}/sync-github`,{method:"POST"});doc=clone(result.draft);published=clone(result.published);version=result.version;draftVersion=result.draftVersion;publishTarget=result.publishTarget;draftNeedsMigration=false;savedSnapshot=JSON.stringify(doc);undoStack=[];redoStack=[];selectedId=currentModules()[0]?.id||"";renderAll();mark("success",result.message)}catch(error){mark("error",error.message||"GitHub 同步失败")}finally{busy=false;updateState(false)}});
-    $("#publish").addEventListener("click",()=>save(`${apiRoot}/publish`,online?"正在创建独立内容分支与 GitHub PR…":`正在完整构建、提交并推送到 ${publishTarget?.remote||"origin"}/${publishTarget?.branch||"main"}；随后 GitHub Actions 会更新网站…`));
-    $("#reset").addEventListener("click",async()=>{ if(!confirm(`确定丢弃${online?"管理端":"本机"}草稿，恢复为当前已发布内容吗？`))return; busy=true; updateState(false); try{const result=await request(`${apiRoot}/reset-draft`,{method:"POST"}); doc=clone(result.document); published=clone(result.document); version=result.version; draftVersion=result.draftVersion; draftNeedsMigration=false; savedSnapshot=JSON.stringify(doc); undoStack=[];redoStack=[];renderAll();mark("success",result.message)}catch(error){mark("error",error.message)}finally{busy=false;updateState(false)} });
+    $("#sync-github").addEventListener("click",async()=>{if(isDirty()){mark("error","请先保存当前草稿，再同步 GitHub");return}busy=true;updateState(false);mark("","正在检查并同步 GitHub main 最新版本…");try{const result=await request("/api/site-pages/sync-github",{method:"POST"});doc=clone(result.draft);published=clone(result.published);version=result.version;draftVersion=result.draftVersion;publishTarget=result.publishTarget;draftNeedsMigration=false;savedSnapshot=JSON.stringify(doc);undoStack=[];redoStack=[];selectedId=currentModules()[0]?.id||"";renderAll();mark("success",result.message)}catch(error){mark("error",error.message||"GitHub 同步失败")}finally{busy=false;updateState(false)}});
+    $("#publish").addEventListener("click",()=>save("/api/site-pages/publish",`正在完整构建、提交并推送到 ${publishTarget?.remote||"origin"}/${publishTarget?.branch||"main"}；随后 GitHub Actions 会更新网站…`));
+    $("#reset").addEventListener("click",async()=>{ if(!confirm("确定丢弃本机草稿，恢复为当前已发布内容吗？"))return; busy=true; updateState(false); try{const result=await request("/api/site-pages/reset-draft",{method:"POST"}); doc=clone(result.document); published=clone(result.document); version=result.version; draftVersion=result.draftVersion; draftNeedsMigration=false; savedSnapshot=JSON.stringify(doc); undoStack=[];redoStack=[];renderAll();mark("success",result.message)}catch(error){mark("error",error.message)}finally{busy=false;updateState(false)} });
     window.addEventListener("keydown",event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="z"){event.preventDefault();restore(event.shiftKey?redoStack:undoStack,event.shiftKey?undoStack:redoStack)}});
     window.addEventListener("beforeunload",event=>{if(isDirty()){event.preventDefault();event.returnValue=""}});
     load();

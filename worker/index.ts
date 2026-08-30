@@ -29,23 +29,15 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env | undefined, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    let routedRequest = request;
 
-    if (url.hostname === "admin.rettheory.top") {
-      if (url.pathname === "/") url.pathname = "/admin/pages";
-      else if (url.pathname === "/login") url.pathname = "/admin/login";
-      else if (url.pathname === "/dashboard") url.pathname = "/admin";
-      if (url.href !== request.url) routedRequest = new Request(url, request);
-    }
-
-    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/site-pages")) {
+    if (url.pathname.startsWith("/api/")) {
       const origin = env?.RUST_BACKEND_ORIGIN?.trim();
       if (origin) {
         const upstream = new URL(`${url.pathname}${url.search}`, origin);
-        const headers = new Headers(routedRequest.headers);
+        const headers = new Headers(request.headers);
         headers.set("X-Forwarded-Host", url.host);
         headers.set("X-Forwarded-Proto", url.protocol.slice(0, -1));
-        return fetch(new Request(upstream, { method: routedRequest.method, headers, body: routedRequest.body, redirect: "manual" }));
+        return fetch(new Request(upstream, { method: request.method, headers, body: request.body, redirect: "manual" }));
       }
     }
 
@@ -61,7 +53,7 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(routedRequest, env ?? {}, ctx);
+    return handler.fetch(request, env ?? {}, ctx);
   },
 };
 

@@ -73,8 +73,8 @@ export default async function AdminPage() {
   return (
     <main className="admin-shell">
       <header className="admin-topbar">
-        <a className="brand" href="https://rettheory.top/"><span>RE</span>reshi 的日记本</a>
-        <div><a href="/admin/pages">页面编辑器</a><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
+        <a className="brand" href="/"><span>RE</span>reshi 的日记本</a>
+        <div><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
       <AdminDashboardTabs items={tabs} />
     </main>
