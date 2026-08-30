@@ -52,7 +52,7 @@ export default function EmailLogin({ email, passkeysEnabled = true }: { email: s
       const response = await fetch("/api/admin/auth/verify-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, code: value }) });
       const result = await response.json() as { ok?: boolean; error?: string };
       if (!response.ok) throw new Error(result.error || "验证失败");
-      window.location.assign("/admin");
+      window.location.assign("/admin/pages");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "验证码验证失败");
       inputRefs.current[0]?.focus();
@@ -81,7 +81,7 @@ export default function EmailLogin({ email, passkeysEnabled = true }: { email: s
       });
       const verifyResult = await verifyResponse.json() as { ok?: boolean; error?: string };
       if (!verifyResponse.ok) throw new Error(verifyResult.error || "Passkey 验证失败");
-      window.location.assign("/admin");
+      window.location.assign("/admin/pages");
     } catch (error) {
       const name = error instanceof Error ? error.name : "";
       setMessage(name === "NotAllowedError" ? "已取消 Passkey 验证" : error instanceof Error ? error.message : "Passkey 登录失败");

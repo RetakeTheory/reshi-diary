@@ -13,6 +13,7 @@
     "required": [
       "AWS_ACCESS_KEY_ID",
       "AWS_SECRET_ACCESS_KEY",
+      "GITHUB_TOKEN",
       "RESEND_API_KEY"
     ]
   },
@@ -28,6 +29,10 @@
   "routes": [
     {
       "pattern": "rettheory.top/*",
+      "zone_name": "rettheory.top"
+    },
+    {
+      "pattern": "admin.rettheory.top/*",
       "zone_name": "rettheory.top"
     }
   ],

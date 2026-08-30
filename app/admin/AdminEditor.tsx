@@ -2,6 +2,7 @@
 
 import { MouseEvent, SyntheticEvent, useMemo, useRef, useState } from "react";
 import katex from "katex";
+import "katex/dist/katex.min.css";
 import ArrowIcon from "../ArrowIcon";
 import { codeLanguages, highlightCodeBlocks, highlightSource } from "../../lib/code-highlight";
 import { createAttachmentCard, flattenAttachmentCards, hydrateAttachmentCards } from "../../lib/attachment-cards";
