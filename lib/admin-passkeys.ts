@@ -19,8 +19,8 @@ export function getPasskeyContext(request: Request) {
   if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
     return { rpID: url.hostname, origin: url.origin };
   }
-  if (url.hostname !== "rettheory.top") throw new Error("请通过 https://rettheory.top 使用 Passkey");
-  return { rpID: "rettheory.top", origin: "https://rettheory.top" };
+  if (url.hostname !== "rettheory.top" && url.hostname !== "admin.rettheory.top") throw new Error("请通过 rettheory.top 管理端使用 Passkey");
+  return { rpID: "rettheory.top", origin: url.origin };
 }
 
 export async function storePasskeyChallenge(purpose: PasskeyPurpose, challenge: string) {
