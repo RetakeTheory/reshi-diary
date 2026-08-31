@@ -4,7 +4,7 @@ export type IconName =
   | "plus" | "minus" | "trash" | "formula" | "table" | "code" | "image" | "file" | "check"
   | "external" | "shield" | "map" | "arrow-left" | "search" | "ranking" | "thumb-up" | "thumb-down"
   | "heading" | "paragraph" | "bold" | "italic" | "align-left" | "align-center" | "align-right"
-  | "list-unordered" | "list-ordered" | "link" | "bot";
+  | "list-unordered" | "list-ordered" | "link" | "bot" | "copy";
 
 export default function Icon({ name, className }: { name: IconName; className?: string }) {
   const common = { className, viewBox: "0 0 24 24", "aria-hidden": true } as const;
@@ -52,5 +52,6 @@ export default function Icon({ name, className }: { name: IconName; className?: 
     case "thumb-up": return <svg {...common}><path d="M8 10v10H4V10h4Zm0 8h8.2a2 2 0 0 0 1.9-1.4l1.4-4.7A2 2 0 0 0 17.6 9H14l.5-3.1A2.4 2.4 0 0 0 12.1 3L8 9v9Z" /></svg>;
     case "thumb-down": return <svg {...common}><path d="M8 14V4H4v10h4Zm0-8h8.2a2 2 0 0 1 1.9 1.4l1.4 4.7a2 2 0 0 1-1.9 2.9H14l.5 3.1a2.4 2.4 0 0 1-2.4 2.9L8 15V6Z" /></svg>;
     case "bot": return <svg {...common}><rect x="4" y="7" width="16" height="12" rx="4" /><path d="M12 3v4M9 3h6M8 12h.01M16 12h.01M8.5 16h7M2 11v4M22 11v4" /></svg>;
+    case "copy": return <svg {...common}><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>;
   }
 }

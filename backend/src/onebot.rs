@@ -4,7 +4,7 @@ use ammonia::Builder as HtmlSanitizer;
 use axum::{
     Json,
     extract::{
-        Multipart, State, WebSocketUpgrade,
+        Multipart, Path, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
     http::{HeaderMap, HeaderValue, StatusCode, header},
@@ -13,7 +13,6 @@ use axum::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
 use uuid::Uuid;
@@ -33,59 +32,82 @@ struct BotConnection {
 }
 
 pub(crate) struct OneBotHub {
-    connection: RwLock<Option<BotConnection>>,
-    pending: Mutex<HashMap<String, oneshot::Sender<serde_json::Value>>>,
+    connections: RwLock<HashMap<String, BotConnection>>,
+    pending: Mutex<HashMap<String, (String, oneshot::Sender<serde_json::Value>)>>,
 }
 
 impl OneBotHub {
     pub(crate) fn new() -> Self {
         Self {
-            connection: RwLock::new(None),
+            connections: RwLock::new(HashMap::new()),
             pending: Mutex::new(HashMap::new()),
         }
     }
 
-    async fn connect(&self, generation: String, sender: mpsc::Sender<Message>) {
-        *self.connection.write().await = Some(BotConnection { generation, sender });
+    async fn connect(&self, bot_id: String, generation: String, sender: mpsc::Sender<Message>) {
+        self.connections
+            .write()
+            .await
+            .insert(bot_id, BotConnection { generation, sender });
     }
 
-    async fn disconnect(&self, generation: &str) {
-        let mut connection = self.connection.write().await;
-        if connection
-            .as_ref()
+    async fn disconnect(&self, bot_id: &str, generation: &str) {
+        let mut connections = self.connections.write().await;
+        if connections
+            .get(bot_id)
             .is_some_and(|value| value.generation == generation)
         {
-            *connection = None;
+            connections.remove(bot_id);
         }
     }
 
-    async fn is_connected(&self) -> bool {
-        self.connection.read().await.is_some()
+    async fn remove(&self, bot_id: &str) {
+        self.connections.write().await.remove(bot_id);
     }
 
-    async fn resolve(&self, payload: serde_json::Value) -> bool {
+    async fn is_connected(&self, bot_id: &str) -> bool {
+        self.connections.read().await.contains_key(bot_id)
+    }
+
+    async fn first_connected(&self) -> Option<String> {
+        self.connections.read().await.keys().next().cloned()
+    }
+
+    async fn resolve(&self, bot_id: &str, payload: serde_json::Value) -> bool {
         let Some(echo) = payload.get("echo").and_then(serde_json::Value::as_str) else {
             return false;
         };
-        let sender = self.pending.lock().await.remove(echo);
-        sender.is_some_and(|sender| sender.send(payload).is_ok())
+        let mut pending = self.pending.lock().await;
+        if pending
+            .get(echo)
+            .is_none_or(|(expected_bot_id, _)| expected_bot_id != bot_id)
+        {
+            return false;
+        }
+        pending
+            .remove(echo)
+            .is_some_and(|(_, sender)| sender.send(payload).is_ok())
     }
 
     async fn call(
         &self,
+        bot_id: &str,
         action: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, AppError> {
         let sender = self
-            .connection
+            .connections
             .read()
             .await
-            .as_ref()
+            .get(bot_id)
             .map(|value| value.sender.clone())
             .ok_or(AppError::Unavailable("QQ Bot 当前未连接"))?;
         let echo = Uuid::new_v4().simple().to_string();
         let (result_tx, result_rx) = oneshot::channel();
-        self.pending.lock().await.insert(echo.clone(), result_tx);
+        self.pending
+            .lock()
+            .await
+            .insert(echo.clone(), (bot_id.to_owned(), result_tx));
         let payload = serde_json::json!({"action":action,"params":params,"echo":echo});
         if sender
             .send(Message::Text(payload.to_string().into()))
@@ -104,12 +126,6 @@ impl OneBotHub {
             }
         }
     }
-}
-
-struct OneBotConfig<'a> {
-    access_token: &'a str,
-    bot_id: &'a str,
-    allowed_group_ids: &'a [String],
 }
 
 #[derive(Deserialize)]
@@ -131,6 +147,7 @@ struct Challenge {
     purpose: String,
     user_id: Option<String>,
     display_name: Option<String>,
+    bot_id: Option<String>,
     verified_qq_id: Option<String>,
     status: String,
     error: Option<String>,
@@ -142,25 +159,27 @@ pub(crate) async fn websocket(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    let config = onebot_config(&state)?;
     let provided = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
         .unwrap_or_default();
-    if !constant_secret_eq(provided, config.access_token) {
+    let token_hash = bot_token_hash(provided);
+    let bot_id = sqlx::query_scalar::<_, String>(
+        "SELECT bot_id FROM onebot_bots WHERE access_token_hash = ? AND enabled = 1 LIMIT 1",
+    )
+    .bind(token_hash)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some(bot_id) = bot_id else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
-    }
+    };
     Ok(ws
-        .on_upgrade(move |socket| socket_loop(Arc::new(state), socket))
+        .on_upgrade(move |socket| socket_loop(Arc::new(state), socket, bot_id))
         .into_response())
 }
 
-async fn socket_loop(state: Arc<AppState>, socket: WebSocket) {
-    let bot_id = match onebot_config(&state) {
-        Ok(config) => config.bot_id.to_owned(),
-        Err(_) => return,
-    };
+async fn socket_loop(state: Arc<AppState>, socket: WebSocket, bot_id: String) {
     let generation = Uuid::new_v4().simple().to_string();
     let (outbound, mut outgoing) = mpsc::channel::<Message>(32);
     let (mut socket_sender, mut socket_receiver) = socket.split();
@@ -172,13 +191,13 @@ async fn socket_loop(state: Arc<AppState>, socket: WebSocket) {
                 match message {
                     Message::Text(text) => {
                         let Ok(payload) = serde_json::from_str::<serde_json::Value>(&text) else { continue };
-                        if state.onebot.resolve(payload.clone()).await { continue; }
+                        if state.onebot.resolve(&bot_id, payload.clone()).await { continue; }
                         if json_id(payload.get("self_id")).as_deref() != Some(&bot_id) { continue; }
                         if !registered {
-                            state.onebot.connect(generation.clone(), outbound.clone()).await;
+                            state.onebot.connect(bot_id.clone(), generation.clone(), outbound.clone()).await;
                             registered = true;
                         }
-                        if let Some((user_id, reply)) = process_event(&state, &payload).await {
+                        if let Some((user_id, reply)) = process_event(&state, &bot_id, &payload).await {
                             let action = serde_json::json!({
                                 "action":"send_private_msg",
                                 "params":{"user_id":user_id,"message":reply,"auto_escape":true}
@@ -200,11 +219,15 @@ async fn socket_loop(state: Arc<AppState>, socket: WebSocket) {
         }
     }
     if registered {
-        state.onebot.disconnect(&generation).await;
+        state.onebot.disconnect(&bot_id, &generation).await;
     }
 }
 
-async fn process_event(state: &AppState, payload: &serde_json::Value) -> Option<(i64, String)> {
+async fn process_event(
+    state: &AppState,
+    bot_id: &str,
+    payload: &serde_json::Value,
+) -> Option<(i64, String)> {
     if payload.get("post_type").and_then(serde_json::Value::as_str) != Some("message")
         || payload
             .get("message_type")
@@ -219,8 +242,9 @@ async fn process_event(state: &AppState, payload: &serde_json::Value) -> Option<
         .get("raw_message")
         .and_then(serde_json::Value::as_str)
         .and_then(parse_verification_message)?;
-    let row = sqlx::query_as::<_, Challenge>("SELECT flow_id, purpose, user_id, display_name, verified_qq_id, status, error, expires_at FROM qq_auth_challenges WHERE code_hash = ? LIMIT 1")
+    let row = sqlx::query_as::<_, Challenge>("SELECT flow_id, purpose, user_id, display_name, bot_id, verified_qq_id, status, error, expires_at FROM qq_auth_challenges WHERE code_hash = ? AND bot_id = ? LIMIT 1")
         .bind(hash_value(&format!("qq-auth:{code}")))
+        .bind(bot_id)
         .fetch_optional(&state.db)
         .await
         .ok()
@@ -308,10 +332,7 @@ pub(crate) async fn start_auth(
     Json(body): Json<AuthStartBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     verify_origin(&state.config, &headers)?;
-    let config = onebot_config(&state)?;
-    if !state.onebot.is_connected().await {
-        return Err(AppError::Unavailable("QQ Bot 当前未连接"));
-    }
+    let bot_id = available_bot(&state).await?;
     let purpose = if body.intent.as_deref() == Some("register") {
         "register"
     } else {
@@ -331,13 +352,13 @@ pub(crate) async fn start_auth(
     } else {
         None
     };
-    let challenge = create_challenge(&state, &headers, purpose, None, display_name).await?;
+    let challenge = create_challenge(&state, &headers, purpose, None, display_name, &bot_id).await?;
     Ok(Json(serde_json::json!({
         "flowId":challenge.flow_id,
         "code":challenge.code,
         "command":format!("验证 {}", challenge.code),
         "expiresAt":challenge.expires_at,
-        "botId":config.bot_id,
+        "botId":bot_id,
     })))
 }
 
@@ -347,7 +368,6 @@ pub(crate) async fn complete_auth(
     Json(body): Json<FlowBody>,
 ) -> Result<Response, AppError> {
     verify_origin(&state.config, &headers)?;
-    let config = onebot_config(&state)?;
     let flow_id = valid_flow_id(body.flow_id.as_deref())?;
     let row = challenge_by_flow(&state, flow_id).await?;
     if row.expires_at <= now_ms() {
@@ -424,7 +444,7 @@ pub(crate) async fn complete_auth(
         )
         .bind(&id)
         .bind(&qq_id)
-        .bind(config.bot_id)
+        .bind(row.bot_id.as_deref().ok_or(AppError::Internal)?)
         .bind(now)
         .execute(&mut *transaction)
         .await?;
@@ -454,13 +474,18 @@ pub(crate) async fn get_binding(
     .bind(&user.id)
     .fetch_optional(&state.db)
     .await?;
-    let config = onebot_config(&state).ok();
-    let online = state.onebot.is_connected().await;
+    let bot_id = state.onebot.first_connected().await;
+    let configured = sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM onebot_bots WHERE enabled = 1 LIMIT 1",
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .is_some();
     Ok(Json(serde_json::json!({
         "binding":binding.as_ref().map(|(qq_id,bot_id,bound_at)| serde_json::json!({"qqId":qq_id,"botId":bot_id,"boundAt":bound_at})),
-        "botId":config.as_ref().map(|value| value.bot_id),
-        "configured":config.is_some(),
-        "online":online,
+        "botId":bot_id.as_deref(),
+        "configured":configured,
+        "online":bot_id.is_some(),
         "canUnbind":binding.is_some() && !is_synthetic_qq_email(&user.email),
     })))
 }
@@ -470,10 +495,7 @@ pub(crate) async fn start_binding(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     verify_origin(&state.config, &headers)?;
-    let config = onebot_config(&state)?;
-    if !state.onebot.is_connected().await {
-        return Err(AppError::Unavailable("QQ Bot 当前未连接"));
-    }
+    let bot_id = available_bot(&state).await?;
     let user = users::require_user(&state, &headers).await?;
     if sqlx::query_scalar::<_, i64>("SELECT 1 FROM qq_bindings WHERE user_id = ? LIMIT 1")
         .bind(&user.id)
@@ -483,13 +505,21 @@ pub(crate) async fn start_binding(
     {
         return Err(AppError::Conflict("当前账户已绑定 QQ"));
     }
-    let challenge = create_challenge(&state, &headers, "bind", Some(user.id), None).await?;
+    let challenge = create_challenge(
+        &state,
+        &headers,
+        "bind",
+        Some(user.id),
+        None,
+        &bot_id,
+    )
+    .await?;
     Ok(Json(serde_json::json!({
         "flowId":challenge.flow_id,
         "code":challenge.code,
         "command":format!("绑定 {}", challenge.code),
         "expiresAt":challenge.expires_at,
-        "botId":config.bot_id,
+        "botId":bot_id,
     })))
 }
 
@@ -499,7 +529,6 @@ pub(crate) async fn complete_binding(
     Json(body): Json<FlowBody>,
 ) -> Result<Response, AppError> {
     verify_origin(&state.config, &headers)?;
-    let config = onebot_config(&state)?;
     let user = users::require_user(&state, &headers).await?;
     let flow_id = valid_flow_id(body.flow_id.as_deref())?;
     let row = challenge_by_flow(&state, flow_id).await?;
@@ -559,7 +588,7 @@ pub(crate) async fn complete_binding(
     sqlx::query("INSERT INTO qq_bindings (user_id, qq_id, bot_id, bound_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO NOTHING")
         .bind(&user.id)
         .bind(&qq_id)
-        .bind(config.bot_id)
+        .bind(row.bot_id.as_deref().ok_or(AppError::Internal)?)
         .bind(now)
         .execute(&mut *transaction)
         .await?;
@@ -593,14 +622,246 @@ pub(crate) async fn get_admin_config(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin(&state, &headers).await?;
-    let config = onebot_config(&state).ok();
+    let bot_rows = sqlx::query_as::<_, AdminBotRow>(
+        "SELECT bot_id, display_name, enabled, created_at FROM onebot_bots ORDER BY created_at, bot_id",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    let group_rows = sqlx::query_as::<_, AdminGroupRow>(
+        "SELECT bot_id, group_id, display_name FROM onebot_groups ORDER BY created_at, group_id",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    let mut groups = HashMap::<String, Vec<serde_json::Value>>::new();
+    for row in group_rows {
+        groups.entry(row.bot_id).or_default().push(serde_json::json!({
+            "groupId":row.group_id,
+            "displayName":row.display_name,
+        }));
+    }
+    let mut bots = Vec::with_capacity(bot_rows.len());
+    let mut any_online = false;
+    for row in bot_rows {
+        let online = state.onebot.is_connected(&row.bot_id).await;
+        any_online |= online;
+        let bot_groups = groups.remove(&row.bot_id).unwrap_or_default();
+        bots.push(serde_json::json!({
+            "botId":row.bot_id,
+            "displayName":row.display_name,
+            "enabled":row.enabled != 0,
+            "online":online,
+            "createdAt":row.created_at,
+            "groups":bot_groups,
+        }));
+    }
     Ok(Json(serde_json::json!({
-        "configured":config.is_some(),
-        "online":state.onebot.is_connected().await,
-        "botId":config.as_ref().map(|value| value.bot_id),
-        "groupIds":config.as_ref().map(|value| value.allowed_group_ids).unwrap_or_default(),
+        "configured":!bots.is_empty(),
+        "online":any_online,
+        "bots":bots,
         "reverseWsPath":"/api/onebot/ws",
     })))
+}
+
+#[derive(FromRow)]
+struct AdminBotRow {
+    bot_id: String,
+    display_name: String,
+    enabled: i64,
+    created_at: i64,
+}
+
+#[derive(FromRow)]
+struct AdminGroupRow {
+    bot_id: String,
+    group_id: String,
+    display_name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CreateBotBody {
+    bot_id: Option<String>,
+    display_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateBotBody {
+    display_name: Option<String>,
+    enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CreateGroupBody {
+    group_id: Option<String>,
+    display_name: Option<String>,
+}
+
+pub(crate) async fn create_bot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateBotBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    verify_origin(&state.config, &headers)?;
+    require_admin(&state, &headers).await?;
+    let bot_id = numeric_id(body.bot_id.as_deref(), "Bot QQ 号")?;
+    let display_name = bot_display_name(body.display_name.as_deref(), &bot_id)?;
+    let token = generate_bot_token();
+    let now = now_ms();
+    let result = sqlx::query("INSERT INTO onebot_bots (bot_id, display_name, access_token_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)")
+        .bind(&bot_id)
+        .bind(&display_name)
+        .bind(bot_token_hash(&token))
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await;
+    if let Err(error) = result {
+        if error.to_string().contains("UNIQUE") {
+            return Err(AppError::Conflict("该 Bot 已存在"));
+        }
+        return Err(error.into());
+    }
+    Ok(Json(serde_json::json!({
+        "ok":true,
+        "bot":{"botId":bot_id,"displayName":display_name,"enabled":true,"online":false,"groups":[]},
+        "accessToken":token,
+        "reverseWsPath":"/api/onebot/ws",
+    })))
+}
+
+pub(crate) async fn update_bot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(bot_id): Path<String>,
+    Json(body): Json<UpdateBotBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    verify_origin(&state.config, &headers)?;
+    require_admin(&state, &headers).await?;
+    let bot_id = numeric_id(Some(&bot_id), "Bot QQ 号")?;
+    let current = sqlx::query_as::<_, (String, i64)>(
+        "SELECT display_name, enabled FROM onebot_bots WHERE bot_id = ? LIMIT 1",
+    )
+    .bind(&bot_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("Bot 不存在"))?;
+    let display_name = match body.display_name.as_deref() {
+        Some(value) => bot_display_name(Some(value), &bot_id)?,
+        None => current.0,
+    };
+    let enabled = body.enabled.unwrap_or(current.1 != 0);
+    sqlx::query("UPDATE onebot_bots SET display_name = ?, enabled = ?, updated_at = ? WHERE bot_id = ?")
+        .bind(&display_name)
+        .bind(if enabled { 1_i64 } else { 0_i64 })
+        .bind(now_ms())
+        .bind(&bot_id)
+        .execute(&state.db)
+        .await?;
+    if !enabled {
+        state.onebot.remove(&bot_id).await;
+    }
+    Ok(Json(serde_json::json!({"ok":true,"botId":bot_id,"displayName":display_name,"enabled":enabled})))
+}
+
+pub(crate) async fn delete_bot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(bot_id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    verify_origin(&state.config, &headers)?;
+    require_admin(&state, &headers).await?;
+    let bot_id = numeric_id(Some(&bot_id), "Bot QQ 号")?;
+    let deleted = sqlx::query("DELETE FROM onebot_bots WHERE bot_id = ?")
+        .bind(&bot_id)
+        .execute(&state.db)
+        .await?
+        .rows_affected();
+    if deleted == 0 {
+        return Err(AppError::NotFound("Bot 不存在"));
+    }
+    state.onebot.remove(&bot_id).await;
+    Ok(Json(serde_json::json!({"ok":true})))
+}
+
+pub(crate) async fn rotate_bot_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(bot_id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    verify_origin(&state.config, &headers)?;
+    require_admin(&state, &headers).await?;
+    let bot_id = numeric_id(Some(&bot_id), "Bot QQ 号")?;
+    let token = generate_bot_token();
+    let updated = sqlx::query("UPDATE onebot_bots SET access_token_hash = ?, updated_at = ? WHERE bot_id = ?")
+        .bind(bot_token_hash(&token))
+        .bind(now_ms())
+        .bind(&bot_id)
+        .execute(&state.db)
+        .await?
+        .rows_affected();
+    if updated == 0 {
+        return Err(AppError::NotFound("Bot 不存在"));
+    }
+    state.onebot.remove(&bot_id).await;
+    Ok(Json(serde_json::json!({"ok":true,"accessToken":token,"reverseWsPath":"/api/onebot/ws"})))
+}
+
+pub(crate) async fn create_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(bot_id): Path<String>,
+    Json(body): Json<CreateGroupBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    verify_origin(&state.config, &headers)?;
+    require_admin(&state, &headers).await?;
+    let bot_id = numeric_id(Some(&bot_id), "Bot QQ 号")?;
+    let group_id = numeric_id(body.group_id.as_deref(), "QQ群号")?;
+    let display_name = optional_display_name(body.display_name.as_deref(), 40)?;
+    let exists = sqlx::query_scalar::<_, i64>("SELECT 1 FROM onebot_bots WHERE bot_id = ? LIMIT 1")
+        .bind(&bot_id)
+        .fetch_optional(&state.db)
+        .await?
+        .is_some();
+    if !exists {
+        return Err(AppError::NotFound("Bot 不存在"));
+    }
+    let result = sqlx::query("INSERT INTO onebot_groups (bot_id, group_id, display_name, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&bot_id)
+        .bind(&group_id)
+        .bind(&display_name)
+        .bind(now_ms())
+        .execute(&state.db)
+        .await;
+    if let Err(error) = result {
+        if error.to_string().contains("UNIQUE") {
+            return Err(AppError::Conflict("该群已添加到此 Bot"));
+        }
+        return Err(error.into());
+    }
+    Ok(Json(serde_json::json!({"ok":true,"group":{"groupId":group_id,"displayName":display_name}})))
+}
+
+pub(crate) async fn delete_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((bot_id, group_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    verify_origin(&state.config, &headers)?;
+    require_admin(&state, &headers).await?;
+    let bot_id = numeric_id(Some(&bot_id), "Bot QQ 号")?;
+    let group_id = numeric_id(Some(&group_id), "QQ群号")?;
+    let deleted = sqlx::query("DELETE FROM onebot_groups WHERE bot_id = ? AND group_id = ?")
+        .bind(&bot_id)
+        .bind(&group_id)
+        .execute(&state.db)
+        .await?
+        .rows_affected();
+    if deleted == 0 {
+        return Err(AppError::NotFound("群配置不存在"));
+    }
+    Ok(Json(serde_json::json!({"ok":true})))
 }
 
 pub(crate) async fn send_group_notice(
@@ -610,7 +871,6 @@ pub(crate) async fn send_group_notice(
 ) -> Result<Json<serde_json::Value>, AppError> {
     verify_origin(&state.config, &headers)?;
     require_admin(&state, &headers).await?;
-    let config = onebot_config(&state)?;
     let declared = headers
         .get(header::CONTENT_LENGTH)
         .and_then(|value| value.to_str().ok())
@@ -619,6 +879,7 @@ pub(crate) async fn send_group_notice(
     if declared > MAX_IMAGE_BYTES + 1024 * 1024 {
         return Err(AppError::BadRequest("图片不能超过 8 MB".into()));
     }
+    let mut bot_id = String::new();
     let mut group_id = String::new();
     let mut mode = String::from("image");
     let mut caption = String::new();
@@ -653,7 +914,9 @@ pub(crate) async fn send_group_notice(
                 .text()
                 .await
                 .map_err(|_| AppError::BadRequest("上传表单无效".into()))?;
-            if name == "groupId" {
+            if name == "botId" {
+                bot_id = text.trim().to_owned();
+            } else if name == "groupId" {
                 group_id = text.trim().to_owned();
             } else if name == "mode" {
                 mode = text.trim().to_owned();
@@ -668,7 +931,15 @@ pub(crate) async fn send_group_notice(
             }
         }
     }
-    if !config.allowed_group_ids.contains(&group_id) {
+    let bot_id = numeric_id(Some(&bot_id), "Bot QQ 号")?;
+    let group_id = numeric_id(Some(&group_id), "QQ群号")?;
+    let allowed = sqlx::query_scalar::<_, i64>("SELECT 1 FROM onebot_groups g JOIN onebot_bots b ON b.bot_id = g.bot_id WHERE g.bot_id = ? AND g.group_id = ? AND b.enabled = 1 LIMIT 1")
+        .bind(&bot_id)
+        .bind(&group_id)
+        .fetch_optional(&state.db)
+        .await?
+        .is_some();
+    if !allowed {
         return Err(AppError::Forbidden);
     }
     let group_number = group_id
@@ -719,6 +990,7 @@ pub(crate) async fn send_group_notice(
     let result = state
         .onebot
         .call(
+            &bot_id,
             "send_group_msg",
             serde_json::json!({
                 "group_id":group_number,
@@ -744,7 +1016,7 @@ pub(crate) async fn send_group_notice(
             record_delivery(
                 &state,
                 DeliveryRecord {
-                    bot_id: config.bot_id,
+                    bot_id: &bot_id,
                     group_id: &group_id,
                     caption: &audit_caption,
                     content_type: &audit_type,
@@ -760,7 +1032,7 @@ pub(crate) async fn send_group_notice(
     record_delivery(
         &state,
         DeliveryRecord {
-            bot_id: config.bot_id,
+            bot_id: &bot_id,
             group_id: &group_id,
             caption: &audit_caption,
             content_type: &audit_type,
@@ -814,6 +1086,7 @@ async fn create_challenge(
     purpose: &str,
     user_id: Option<String>,
     display_name: Option<String>,
+    bot_id: &str,
 ) -> Result<CreatedChallenge, AppError> {
     let now = now_ms();
     let request_key = request_key_hash(headers);
@@ -837,9 +1110,9 @@ async fn create_challenge(
     let flow_id = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let code = generate_code();
     let expires_at = now + QQ_AUTH_TTL_MS;
-    sqlx::query("INSERT INTO qq_auth_challenges (flow_id, code_hash, purpose, user_id, display_name, request_key_hash, status, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)")
+    sqlx::query("INSERT INTO qq_auth_challenges (flow_id, code_hash, purpose, user_id, display_name, request_key_hash, bot_id, status, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)")
         .bind(&flow_id).bind(hash_value(&format!("qq-auth:{}", normalize_code(&code))))
-        .bind(purpose).bind(user_id).bind(display_name).bind(request_key).bind(now).bind(expires_at)
+        .bind(purpose).bind(user_id).bind(display_name).bind(request_key).bind(bot_id).bind(now).bind(expires_at)
         .execute(&state.db).await?;
     Ok(CreatedChallenge {
         flow_id,
@@ -849,24 +1122,54 @@ async fn create_challenge(
 }
 
 async fn challenge_by_flow(state: &AppState, flow_id: &str) -> Result<Challenge, AppError> {
-    sqlx::query_as::<_, Challenge>("SELECT flow_id, purpose, user_id, display_name, verified_qq_id, status, error, expires_at FROM qq_auth_challenges WHERE flow_id = ? LIMIT 1")
+    sqlx::query_as::<_, Challenge>("SELECT flow_id, purpose, user_id, display_name, bot_id, verified_qq_id, status, error, expires_at FROM qq_auth_challenges WHERE flow_id = ? LIMIT 1")
         .bind(flow_id).fetch_optional(&state.db).await?.ok_or(AppError::NotFound("验证请求不存在"))
 }
 
-fn onebot_config(state: &AppState) -> Result<OneBotConfig<'_>, AppError> {
-    let (Some(access_token), Some(bot_id)) = (
-        state.config.onebot_access_token.as_deref(),
-        state.config.onebot_bot_id.as_deref(),
-    ) else {
-        return Err(AppError::Unavailable("OneBot 尚未完整配置"));
-    };
-    if state.config.onebot_allowed_group_ids.is_empty() {
-        return Err(AppError::Unavailable("OneBot 群白名单尚未配置"));
+async fn available_bot(state: &AppState) -> Result<String, AppError> {
+    state
+        .onebot
+        .first_connected()
+        .await
+        .ok_or(AppError::Unavailable("暂无可用的 QQ Bot"))
+}
+
+fn generate_bot_token() -> String {
+    format!(
+        "ob_{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    )
+}
+
+fn bot_token_hash(token: &str) -> String {
+    hash_value(&format!("onebot-token:{}", token.trim()))
+}
+
+fn numeric_id(value: Option<&str>, label: &str) -> Result<String, AppError> {
+    let value = value.unwrap_or_default().trim();
+    if (5..=20).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_digit()) {
+        Ok(value.to_owned())
+    } else {
+        Err(AppError::BadRequest(format!("{label}无效")))
     }
-    Ok(OneBotConfig {
-        access_token,
-        bot_id,
-        allowed_group_ids: &state.config.onebot_allowed_group_ids,
+}
+
+fn optional_display_name(value: Option<&str>, max: usize) -> Result<String, AppError> {
+    let value = value.unwrap_or_default().trim();
+    if value.chars().count() <= max {
+        Ok(value.to_owned())
+    } else {
+        Err(AppError::BadRequest(format!("名称不能超过 {max} 个字符")))
+    }
+}
+
+fn bot_display_name(value: Option<&str>, bot_id: &str) -> Result<String, AppError> {
+    let name = optional_display_name(value, 40)?;
+    Ok(if name.is_empty() {
+        format!("QQ Bot {bot_id}")
+    } else {
+        name
     })
 }
 
@@ -946,15 +1249,6 @@ fn parse_verification_message(value: &str) -> Option<String> {
     .then_some(normalized)
 }
 
-fn constant_secret_eq(left: &str, right: &str) -> bool {
-    let left = Sha256::digest(left.as_bytes());
-    let right = Sha256::digest(right.as_bytes());
-    left.iter()
-        .zip(right)
-        .fold(0u8, |difference, (left, right)| difference | (left ^ right))
-        == 0
-}
-
 fn json_id(value: Option<&serde_json::Value>) -> Option<String> {
     value.map(json_id_value).filter(|value| !value.is_empty())
 }
@@ -1024,9 +1318,12 @@ mod tests {
     }
 
     #[test]
-    fn access_token_comparison_is_constant_length() {
-        assert!(constant_secret_eq("same-token", "same-token"));
-        assert!(!constant_secret_eq("same-token", "other-token"));
+    fn bot_tokens_are_unique_and_hashed() {
+        let first = generate_bot_token();
+        let second = generate_bot_token();
+        assert_ne!(first, second);
+        assert_ne!(bot_token_hash(&first), first);
+        assert_eq!(bot_token_hash(&first), bot_token_hash(&first));
     }
 
     #[test]
