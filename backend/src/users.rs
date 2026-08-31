@@ -619,7 +619,10 @@ pub(crate) async fn optional_user(
     Ok(user)
 }
 
-pub(crate) async fn issue_user_session(state: &AppState, user_id: &str) -> Result<HeaderValue, AppError> {
+pub(crate) async fn issue_user_session(
+    state: &AppState,
+    user_id: &str,
+) -> Result<HeaderValue, AppError> {
     if sqlx::query_scalar::<_, bool>("SELECT is_banned FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_optional(&state.db)

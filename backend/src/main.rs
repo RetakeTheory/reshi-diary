@@ -111,7 +111,9 @@ impl Config {
                 .unwrap_or_default()
                 .split([',', '，', ' ', '\n', '\t'])
                 .map(str::trim)
-                .filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+                .filter(|value| {
+                    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+                })
                 .map(ToOwned::to_owned)
                 .collect(),
         })
@@ -220,10 +222,7 @@ fn routes(state: AppState) -> Router {
                 .post(onebot::start_binding)
                 .delete(onebot::remove_binding),
         )
-        .route(
-            "/api/account/qq/complete",
-            post(onebot::complete_binding),
-        )
+        .route("/api/account/qq/complete", post(onebot::complete_binding))
         .route(
             "/api/account/tickets",
             get(account::list_tickets).post(account::create_ticket),
