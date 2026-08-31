@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render(pathname = "/") {
+async function render(pathname = "/", { origin = "http://localhost", env = {} } = {}) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request(`http://localhost${pathname}`, { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    new Request(`${origin}${pathname}`, { headers: { accept: "text/html" } }),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) }, ...env },
     { waitUntil() {}, passThroughOnException() {} },
   );
 }
@@ -50,6 +50,25 @@ test("falls back to the built-in D1 API when Rust origin is missing", async () =
   const response = await render("/api/auth/me");
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: "请先登录" });
+});
+
+test("routes the admin subdomain to the protected online editor", async () => {
+  const [page, api, configText] = await Promise.all([
+    render("/", { origin: "https://admin.rettheory.top" }),
+    render("/api/admin/site-pages", {
+      origin: "https://admin.rettheory.top",
+      env: { RUST_BACKEND_ORIGIN: "https://rust.example.test" },
+    }),
+    readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
+  ]);
+  const config = JSON.parse(configText);
+
+  assert.ok([302, 307].includes(page.status));
+  assert.match(page.headers.get("location") ?? "", /\/admin\/login$/);
+  assert.equal(api.status, 401);
+  assert.deepEqual(await api.json(), { ok: false, error: "请先登录管理端" });
+  assert.ok(config.routes.some((route) => route.pattern === "admin.rettheory.top/*"));
+  assert.ok(config.secrets.required.includes("GITHUB_TOKEN"));
 });
 
 test("ships Rust community, profile, ticket, Passkey, survey and notification routes", async () => {
