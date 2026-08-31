@@ -619,7 +619,10 @@ pub(crate) async fn optional_user(
     Ok(user)
 }
 
-async fn issue_user_session(state: &AppState, user_id: &str) -> Result<HeaderValue, AppError> {
+pub(crate) async fn issue_user_session(
+    state: &AppState,
+    user_id: &str,
+) -> Result<HeaderValue, AppError> {
     if sqlx::query_scalar::<_, bool>("SELECT is_banned FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_optional(&state.db)
@@ -871,7 +874,7 @@ fn verify_password_hash(password: &str, stored: &str) -> bool {
             == 0
 }
 
-async fn unique_uid(state: &AppState) -> Result<String, AppError> {
+pub(crate) async fn unique_uid(state: &AppState) -> Result<String, AppError> {
     for _ in 0..20 {
         let uid = format!("{:08}", rand::random::<u32>() % 100_000_000);
         if sqlx::query_scalar::<_, i64>("SELECT 1 FROM users WHERE uid = ? LIMIT 1")

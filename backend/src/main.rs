@@ -2,7 +2,7 @@ use std::{
     net::SocketAddr,
     path::{Path as FsPath, PathBuf},
     str::FromStr,
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -31,6 +31,7 @@ use webauthn_rs::prelude::{Url, Webauthn, WebauthnBuilder};
 mod account;
 mod community;
 mod notifications;
+mod onebot;
 mod passkeys;
 mod surveys;
 mod users;
@@ -46,7 +47,8 @@ struct AppState {
     db: SqlitePool,
     config: Config,
     http: reqwest::Client,
-    webauthn: std::sync::Arc<Webauthn>,
+    webauthn: Arc<Webauthn>,
+    onebot: Arc<onebot::OneBotHub>,
 }
 
 #[derive(Clone)]
@@ -61,6 +63,9 @@ struct Config {
     resend_from_email: String,
     passkey_rp_id: String,
     passkey_rp_name: String,
+    onebot_access_token: Option<String>,
+    onebot_bot_id: Option<String>,
+    onebot_allowed_group_ids: Vec<String>,
 }
 
 impl Config {
@@ -99,6 +104,18 @@ impl Config {
             passkey_rp_id,
             passkey_rp_name: std::env::var("PASSKEY_RP_NAME")
                 .unwrap_or_else(|_| "reshi diary".into()),
+            onebot_access_token: optional_env("ONEBOT_ACCESS_TOKEN"),
+            onebot_bot_id: optional_env("ONEBOT_BOT_ID")
+                .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit())),
+            onebot_allowed_group_ids: std::env::var("ONEBOT_ALLOWED_GROUP_IDS")
+                .unwrap_or_default()
+                .split([',', '，', ' ', '\n', '\t'])
+                .map(str::trim)
+                .filter(|value| {
+                    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+                })
+                .map(ToOwned::to_owned)
+                .collect(),
         })
     }
 }
@@ -135,7 +152,8 @@ async fn main() -> anyhow::Result<()> {
         db,
         config,
         http: reqwest::Client::new(),
-        webauthn: std::sync::Arc::new(webauthn),
+        webauthn: Arc::new(webauthn),
+        onebot: Arc::new(onebot::OneBotHub::new()),
     };
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
     info!(%listen_addr, "reshi diary backend listening");
@@ -180,6 +198,8 @@ fn routes(state: AppState) -> Router {
         .route("/api/auth/password-reset", post(users::password_reset))
         .route("/api/auth/me", get(users::me))
         .route("/api/auth/logout", post(users::logout))
+        .route("/api/auth/qq/start", post(onebot::start_auth))
+        .route("/api/auth/qq/complete", post(onebot::complete_auth))
         .route(
             "/api/auth/passkey-options",
             post(users::authentication_options),
@@ -196,6 +216,13 @@ fn routes(state: AppState) -> Router {
         )
         .route("/api/account/tasks", get(account::get_tasks))
         .route("/api/account/check-in", post(account::check_in))
+        .route(
+            "/api/account/qq",
+            get(onebot::get_binding)
+                .post(onebot::start_binding)
+                .delete(onebot::remove_binding),
+        )
+        .route("/api/account/qq/complete", post(onebot::complete_binding))
         .route(
             "/api/account/tickets",
             get(account::list_tickets).post(account::create_ticket),
@@ -278,6 +305,11 @@ fn routes(state: AppState) -> Router {
             post(passkeys::verify_registration),
         )
         .route("/api/admin/uploads", post(upload_file))
+        .route(
+            "/api/admin/onebot",
+            get(onebot::get_admin_config).post(onebot::send_group_notice),
+        )
+        .route("/api/onebot/ws", get(onebot::websocket))
         .route(
             "/api/admin/notification",
             get(notifications::get_admin)
@@ -512,7 +544,7 @@ fn normalized_post(input: PostInput) -> Result<NormalizedPost, AppError> {
     })
 }
 
-fn html_to_plain_text(html: &str) -> String {
+pub(crate) fn html_to_plain_text(html: &str) -> String {
     static TAG: LazyLock<regex_lite::Regex> =
         LazyLock::new(|| regex_lite::Regex::new(r"<[^>]+>").expect("valid tag regex"));
     html_escape::decode_html_entities(TAG.replace_all(html, " ").as_ref())
@@ -986,6 +1018,13 @@ fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
+}
+
+fn optional_env(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 fn sqlite_file_parent(url: &str) -> Option<&FsPath> {

@@ -3,7 +3,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use ammonia::Builder as HtmlSanitizer;
 use axum::{
     Json,
-    extract::{Multipart, State, WebSocketUpgrade, ws::{Message, WebSocket}},
+    extract::{
+        Multipart, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -15,7 +18,9 @@ use sqlx::FromRow;
 use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
 use uuid::Uuid;
 
-use crate::{AppError, AppState, hash_value, html_to_plain_text, now_ms, require_admin, users, verify_origin};
+use crate::{
+    AppError, AppState, hash_value, html_to_plain_text, now_ms, require_admin, users, verify_origin,
+};
 
 const QQ_AUTH_TTL_MS: i64 = 10 * 60 * 1_000;
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
@@ -46,7 +51,10 @@ impl OneBotHub {
 
     async fn disconnect(&self, generation: &str) {
         let mut connection = self.connection.write().await;
-        if connection.as_ref().is_some_and(|value| value.generation == generation) {
+        if connection
+            .as_ref()
+            .is_some_and(|value| value.generation == generation)
+        {
             *connection = None;
         }
     }
@@ -79,7 +87,11 @@ impl OneBotHub {
         let (result_tx, result_rx) = oneshot::channel();
         self.pending.lock().await.insert(echo.clone(), result_tx);
         let payload = serde_json::json!({"action":action,"params":params,"echo":echo});
-        if sender.send(Message::Text(payload.to_string().into())).await.is_err() {
+        if sender
+            .send(Message::Text(payload.to_string().into()))
+            .await
+            .is_err()
+        {
             self.pending.lock().await.remove(&echo);
             return Err(AppError::Unavailable("QQ Bot 连接已断开"));
         }
@@ -194,7 +206,10 @@ async fn socket_loop(state: Arc<AppState>, socket: WebSocket) {
 
 async fn process_event(state: &AppState, payload: &serde_json::Value) -> Option<(i64, String)> {
     if payload.get("post_type").and_then(serde_json::Value::as_str) != Some("message")
-        || payload.get("message_type").and_then(serde_json::Value::as_str) != Some("private")
+        || payload
+            .get("message_type")
+            .and_then(serde_json::Value::as_str)
+            != Some("private")
     {
         return None;
     }
@@ -212,35 +227,46 @@ async fn process_event(state: &AppState, payload: &serde_json::Value) -> Option<
         .flatten();
     let now = now_ms();
     let Some(row) = row.filter(|row| row.status == "pending" && row.expires_at > now) else {
-        return Some((user_number, "验证码无效、已过期或已使用，请回网站重新获取。".into()));
+        return Some((
+            user_number,
+            "验证码无效、已过期或已使用，请回网站重新获取。".into(),
+        ));
     };
     let mut failure = None;
     if row.purpose == "login" {
-        let exists = sqlx::query_scalar::<_, i64>("SELECT 1 FROM qq_bindings WHERE qq_id = ? LIMIT 1")
-            .bind(&qq_id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .is_some();
+        let exists =
+            sqlx::query_scalar::<_, i64>("SELECT 1 FROM qq_bindings WHERE qq_id = ? LIMIT 1")
+                .bind(&qq_id)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten()
+                .is_some();
         if !exists {
             failure = Some("该 QQ 尚未注册，请在网站选择 QQ 注册。");
         }
     }
     if row.purpose == "bind" {
-        let owner = sqlx::query_scalar::<_, String>("SELECT user_id FROM qq_bindings WHERE qq_id = ? LIMIT 1")
-            .bind(&qq_id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten();
-        let current = sqlx::query_scalar::<_, String>("SELECT qq_id FROM qq_bindings WHERE user_id = ? LIMIT 1")
-            .bind(&row.user_id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten();
-        if owner.as_deref().is_some_and(|id| Some(id) != row.user_id.as_deref()) {
+        let owner = sqlx::query_scalar::<_, String>(
+            "SELECT user_id FROM qq_bindings WHERE qq_id = ? LIMIT 1",
+        )
+        .bind(&qq_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+        let current = sqlx::query_scalar::<_, String>(
+            "SELECT qq_id FROM qq_bindings WHERE user_id = ? LIMIT 1",
+        )
+        .bind(&row.user_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+        if owner
+            .as_deref()
+            .is_some_and(|id| Some(id) != row.user_id.as_deref())
+        {
             failure = Some("该 QQ 已绑定其他网站账户。");
         } else if current.as_deref().is_some_and(|id| id != qq_id) {
             failure = Some("该网站账户已绑定其他 QQ，请先解绑。");
@@ -286,7 +312,11 @@ pub(crate) async fn start_auth(
     if !state.onebot.is_connected().await {
         return Err(AppError::Unavailable("QQ Bot 当前未连接"));
     }
-    let purpose = if body.intent.as_deref() == Some("register") { "register" } else { "login" };
+    let purpose = if body.intent.as_deref() == Some("register") {
+        "register"
+    } else {
+        "login"
+    };
     let display_name = if purpose == "register" {
         let name = normalize_display_name(body.display_name.as_deref())?;
         if sqlx::query_scalar::<_, i64>("SELECT 1 FROM users WHERE display_name_key = ? LIMIT 1")
@@ -335,20 +365,18 @@ pub(crate) async fn complete_auth(
     if row.status == "failed" {
         return Ok(status_json(
             StatusCode::CONFLICT,
-            serde_json::json!({
-                "status":"failed",
-                "error":row.error.unwrap_or_else(|| "QQ 验证失败".into())
-            }),
+            serde_json::json!({"status":"failed","error":row.error.unwrap_or_else(|| "QQ 验证失败".into())}),
         ));
     }
     if row.status != "verified" || !matches!(row.purpose.as_str(), "login" | "register") {
         return Err(AppError::Conflict("验证请求已使用"));
     }
     let qq_id = row.verified_qq_id.ok_or(AppError::Internal)?;
-    let mut user_id = sqlx::query_scalar::<_, String>("SELECT user_id FROM qq_bindings WHERE qq_id = ? LIMIT 1")
-        .bind(&qq_id)
-        .fetch_optional(&state.db)
-        .await?;
+    let mut user_id =
+        sqlx::query_scalar::<_, String>("SELECT user_id FROM qq_bindings WHERE qq_id = ? LIMIT 1")
+            .bind(&qq_id)
+            .fetch_optional(&state.db)
+            .await?;
     if user_id.is_none() && row.purpose == "login" {
         return Err(AppError::NotFound("该 QQ 尚未注册，请切换到 QQ 注册"));
     }
@@ -391,22 +419,28 @@ pub(crate) async fn complete_auth(
             }
             return Err(error.into());
         }
-        sqlx::query("INSERT INTO qq_bindings (user_id, qq_id, bot_id, bound_at) VALUES (?, ?, ?, ?)")
-            .bind(&id)
-            .bind(&qq_id)
-            .bind(config.bot_id)
-            .bind(now)
-            .execute(&mut *transaction)
-            .await?;
+        sqlx::query(
+            "INSERT INTO qq_bindings (user_id, qq_id, bot_id, bound_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(&qq_id)
+        .bind(config.bot_id)
+        .bind(now)
+        .execute(&mut *transaction)
+        .await?;
         user_id = Some(id);
     }
     transaction.commit().await?;
     let user_id = user_id.ok_or(AppError::Internal)?;
     let cookie = users::issue_user_session(&state, &user_id).await?;
-    Ok(([
-        (header::SET_COOKIE, cookie),
-        (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
-    ], Json(serde_json::json!({"ok":true,"status":"complete"}))).into_response())
+    Ok((
+        [
+            (header::SET_COOKIE, cookie),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+        ],
+        Json(serde_json::json!({"ok":true,"status":"complete"})),
+    )
+        .into_response())
 }
 
 pub(crate) async fn get_binding(
@@ -414,10 +448,12 @@ pub(crate) async fn get_binding(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user = users::require_user(&state, &headers).await?;
-    let binding = sqlx::query_as::<_, (String, String, i64)>("SELECT qq_id, bot_id, bound_at FROM qq_bindings WHERE user_id = ? LIMIT 1")
-        .bind(&user.id)
-        .fetch_optional(&state.db)
-        .await?;
+    let binding = sqlx::query_as::<_, (String, String, i64)>(
+        "SELECT qq_id, bot_id, bound_at FROM qq_bindings WHERE user_id = ? LIMIT 1",
+    )
+    .bind(&user.id)
+    .fetch_optional(&state.db)
+    .await?;
     let config = onebot_config(&state).ok();
     let online = state.onebot.is_connected().await;
     Ok(Json(serde_json::json!({
@@ -485,27 +521,26 @@ pub(crate) async fn complete_binding(
     if row.status == "failed" {
         return Ok(status_json(
             StatusCode::CONFLICT,
-            serde_json::json!({
-                "status":"failed",
-                "error":row.error.unwrap_or_else(|| "QQ 验证失败".into())
-            }),
+            serde_json::json!({"status":"failed","error":row.error.unwrap_or_else(|| "QQ 验证失败".into())}),
         ));
     }
     if row.status != "verified" {
         return Err(AppError::Conflict("验证请求已使用"));
     }
     let qq_id = row.verified_qq_id.ok_or(AppError::Internal)?;
-    let owner = sqlx::query_scalar::<_, String>("SELECT user_id FROM qq_bindings WHERE qq_id = ? LIMIT 1")
-        .bind(&qq_id)
-        .fetch_optional(&state.db)
-        .await?;
+    let owner =
+        sqlx::query_scalar::<_, String>("SELECT user_id FROM qq_bindings WHERE qq_id = ? LIMIT 1")
+            .bind(&qq_id)
+            .fetch_optional(&state.db)
+            .await?;
     if owner.as_deref().is_some_and(|id| id != user.id) {
         return Err(AppError::Conflict("该 QQ 已绑定其他网站账户"));
     }
-    let current = sqlx::query_scalar::<_, String>("SELECT qq_id FROM qq_bindings WHERE user_id = ? LIMIT 1")
-        .bind(&user.id)
-        .fetch_optional(&state.db)
-        .await?;
+    let current =
+        sqlx::query_scalar::<_, String>("SELECT qq_id FROM qq_bindings WHERE user_id = ? LIMIT 1")
+            .bind(&user.id)
+            .fetch_optional(&state.db)
+            .await?;
     if current.as_deref().is_some_and(|id| id != qq_id) {
         return Err(AppError::Conflict("当前网站账户已绑定其他 QQ"));
     }
@@ -529,7 +564,10 @@ pub(crate) async fn complete_binding(
         .execute(&mut *transaction)
         .await?;
     transaction.commit().await?;
-    Ok(Json(serde_json::json!({"ok":true,"status":"complete","binding":{"qqId":qq_id,"boundAt":now}})).into_response())
+    Ok(Json(
+        serde_json::json!({"ok":true,"status":"complete","binding":{"qqId":qq_id,"boundAt":now}}),
+    )
+    .into_response())
 }
 
 pub(crate) async fn remove_binding(
@@ -539,7 +577,9 @@ pub(crate) async fn remove_binding(
     verify_origin(&state.config, &headers)?;
     let user = users::require_user(&state, &headers).await?;
     if is_synthetic_qq_email(&user.email) {
-        return Err(AppError::Conflict("QQ 是当前账户唯一登录方式，添加邮箱登录后才能解绑"));
+        return Err(AppError::Conflict(
+            "QQ 是当前账户唯一登录方式，添加邮箱登录后才能解绑",
+        ));
     }
     sqlx::query("DELETE FROM qq_bindings WHERE user_id = ?")
         .bind(&user.id)
@@ -571,7 +611,11 @@ pub(crate) async fn send_group_notice(
     verify_origin(&state.config, &headers)?;
     require_admin(&state, &headers).await?;
     let config = onebot_config(&state)?;
-    let declared = headers.get(header::CONTENT_LENGTH).and_then(|value| value.to_str().ok()).and_then(|value| value.parse::<usize>().ok()).unwrap_or_default();
+    let declared = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or_default();
     if declared > MAX_IMAGE_BYTES + 1024 * 1024 {
         return Err(AppError::BadRequest("图片不能超过 8 MB".into()));
     }
@@ -583,30 +627,53 @@ pub(crate) async fn send_group_notice(
     let mut target_url = String::new();
     let mut image = Vec::new();
     let mut content_type = String::new();
-    while let Some(mut field) = multipart.next_field().await.map_err(|_| AppError::BadRequest("上传表单无效".into()))? {
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| AppError::BadRequest("上传表单无效".into()))?
+    {
         let name = field.name().unwrap_or_default().to_owned();
         if name == "image" {
-            content_type = field.content_type().unwrap_or_default().to_ascii_lowercase();
-            while let Some(chunk) = field.chunk().await.map_err(|_| AppError::BadRequest("图片读取失败".into()))? {
+            content_type = field
+                .content_type()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            while let Some(chunk) = field
+                .chunk()
+                .await
+                .map_err(|_| AppError::BadRequest("图片读取失败".into()))?
+            {
                 if image.len() + chunk.len() > MAX_IMAGE_BYTES {
                     return Err(AppError::BadRequest("图片不能超过 8 MB".into()));
                 }
                 image.extend_from_slice(&chunk);
             }
         } else {
-            let text = field.text().await.map_err(|_| AppError::BadRequest("上传表单无效".into()))?;
-            if name == "groupId" { group_id = text.trim().to_owned(); }
-            else if name == "mode" { mode = text.trim().to_owned(); }
-            else if name == "caption" { caption = text.trim().chars().take(500).collect(); }
-            else if name == "title" { title = text.trim().to_owned(); }
-            else if name == "contentHtml" { content_html = text.trim().to_owned(); }
-            else if name == "url" { target_url = text.trim().to_owned(); }
+            let text = field
+                .text()
+                .await
+                .map_err(|_| AppError::BadRequest("上传表单无效".into()))?;
+            if name == "groupId" {
+                group_id = text.trim().to_owned();
+            } else if name == "mode" {
+                mode = text.trim().to_owned();
+            } else if name == "caption" {
+                caption = text.trim().chars().take(500).collect();
+            } else if name == "title" {
+                title = text.trim().to_owned();
+            } else if name == "contentHtml" {
+                content_html = text.trim().to_owned();
+            } else if name == "url" {
+                target_url = text.trim().to_owned();
+            }
         }
     }
     if !config.allowed_group_ids.contains(&group_id) {
         return Err(AppError::Forbidden);
     }
-    let group_number = group_id.parse::<i64>().map_err(|_| AppError::BadRequest("群号无效".into()))?;
+    let group_number = group_id
+        .parse::<i64>()
+        .map_err(|_| AppError::BadRequest("群号无效".into()))?;
     let (message, audit_caption, audit_type, audit_size) = if mode == "card" {
         let title_count = title.chars().count();
         if !(1..=100).contains(&title_count) {
@@ -624,7 +691,9 @@ pub(crate) async fn send_group_notice(
         let url = normalize_card_url(&state.config.public_origin, &target_url)?;
         let mut data = serde_json::json!({"url":url,"title":title.clone(),"content":content});
         if let Some(image_url) = first_card_image(&state.config.public_origin, &safe_html) {
-            data.as_object_mut().ok_or(AppError::Internal)?.insert("image".into(), image_url.into());
+            data.as_object_mut()
+                .ok_or(AppError::Internal)?
+                .insert("image".into(), image_url.into());
         }
         (
             vec![serde_json::json!({"type":"share","data":data})],
@@ -634,7 +703,9 @@ pub(crate) async fn send_group_notice(
         )
     } else if mode == "image" {
         if image.is_empty() || !is_safe_image_type(&content_type) {
-            return Err(AppError::BadRequest("仅支持 AVIF、GIF、JPEG、PNG 或 WebP 图片".into()));
+            return Err(AppError::BadRequest(
+                "仅支持 AVIF、GIF、JPEG、PNG 或 WebP 图片".into(),
+            ));
         }
         let mut message = Vec::new();
         if !caption.is_empty() {
@@ -645,20 +716,28 @@ pub(crate) async fn send_group_notice(
     } else {
         return Err(AppError::BadRequest("通知类型无效".into()));
     };
-    let result = state.onebot.call("send_group_msg", serde_json::json!({
-        "group_id":group_number,
-        "message":message,
-        "auto_escape":false,
-    })).await;
+    let result = state
+        .onebot
+        .call(
+            "send_group_msg",
+            serde_json::json!({
+                "group_id":group_number,
+                "message":message,
+                "auto_escape":false,
+            }),
+        )
+        .await;
     let (status, message_id) = match result {
-        Ok(payload) if payload.get("status").and_then(serde_json::Value::as_str) == Some("ok")
-            && payload.get("retcode").and_then(serde_json::Value::as_i64) == Some(0) => {
-                let id = payload
-                    .get("data")
-                    .and_then(|value| value.get("message_id"))
-                    .map(json_id_value)
-                    .unwrap_or_default();
-                ("sent", id)
+        Ok(payload)
+            if payload.get("status").and_then(serde_json::Value::as_str) == Some("ok")
+                && payload.get("retcode").and_then(serde_json::Value::as_i64) == Some(0) =>
+        {
+            let id = payload
+                .get("data")
+                .and_then(|value| value.get("message_id"))
+                .map(json_id_value)
+                .unwrap_or_default();
+            ("sent", id)
         }
         Ok(_) => ("failed", String::new()),
         Err(error) => {
@@ -723,17 +802,36 @@ async fn record_delivery(state: &AppState, record: DeliveryRecord<'_>) -> Result
     Ok(())
 }
 
-struct CreatedChallenge { flow_id: String, code: String, expires_at: i64 }
+struct CreatedChallenge {
+    flow_id: String,
+    code: String,
+    expires_at: i64,
+}
 
-async fn create_challenge(state: &AppState, headers: &HeaderMap, purpose: &str, user_id: Option<String>, display_name: Option<String>) -> Result<CreatedChallenge, AppError> {
+async fn create_challenge(
+    state: &AppState,
+    headers: &HeaderMap,
+    purpose: &str,
+    user_id: Option<String>,
+    display_name: Option<String>,
+) -> Result<CreatedChallenge, AppError> {
     let now = now_ms();
     let request_key = request_key_hash(headers);
     let latest = sqlx::query_scalar::<_, i64>("SELECT created_at FROM qq_auth_challenges WHERE request_key_hash = ? ORDER BY created_at DESC LIMIT 1")
         .bind(&request_key).fetch_optional(&state.db).await?;
-    if latest.is_some_and(|created| now - created < 20_000) { return Err(AppError::RateLimited(20)); }
-    let recent = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM qq_auth_challenges WHERE request_key_hash = ? AND created_at > ?")
-        .bind(&request_key).bind(now - QQ_AUTH_TTL_MS).fetch_one(&state.db).await?;
-    if recent >= 10 { return Err(AppError::RateLimited(600)); }
+    if latest.is_some_and(|created| now - created < 20_000) {
+        return Err(AppError::RateLimited(20));
+    }
+    let recent = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM qq_auth_challenges WHERE request_key_hash = ? AND created_at > ?",
+    )
+    .bind(&request_key)
+    .bind(now - QQ_AUTH_TTL_MS)
+    .fetch_one(&state.db)
+    .await?;
+    if recent >= 10 {
+        return Err(AppError::RateLimited(600));
+    }
     sqlx::query("DELETE FROM qq_auth_challenges WHERE expires_at <= ? OR (status IN ('consumed', 'failed') AND created_at < ?)")
         .bind(now).bind(now - QQ_AUTH_TTL_MS).execute(&state.db).await?;
     let flow_id = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
@@ -743,7 +841,11 @@ async fn create_challenge(state: &AppState, headers: &HeaderMap, purpose: &str, 
         .bind(&flow_id).bind(hash_value(&format!("qq-auth:{}", normalize_code(&code))))
         .bind(purpose).bind(user_id).bind(display_name).bind(request_key).bind(now).bind(expires_at)
         .execute(&state.db).await?;
-    Ok(CreatedChallenge { flow_id, code, expires_at })
+    Ok(CreatedChallenge {
+        flow_id,
+        code,
+        expires_at,
+    })
 }
 
 async fn challenge_by_flow(state: &AppState, flow_id: &str) -> Result<Challenge, AppError> {
@@ -752,67 +854,123 @@ async fn challenge_by_flow(state: &AppState, flow_id: &str) -> Result<Challenge,
 }
 
 fn onebot_config(state: &AppState) -> Result<OneBotConfig<'_>, AppError> {
-    let (Some(access_token), Some(bot_id)) = (state.config.onebot_access_token.as_deref(), state.config.onebot_bot_id.as_deref()) else {
+    let (Some(access_token), Some(bot_id)) = (
+        state.config.onebot_access_token.as_deref(),
+        state.config.onebot_bot_id.as_deref(),
+    ) else {
         return Err(AppError::Unavailable("OneBot 尚未完整配置"));
     };
-    if state.config.onebot_allowed_group_ids.is_empty() { return Err(AppError::Unavailable("OneBot 群白名单尚未配置")); }
-    Ok(OneBotConfig { access_token, bot_id, allowed_group_ids: &state.config.onebot_allowed_group_ids })
+    if state.config.onebot_allowed_group_ids.is_empty() {
+        return Err(AppError::Unavailable("OneBot 群白名单尚未配置"));
+    }
+    Ok(OneBotConfig {
+        access_token,
+        bot_id,
+        allowed_group_ids: &state.config.onebot_allowed_group_ids,
+    })
 }
 
 fn valid_flow_id(value: Option<&str>) -> Result<&str, AppError> {
     let value = value.unwrap_or_default();
-    if value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) { Ok(value) }
-    else { Err(AppError::BadRequest("验证请求无效".into()) }
+    if value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Ok(value)
+    } else {
+        Err(AppError::BadRequest("验证请求无效".into()))
+    }
 }
 
 fn request_key_hash(headers: &HeaderMap) -> String {
-    let ip = headers.get("cf-connecting-ip").or_else(|| headers.get("x-forwarded-for"))
-        .and_then(|value| value.to_str().ok()).and_then(|value| value.split(',').next()).unwrap_or("unknown");
-    let agent = headers.get(header::USER_AGENT).and_then(|value| value.to_str().ok()).unwrap_or("unknown");
-    hash_value(&format!("qq-flow:{ip}:{}", agent.chars().take(160).collect::<String>()))
+    let ip = headers
+        .get("cf-connecting-ip")
+        .or_else(|| headers.get("x-forwarded-for"))
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .unwrap_or("unknown");
+    let agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("unknown");
+    hash_value(&format!(
+        "qq-flow:{ip}:{}",
+        agent.chars().take(160).collect::<String>()
+    ))
 }
 
 fn normalize_display_name(value: Option<&str>) -> Result<String, AppError> {
     let value = value.unwrap_or_default().trim();
-    if !(2..=40).contains(&value.chars().count()) { return Err(AppError::BadRequest("昵称需为 2–40 个字符".into())); }
+    if !(2..=40).contains(&value.chars().count()) {
+        return Err(AppError::BadRequest("昵称需为 2–40 个字符".into()));
+    }
     Ok(value.to_owned())
 }
 
-fn display_name_key(value: &str) -> String { value.trim().to_lowercase() }
-fn synthetic_qq_email(qq_id: &str) -> String { format!("qq-{qq_id}@qq.rettheory.local") }
-fn is_synthetic_qq_email(email: &str) -> bool { email.starts_with("qq-") && email.ends_with("@qq.rettheory.local") }
-fn is_numeric_id(value: &str) -> bool { (5..=20).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_digit()) }
+fn display_name_key(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+fn synthetic_qq_email(qq_id: &str) -> String {
+    format!("qq-{qq_id}@qq.rettheory.local")
+}
+fn is_synthetic_qq_email(email: &str) -> bool {
+    email.starts_with("qq-") && email.ends_with("@qq.rettheory.local")
+}
+fn is_numeric_id(value: &str) -> bool {
+    (5..=20).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_digit())
+}
 
 fn generate_code() -> String {
     const ALPHABET: &[u8] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-    let raw = (0..8).map(|_| ALPHABET[rand::random::<u8>() as usize % ALPHABET.len()] as char).collect::<String>();
+    let raw = (0..8)
+        .map(|_| ALPHABET[rand::random::<u8>() as usize % ALPHABET.len()] as char)
+        .collect::<String>();
     format!("{}-{}", &raw[..4], &raw[4..])
 }
 
 fn normalize_code(value: &str) -> String {
-    value.chars().filter(|value| value.is_ascii_alphanumeric()).map(|value| value.to_ascii_uppercase()).collect()
+    value
+        .chars()
+        .filter(|value| value.is_ascii_alphanumeric())
+        .map(|value| value.to_ascii_uppercase())
+        .collect()
 }
 
 fn parse_verification_message(value: &str) -> Option<String> {
     let trimmed = value.trim();
-    let code = ["绑定", "验证", "登录", "注册"].into_iter().find_map(|prefix| trimmed.strip_prefix(prefix))?;
+    let code = ["绑定", "验证", "登录", "注册"]
+        .into_iter()
+        .find_map(|prefix| trimmed.strip_prefix(prefix))?;
     let normalized = normalize_code(code);
-    (normalized.len() == 8 && normalized.bytes().all(|byte| matches!(byte, b'2'..=b'9' | b'A'..=b'H' | b'J'..=b'N' | b'P'..=b'Z'))).then_some(normalized)
+    (normalized.len() == 8
+        && normalized
+            .bytes()
+            .all(|byte| matches!(byte, b'2'..=b'9' | b'A'..=b'H' | b'J'..=b'N' | b'P'..=b'Z')))
+    .then_some(normalized)
 }
 
 fn constant_secret_eq(left: &str, right: &str) -> bool {
     let left = Sha256::digest(left.as_bytes());
     let right = Sha256::digest(right.as_bytes());
-    left.iter().zip(right).fold(0u8, |difference, (left, right)| difference | (left ^ right)) == 0
+    left.iter()
+        .zip(right)
+        .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+        == 0
 }
 
-fn json_id(value: Option<&serde_json::Value>) -> Option<String> { value.map(json_id_value).filter(|value| !value.is_empty()) }
+fn json_id(value: Option<&serde_json::Value>) -> Option<String> {
+    value.map(json_id_value).filter(|value| !value.is_empty())
+}
 fn json_id_value(value: &serde_json::Value) -> String {
-    value.as_str().map(ToOwned::to_owned).or_else(|| value.as_i64().map(|value| value.to_string())).unwrap_or_default()
+    value
+        .as_str()
+        .map(ToOwned::to_owned)
+        .or_else(|| value.as_i64().map(|value| value.to_string()))
+        .unwrap_or_default()
 }
 
 fn is_safe_image_type(value: &str) -> bool {
-    matches!(value.split(';').next().unwrap_or_default(), "image/avif" | "image/gif" | "image/jpeg" | "image/png" | "image/webp")
+    matches!(
+        value.split(';').next().unwrap_or_default(),
+        "image/avif" | "image/gif" | "image/jpeg" | "image/png" | "image/webp"
+    )
 }
 
 fn normalize_card_url(public_origin: &str, value: &str) -> Result<String, AppError> {
@@ -826,7 +984,9 @@ fn normalize_card_url(public_origin: &str, value: &str) -> Result<String, AppErr
     let parsed = reqwest::Url::parse(value)
         .map_err(|_| AppError::BadRequest("卡片链接需为 HTTPS 地址或站内路径".into()))?;
     if parsed.scheme() != "https" {
-        return Err(AppError::BadRequest("卡片链接需为 HTTPS 地址或站内路径".into()));
+        return Err(AppError::BadRequest(
+            "卡片链接需为 HTTPS 地址或站内路径".into(),
+        ));
     }
     Ok(parsed.to_string())
 }
@@ -852,8 +1012,14 @@ mod tests {
 
     #[test]
     fn verification_message_accepts_supported_commands() {
-        assert_eq!(parse_verification_message("绑定 ABCD-2345").as_deref(), Some("ABCD2345"));
-        assert_eq!(parse_verification_message("验证 abcd2345").as_deref(), Some("ABCD2345"));
+        assert_eq!(
+            parse_verification_message("绑定 ABCD-2345").as_deref(),
+            Some("ABCD2345")
+        );
+        assert_eq!(
+            parse_verification_message("验证 abcd2345").as_deref(),
+            Some("ABCD2345")
+        );
         assert!(parse_verification_message("随便聊聊").is_none());
     }
 
@@ -871,7 +1037,11 @@ mod tests {
         );
         assert!(normalize_card_url("https://rettheory.top", "http://example.com").is_err());
         assert_eq!(
-            first_card_image("https://rettheory.top", "<p>通知</p><img src=\"/api/files/card.png\">").as_deref(),
+            first_card_image(
+                "https://rettheory.top",
+                "<p>通知</p><img src=\"/api/files/card.png\">"
+            )
+            .as_deref(),
             Some("https://rettheory.top/api/files/card.png")
         );
     }
