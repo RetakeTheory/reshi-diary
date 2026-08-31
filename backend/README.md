@@ -35,3 +35,9 @@ Passkeys previously registered in the D1/TypeScript backend are not copied autom
 - `/api/admin/surveys*`: create, publish, close and delete surveys; download UTF-8 CSV reports.
 
 Reader and admin cookies are separate. Mutating requests verify the public origin, and Passkey challenges are single-use with a five-minute TTL.
+
+## OneBot 11 reverse WebSocket
+
+QQ registration, login, account binding and group image notices use one reverse WebSocket. Configure `ONEBOT_ACCESS_TOKEN`, `ONEBOT_BOT_ID` and comma-separated `ONEBOT_ALLOWED_GROUP_IDS` on the Rust service, then point the OneBot implementation at `wss://rettheory.top/api/onebot/ws` with the same bearer token. The configured bot is marked online after its first lifecycle or event payload identifies the expected `self_id`.
+
+The site stores one-time verification codes as hashes and expires them after ten minutes. A QQ account can belong to only one website account. Group sends are restricted to the server-side allowlist, accept images up to 8 MB, and write metadata-only delivery logs.

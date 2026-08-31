@@ -100,3 +100,26 @@ test("ships Rust community, profile, ticket, Passkey, survey and notification ro
   assert.match(surveys, /idx_survey_responses_attempt/);
   assert.match(nav, /mobile-menu-trigger/);
 });
+
+test("ships OneBot 11 reverse WebSocket QQ auth and allowlisted image notices", async () => {
+  const [main, onebot, migration, login, manager, docs] = await Promise.all([
+    readFile(new URL("../backend/src/main.rs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/onebot.rs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/migrations/0015_onebot_qq_accounts.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/login/UserLogin.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/admin/OneBotManager.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../docs/onebot-11.md", import.meta.url), "utf8"),
+  ]);
+  assert.match(main, /\/api\/onebot\/ws/);
+  assert.match(main, /\/api\/auth\/qq\/start/);
+  assert.match(main, /\/api\/account\/qq/);
+  assert.match(onebot, /Bearer /);
+  assert.match(onebot, /send_private_msg/);
+  assert.match(onebot, /send_group_msg/);
+  assert.match(onebot, /ONEBOT_MAX_IMAGE_BYTES|MAX_IMAGE_BYTES/);
+  assert.match(migration, /UNIQUE/);
+  assert.match(migration, /onebot_delivery_log/);
+  assert.match(login, /使用 QQ 注册/);
+  assert.match(manager, /ONEBOT_ALLOWED_GROUP_IDS/);
+  assert.match(docs, /wss:\/\/rettheory\.top\/api\/onebot\/ws/);
+});

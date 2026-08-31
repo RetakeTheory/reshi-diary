@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-html-link-for-pages -- full-page navigation remains reliable in the deployed Worker */
 import { desc } from "drizzle-orm";
 import { getDb } from "../../db";
 import { posts } from "../../db/schema";
@@ -14,6 +13,7 @@ import TicketManager from "./TicketManager";
 import SurveyManager from "./SurveyManager";
 import UserManager from "./UserManager";
 import FoodRankingManager from "./FoodRankingManager";
+import OneBotManager from "./OneBotManager";
 import AdminDashboardTabs, { type AdminDashboardTab } from "./AdminDashboardTabs";
 import EditableModule from "../EditableModule";
 import { pageDocument } from "../../lib/site-pages";
@@ -69,6 +69,7 @@ export default async function AdminPage() {
     return content && meta ? [{ id: module.id, label: module.label, ...meta, content: <EditableModule module={module}>{content}</EditableModule> }] : [];
   });
   tabs.push({ id: "admin-users", label: "注册用户管理", description: "搜索用户并处理恶意账户", icon: "user", content: <UserManager /> });
+  tabs.push({ id: "admin-onebot", label: "QQ群通知", description: "查看 Bot 连接并发送群图片", icon: "bot", content: <OneBotManager /> });
 
   return (
     <main className="admin-shell">
