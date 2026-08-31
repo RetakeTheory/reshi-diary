@@ -352,7 +352,8 @@ pub(crate) async fn start_auth(
     } else {
         None
     };
-    let challenge = create_challenge(&state, &headers, purpose, None, display_name, &bot_id).await?;
+    let challenge =
+        create_challenge(&state, &headers, purpose, None, display_name, &bot_id).await?;
     Ok(Json(serde_json::json!({
         "flowId":challenge.flow_id,
         "code":challenge.code,
@@ -475,12 +476,11 @@ pub(crate) async fn get_binding(
     .fetch_optional(&state.db)
     .await?;
     let bot_id = state.onebot.first_connected().await;
-    let configured = sqlx::query_scalar::<_, i64>(
-        "SELECT 1 FROM onebot_bots WHERE enabled = 1 LIMIT 1",
-    )
-    .fetch_optional(&state.db)
-    .await?
-    .is_some();
+    let configured =
+        sqlx::query_scalar::<_, i64>("SELECT 1 FROM onebot_bots WHERE enabled = 1 LIMIT 1")
+            .fetch_optional(&state.db)
+            .await?
+            .is_some();
     Ok(Json(serde_json::json!({
         "binding":binding.as_ref().map(|(qq_id,bot_id,bound_at)| serde_json::json!({"qqId":qq_id,"botId":bot_id,"boundAt":bound_at})),
         "botId":bot_id.as_deref(),
@@ -505,15 +505,8 @@ pub(crate) async fn start_binding(
     {
         return Err(AppError::Conflict("当前账户已绑定 QQ"));
     }
-    let challenge = create_challenge(
-        &state,
-        &headers,
-        "bind",
-        Some(user.id),
-        None,
-        &bot_id,
-    )
-    .await?;
+    let challenge =
+        create_challenge(&state, &headers, "bind", Some(user.id), None, &bot_id).await?;
     Ok(Json(serde_json::json!({
         "flowId":challenge.flow_id,
         "code":challenge.code,
@@ -634,10 +627,13 @@ pub(crate) async fn get_admin_config(
     .await?;
     let mut groups = HashMap::<String, Vec<serde_json::Value>>::new();
     for row in group_rows {
-        groups.entry(row.bot_id).or_default().push(serde_json::json!({
-            "groupId":row.group_id,
-            "displayName":row.display_name,
-        }));
+        groups
+            .entry(row.bot_id)
+            .or_default()
+            .push(serde_json::json!({
+                "groupId":row.group_id,
+                "displayName":row.display_name,
+            }));
     }
     let mut bots = Vec::with_capacity(bot_rows.len());
     let mut any_online = false;
@@ -752,17 +748,21 @@ pub(crate) async fn update_bot(
         None => current.0,
     };
     let enabled = body.enabled.unwrap_or(current.1 != 0);
-    sqlx::query("UPDATE onebot_bots SET display_name = ?, enabled = ?, updated_at = ? WHERE bot_id = ?")
-        .bind(&display_name)
-        .bind(if enabled { 1_i64 } else { 0_i64 })
-        .bind(now_ms())
-        .bind(&bot_id)
-        .execute(&state.db)
-        .await?;
+    sqlx::query(
+        "UPDATE onebot_bots SET display_name = ?, enabled = ?, updated_at = ? WHERE bot_id = ?",
+    )
+    .bind(&display_name)
+    .bind(if enabled { 1_i64 } else { 0_i64 })
+    .bind(now_ms())
+    .bind(&bot_id)
+    .execute(&state.db)
+    .await?;
     if !enabled {
         state.onebot.remove(&bot_id).await;
     }
-    Ok(Json(serde_json::json!({"ok":true,"botId":bot_id,"displayName":display_name,"enabled":enabled})))
+    Ok(Json(
+        serde_json::json!({"ok":true,"botId":bot_id,"displayName":display_name,"enabled":enabled}),
+    ))
 }
 
 pub(crate) async fn delete_bot(
@@ -794,18 +794,22 @@ pub(crate) async fn rotate_bot_token(
     require_admin(&state, &headers).await?;
     let bot_id = numeric_id(Some(&bot_id), "Bot QQ 号")?;
     let token = generate_bot_token();
-    let updated = sqlx::query("UPDATE onebot_bots SET access_token_hash = ?, updated_at = ? WHERE bot_id = ?")
-        .bind(bot_token_hash(&token))
-        .bind(now_ms())
-        .bind(&bot_id)
-        .execute(&state.db)
-        .await?
-        .rows_affected();
+    let updated = sqlx::query(
+        "UPDATE onebot_bots SET access_token_hash = ?, updated_at = ? WHERE bot_id = ?",
+    )
+    .bind(bot_token_hash(&token))
+    .bind(now_ms())
+    .bind(&bot_id)
+    .execute(&state.db)
+    .await?
+    .rows_affected();
     if updated == 0 {
         return Err(AppError::NotFound("Bot 不存在"));
     }
     state.onebot.remove(&bot_id).await;
-    Ok(Json(serde_json::json!({"ok":true,"accessToken":token,"reverseWsPath":"/api/onebot/ws"})))
+    Ok(Json(
+        serde_json::json!({"ok":true,"accessToken":token,"reverseWsPath":"/api/onebot/ws"}),
+    ))
 }
 
 pub(crate) async fn create_group(
@@ -840,7 +844,9 @@ pub(crate) async fn create_group(
         }
         return Err(error.into());
     }
-    Ok(Json(serde_json::json!({"ok":true,"group":{"groupId":group_id,"displayName":display_name}})))
+    Ok(Json(
+        serde_json::json!({"ok":true,"group":{"groupId":group_id,"displayName":display_name}}),
+    ))
 }
 
 pub(crate) async fn delete_group(
@@ -1135,11 +1141,7 @@ async fn available_bot(state: &AppState) -> Result<String, AppError> {
 }
 
 fn generate_bot_token() -> String {
-    format!(
-        "ob_{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    )
+    format!("ob_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
 }
 
 fn bot_token_hash(token: &str) -> String {
