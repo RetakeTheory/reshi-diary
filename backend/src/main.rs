@@ -63,9 +63,6 @@ struct Config {
     resend_from_email: String,
     passkey_rp_id: String,
     passkey_rp_name: String,
-    onebot_access_token: Option<String>,
-    onebot_bot_id: Option<String>,
-    onebot_allowed_group_ids: Vec<String>,
 }
 
 impl Config {
@@ -104,18 +101,6 @@ impl Config {
             passkey_rp_id,
             passkey_rp_name: std::env::var("PASSKEY_RP_NAME")
                 .unwrap_or_else(|_| "reshi diary".into()),
-            onebot_access_token: optional_env("ONEBOT_ACCESS_TOKEN"),
-            onebot_bot_id: optional_env("ONEBOT_BOT_ID")
-                .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit())),
-            onebot_allowed_group_ids: std::env::var("ONEBOT_ALLOWED_GROUP_IDS")
-                .unwrap_or_default()
-                .split([',', '，', ' ', '\n', '\t'])
-                .map(str::trim)
-                .filter(|value| {
-                    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
-                })
-                .map(ToOwned::to_owned)
-                .collect(),
         })
     }
 }
@@ -308,6 +293,25 @@ fn routes(state: AppState) -> Router {
         .route(
             "/api/admin/onebot",
             get(onebot::get_admin_config).post(onebot::send_group_notice),
+        )
+        .route("/api/admin/onebot/bots", post(onebot::create_bot))
+        .route(
+            "/api/admin/onebot/bots/{bot_id}",
+            post(method_not_allowed)
+                .put(onebot::update_bot)
+                .delete(onebot::delete_bot),
+        )
+        .route(
+            "/api/admin/onebot/bots/{bot_id}/token",
+            post(onebot::rotate_bot_token),
+        )
+        .route(
+            "/api/admin/onebot/bots/{bot_id}/groups",
+            post(onebot::create_group),
+        )
+        .route(
+            "/api/admin/onebot/bots/{bot_id}/groups/{group_id}",
+            post(method_not_allowed).delete(onebot::delete_group),
         )
         .route("/api/onebot/ws", get(onebot::websocket))
         .route(
@@ -1018,13 +1022,6 @@ fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
-}
-
-fn optional_env(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
 }
 
 fn sqlite_file_parent(url: &str) -> Option<&FsPath> {
