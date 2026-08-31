@@ -36,6 +36,8 @@ The admin page reports the bot online only after the connection sends a lifecycl
 
 Signed-in readers use the same flow with a `绑定` command. Both sides are one-to-one: one QQ account cannot bind multiple website accounts, and one website account cannot bind multiple QQ accounts.
 
-## Group image notices
+## Group cards and image notices
 
-The admin module only lists groups in `ONEBOT_ALLOWED_GROUP_IDS`. It accepts AVIF, GIF, JPEG, PNG and WebP images up to 8 MB, optionally prepends up to 500 characters of text, and calls `send_group_msg` over the active WebSocket. Audit records contain destination, MIME type, size, result and message ID; image bytes are not retained.
+The admin module only lists groups in `ONEBOT_ALLOWED_GROUP_IDS`. Its default mode reuses the site's SVG-based rich-text editor. The Rust service sanitizes that HTML, extracts a plain card summary, uses the first safe image as the cover, and sends the standard OneBot 11 `share` message segment. This keeps the card compatible across OneBot 11 implementations; typography and layout are ultimately rendered by QQ rather than copied from browser CSS.
+
+The alternate mode accepts AVIF, GIF, JPEG, PNG and WebP images up to 8 MB and can prepend up to 500 characters of text. Both modes call `send_group_msg` over the active WebSocket. Audit records contain destination, payload type, size, result and message ID; rich HTML and image bytes are not retained.

@@ -308,7 +308,7 @@ fn routes(state: AppState) -> Router {
         .route("/api/admin/uploads", post(upload_file))
         .route(
             "/api/admin/onebot",
-            get(onebot::get_admin_config).post(onebot::send_group_image),
+            get(onebot::get_admin_config).post(onebot::send_group_notice),
         )
         .route("/api/onebot/ws", get(onebot::websocket))
         .route(
@@ -545,7 +545,7 @@ fn normalized_post(input: PostInput) -> Result<NormalizedPost, AppError> {
     })
 }
 
-fn html_to_plain_text(html: &str) -> String {
+pub(crate) fn html_to_plain_text(html: &str) -> String {
     static TAG: LazyLock<regex_lite::Regex> =
         LazyLock::new(|| regex_lite::Regex::new(r"<[^>]+>").expect("valid tag regex"));
     html_escape::decode_html_entities(TAG.replace_all(html, " ").as_ref())

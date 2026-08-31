@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use ammonia::Builder as HtmlSanitizer;
 use axum::{
     Json,
     extract::{Multipart, State, WebSocketUpgrade, ws::{Message, WebSocket}},
@@ -14,10 +15,11 @@ use sqlx::FromRow;
 use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
 use uuid::Uuid;
 
-use crate::{AppError, AppState, hash_value, now_ms, require_admin, users, verify_origin};
+use crate::{AppError, AppState, hash_value, html_to_plain_text, now_ms, require_admin, users, verify_origin};
 
 const QQ_AUTH_TTL_MS: i64 = 10 * 60 * 1_000;
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+const MAX_CARD_HTML_CHARS: usize = 20_000;
 
 #[derive(Clone)]
 struct BotConnection {
@@ -535,7 +537,7 @@ pub(crate) async fn get_admin_config(
     })))
 }
 
-pub(crate) async fn send_group_image(
+pub(crate) async fn send_group_notice(
     State(state): State<AppState>,
     headers: HeaderMap,
     mut multipart: Multipart,
@@ -548,7 +550,11 @@ pub(crate) async fn send_group_image(
         return Err(AppError::BadRequest("图片不能超过 8 MB".into()));
     }
     let mut group_id = String::new();
+    let mut mode = String::from("image");
     let mut caption = String::new();
+    let mut title = String::new();
+    let mut content_html = String::new();
+    let mut target_url = String::new();
     let mut image = Vec::new();
     let mut content_type = String::new();
     while let Some(mut field) = multipart.next_field().await.map_err(|_| AppError::BadRequest("上传表单无效".into()))? {
@@ -564,21 +570,55 @@ pub(crate) async fn send_group_image(
         } else {
             let text = field.text().await.map_err(|_| AppError::BadRequest("上传表单无效".into()))?;
             if name == "groupId" { group_id = text.trim().to_owned(); }
+            else if name == "mode" { mode = text.trim().to_owned(); }
             else if name == "caption" { caption = text.trim().chars().take(500).collect(); }
+            else if name == "title" { title = text.trim().to_owned(); }
+            else if name == "contentHtml" { content_html = text.trim().to_owned(); }
+            else if name == "url" { target_url = text.trim().to_owned(); }
         }
     }
     if !config.allowed_group_ids.contains(&group_id) {
         return Err(AppError::Forbidden);
     }
-    if image.is_empty() || !is_safe_image_type(&content_type) {
-        return Err(AppError::BadRequest("仅支持 AVIF、GIF、JPEG、PNG 或 WebP 图片".into()));
-    }
     let group_number = group_id.parse::<i64>().map_err(|_| AppError::BadRequest("群号无效".into()))?;
-    let mut message = Vec::new();
-    if !caption.is_empty() {
-        message.push(serde_json::json!({"type":"text","data":{"text":caption}}));
-    }
-    message.push(serde_json::json!({"type":"image","data":{"file":format!("base64://{}", STANDARD.encode(&image))}}));
+    let (message, audit_caption, audit_type, audit_size) = if mode == "card" {
+        let title_count = title.chars().count();
+        if !(1..=100).contains(&title_count) {
+            return Err(AppError::BadRequest("卡片标题需为 1–100 个字符".into()));
+        }
+        if content_html.chars().count() > MAX_CARD_HTML_CHARS {
+            return Err(AppError::BadRequest("卡片正文不能超过 20000 字".into()));
+        }
+        let safe_html = HtmlSanitizer::default().clean(&content_html).to_string();
+        let plain = html_to_plain_text(&safe_html);
+        if plain.is_empty() {
+            return Err(AppError::BadRequest("请填写卡片正文".into()));
+        }
+        let content = plain.chars().take(300).collect::<String>();
+        let url = normalize_card_url(&state.config.public_origin, &target_url)?;
+        let mut data = serde_json::json!({"url":url,"title":title.clone(),"content":content});
+        if let Some(image_url) = first_card_image(&state.config.public_origin, &safe_html) {
+            data.as_object_mut().ok_or(AppError::Internal)?.insert("image".into(), image_url.into());
+        }
+        (
+            vec![serde_json::json!({"type":"share","data":data})],
+            title,
+            String::from("application/x-onebot-share"),
+            content_html.len(),
+        )
+    } else if mode == "image" {
+        if image.is_empty() || !is_safe_image_type(&content_type) {
+            return Err(AppError::BadRequest("仅支持 AVIF、GIF、JPEG、PNG 或 WebP 图片".into()));
+        }
+        let mut message = Vec::new();
+        if !caption.is_empty() {
+            message.push(serde_json::json!({"type":"text","data":{"text":caption}}));
+        }
+        message.push(serde_json::json!({"type":"image","data":{"file":format!("base64://{}", STANDARD.encode(&image))}}));
+        (message, caption, content_type, image.len())
+    } else {
+        return Err(AppError::BadRequest("通知类型无效".into()));
+    };
     let result = state.onebot.call("send_group_msg", serde_json::json!({
         "group_id":group_number,
         "message":message,
@@ -589,30 +629,56 @@ pub(crate) async fn send_group_image(
             && payload.get("retcode").and_then(serde_json::Value::as_i64) == Some(0) => {
                 let id = payload.get("data").and_then(|value| value.get("message_id")).map(json_id_value).unwrap_or_default();
                 ("sent", id)
-            }
+        }
         Ok(_) => ("failed", String::new()),
         Err(error) => {
-            record_delivery(&state, config.bot_id, &group_id, &caption, &content_type, image.len(), "", "failed").await?;
+            record_delivery(&state, DeliveryRecord {
+                bot_id: config.bot_id,
+                group_id: &group_id,
+                caption: &audit_caption,
+                content_type: &audit_type,
+                size: audit_size,
+                message_id: "",
+                status: "failed",
+            }).await?;
             return Err(error);
         }
     };
-    record_delivery(&state, config.bot_id, &group_id, &caption, &content_type, image.len(), &message_id, status).await?;
+    record_delivery(&state, DeliveryRecord {
+        bot_id: config.bot_id,
+        group_id: &group_id,
+        caption: &audit_caption,
+        content_type: &audit_type,
+        size: audit_size,
+        message_id: &message_id,
+        status,
+    }).await?;
     if status != "sent" {
-        return Err(AppError::Upstream("QQ Bot 发送图片失败"));
+        return Err(AppError::Upstream("QQ Bot 发送通知失败"));
     }
     Ok(Json(serde_json::json!({"ok":true,"messageId":message_id})))
 }
 
-async fn record_delivery(state: &AppState, bot_id: &str, group_id: &str, caption: &str, content_type: &str, size: usize, message_id: &str, status: &str) -> Result<(), AppError> {
+struct DeliveryRecord<'a> {
+    bot_id: &'a str,
+    group_id: &'a str,
+    caption: &'a str,
+    content_type: &'a str,
+    size: usize,
+    message_id: &'a str,
+    status: &'a str,
+}
+
+async fn record_delivery(state: &AppState, record: DeliveryRecord<'_>) -> Result<(), AppError> {
     sqlx::query("INSERT INTO onebot_delivery_log (admin_email, bot_id, group_id, caption, content_type, size, message_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(&state.config.admin_email)
-        .bind(bot_id)
-        .bind(group_id)
-        .bind(caption)
-        .bind(content_type)
-        .bind(size as i64)
-        .bind((!message_id.is_empty()).then_some(message_id))
-        .bind(status)
+        .bind(record.bot_id)
+        .bind(record.group_id)
+        .bind(record.caption)
+        .bind(record.content_type)
+        .bind(record.size as i64)
+        .bind((!record.message_id.is_empty()).then_some(record.message_id))
+        .bind(record.status)
         .bind(now_ms())
         .execute(&state.db)
         .await?;
@@ -711,6 +777,33 @@ fn is_safe_image_type(value: &str) -> bool {
     matches!(value.split(';').next().unwrap_or_default(), "image/avif" | "image/gif" | "image/jpeg" | "image/png" | "image/webp")
 }
 
+fn normalize_card_url(public_origin: &str, value: &str) -> Result<String, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(public_origin.to_owned());
+    }
+    if value.starts_with('/') && !value.starts_with("//") {
+        return Ok(format!("{public_origin}{value}"));
+    }
+    let parsed = reqwest::Url::parse(value)
+        .map_err(|_| AppError::BadRequest("卡片链接需为 HTTPS 地址或站内路径".into()))?;
+    if parsed.scheme() != "https" {
+        return Err(AppError::BadRequest("卡片链接需为 HTTPS 地址或站内路径".into()));
+    }
+    Ok(parsed.to_string())
+}
+
+fn first_card_image(public_origin: &str, html: &str) -> Option<String> {
+    let image = html.find("<img").map(|index| &html[index..])?;
+    let source = image.find("src=\"").map(|index| &image[index + 5..])?;
+    let source = source.find('"').map(|index| &source[..index])?.trim();
+    if source.starts_with('/') && !source.starts_with("//") {
+        return Some(format!("{public_origin}{source}"));
+    }
+    let parsed = reqwest::Url::parse(source).ok()?;
+    (parsed.scheme() == "https").then_some(parsed.to_string())
+}
+
 fn status_json(status: StatusCode, value: serde_json::Value) -> Response {
     (status, [(header::CACHE_CONTROL, "no-store")], Json(value)).into_response()
 }
@@ -730,5 +823,18 @@ mod tests {
     fn access_token_comparison_is_constant_length() {
         assert!(constant_secret_eq("same-token", "same-token"));
         assert!(!constant_secret_eq("same-token", "other-token"));
+    }
+
+    #[test]
+    fn card_links_accept_https_and_same_site_paths() {
+        assert_eq!(
+            normalize_card_url("https://rettheory.top", "/posts/news").unwrap(),
+            "https://rettheory.top/posts/news"
+        );
+        assert!(normalize_card_url("https://rettheory.top", "http://example.com").is_err());
+        assert_eq!(
+            first_card_image("https://rettheory.top", "<p>通知</p><img src=\"/api/files/card.png\">").as_deref(),
+            Some("https://rettheory.top/api/files/card.png")
+        );
     }
 }

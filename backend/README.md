@@ -38,6 +38,6 @@ Reader and admin cookies are separate. Mutating requests verify the public origi
 
 ## OneBot 11 reverse WebSocket
 
-QQ registration, login, account binding and group image notices use one reverse WebSocket. Configure `ONEBOT_ACCESS_TOKEN`, `ONEBOT_BOT_ID` and comma-separated `ONEBOT_ALLOWED_GROUP_IDS` on the Rust service, then point the OneBot implementation at `wss://rettheory.top/api/onebot/ws` with the same bearer token. The configured bot is marked online after its first lifecycle or event payload identifies the expected `self_id`.
+QQ registration, login, account binding, group share cards and image notices use one reverse WebSocket. Configure `ONEBOT_ACCESS_TOKEN`, `ONEBOT_BOT_ID` and comma-separated `ONEBOT_ALLOWED_GROUP_IDS` on the Rust service, then point the OneBot implementation at `wss://rettheory.top/api/onebot/ws` with the same bearer token. The configured bot is marked online after its first lifecycle or event payload identifies the expected `self_id`.
 
-The site stores one-time verification codes as hashes and expires them after ten minutes. A QQ account can belong to only one website account. Group sends are restricted to the server-side allowlist, accept images up to 8 MB, and write metadata-only delivery logs.
+The site stores one-time verification codes as hashes and expires them after ten minutes. A QQ account can belong to only one website account. Group sends are restricted to the server-side allowlist. Rich editor content is sanitized and converted into the standard OneBot `share` card segment; the first safe image becomes its cover. Direct image notices accept files up to 8 MB. Delivery logs contain metadata only.
