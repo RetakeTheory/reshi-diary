@@ -7,6 +7,7 @@
   punctuation from Noto Sans CJK SC Bold. Source and license:
   https://github.com/notofonts/noto-cjk
 
-Both files are web-compressed WOFF2 subsets used only by the generated QQ image
-card. Both upstream projects distribute their fonts under the SIL Open Font
-License 1.1.
+The WOFF2 files are embedded into image cards generated in the admin browser.
+The matching WOFF files contain the same subsets in the format accepted by the
+server-side group-reminder renderer. Both upstream projects distribute their
+fonts under the SIL Open Font License 1.1.
