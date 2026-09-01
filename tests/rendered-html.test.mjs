@@ -124,6 +124,9 @@ test("ships Cloudflare-native OneBot with zero Durable Object storage rows", asy
   assert.match(session, /acceptWebSocket/);
   assert.match(session, /serializeAttachment/);
   assert.match(session, /send_private_msg/);
+  assert.match(session, /payloadSelfId && payloadSelfId !== attachment\.botId/);
+  assert.match(session, /OneBot action responses normally contain echo\/status\/retcode but no/);
+  assert.doesNotMatch(session, /jsonId\(payload\.self_id\) !== attachment\.botId/);
   assert.doesNotMatch(session, /ctx\.storage|setAlarm|deleteAlarm/);
   assert.match(runtime, /oneBotStub/);
   assert.match(authRoute, /createQqChallenge/);
