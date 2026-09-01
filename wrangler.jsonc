@@ -26,6 +26,20 @@
       "database_id": "552881a1-f18c-4519-b659-7aa2cd648d8b"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ONEBOT",
+        "class_name": "OneBotSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["OneBotSession"]
+    }
+  ],
   "routes": [
     {
       "pattern": "rettheory.top/*",

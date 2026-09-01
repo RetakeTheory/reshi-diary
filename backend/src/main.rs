@@ -31,7 +31,6 @@ use webauthn_rs::prelude::{Url, Webauthn, WebauthnBuilder};
 mod account;
 mod community;
 mod notifications;
-mod onebot;
 mod passkeys;
 mod surveys;
 mod users;
@@ -48,7 +47,6 @@ struct AppState {
     config: Config,
     http: reqwest::Client,
     webauthn: Arc<Webauthn>,
-    onebot: Arc<onebot::OneBotHub>,
 }
 
 #[derive(Clone)]
@@ -138,7 +136,6 @@ async fn main() -> anyhow::Result<()> {
         config,
         http: reqwest::Client::new(),
         webauthn: Arc::new(webauthn),
-        onebot: Arc::new(onebot::OneBotHub::new()),
     };
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
     info!(%listen_addr, "reshi diary backend listening");
@@ -183,8 +180,6 @@ fn routes(state: AppState) -> Router {
         .route("/api/auth/password-reset", post(users::password_reset))
         .route("/api/auth/me", get(users::me))
         .route("/api/auth/logout", post(users::logout))
-        .route("/api/auth/qq/start", post(onebot::start_auth))
-        .route("/api/auth/qq/complete", post(onebot::complete_auth))
         .route(
             "/api/auth/passkey-options",
             post(users::authentication_options),
@@ -201,13 +196,6 @@ fn routes(state: AppState) -> Router {
         )
         .route("/api/account/tasks", get(account::get_tasks))
         .route("/api/account/check-in", post(account::check_in))
-        .route(
-            "/api/account/qq",
-            get(onebot::get_binding)
-                .post(onebot::start_binding)
-                .delete(onebot::remove_binding),
-        )
-        .route("/api/account/qq/complete", post(onebot::complete_binding))
         .route(
             "/api/account/tickets",
             get(account::list_tickets).post(account::create_ticket),
@@ -290,30 +278,6 @@ fn routes(state: AppState) -> Router {
             post(passkeys::verify_registration),
         )
         .route("/api/admin/uploads", post(upload_file))
-        .route(
-            "/api/admin/onebot",
-            get(onebot::get_admin_config).post(onebot::send_group_notice),
-        )
-        .route("/api/admin/onebot/bots", post(onebot::create_bot))
-        .route(
-            "/api/admin/onebot/bots/{bot_id}",
-            post(method_not_allowed)
-                .put(onebot::update_bot)
-                .delete(onebot::delete_bot),
-        )
-        .route(
-            "/api/admin/onebot/bots/{bot_id}/token",
-            post(onebot::rotate_bot_token),
-        )
-        .route(
-            "/api/admin/onebot/bots/{bot_id}/groups",
-            post(onebot::create_group),
-        )
-        .route(
-            "/api/admin/onebot/bots/{bot_id}/groups/{group_id}",
-            post(method_not_allowed).delete(onebot::delete_group),
-        )
-        .route("/api/onebot/ws", get(onebot::websocket))
         .route(
             "/api/admin/notification",
             get(notifications::get_admin)

@@ -189,6 +189,51 @@ export async function ensureDatabaseSchema() {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS onebot_bots (
+      bot_id TEXT PRIMARY KEY NOT NULL,
+      display_name TEXT NOT NULL,
+      access_token_hash TEXT NOT NULL UNIQUE,
+      groups_json TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS qq_bindings (
+      user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      qq_id TEXT NOT NULL UNIQUE,
+      bot_id TEXT NOT NULL,
+      bound_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS qq_auth_challenges (
+      flow_id TEXT PRIMARY KEY NOT NULL,
+      code_hash TEXT NOT NULL UNIQUE,
+      purpose TEXT NOT NULL CHECK (purpose IN ('login', 'register', 'bind')),
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      display_name TEXT,
+      request_key_hash TEXT NOT NULL,
+      bot_id TEXT NOT NULL,
+      verified_qq_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'verified', 'failed', 'consumed')),
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      verified_at INTEGER,
+      consumed_at INTEGER
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_qq_auth_challenges_request_created ON qq_auth_challenges (request_key_hash, created_at DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_qq_auth_challenges_expiry ON qq_auth_challenges (expires_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS onebot_delivery_daily (
+      day_key INTEGER NOT NULL,
+      admin_email TEXT NOT NULL,
+      bot_id TEXT NOT NULL,
+      group_id TEXT NOT NULL,
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      last_message_id TEXT,
+      last_status TEXT NOT NULL,
+      last_sent_at INTEGER NOT NULL,
+      PRIMARY KEY (day_key, bot_id, group_id)
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS surveys (
       id TEXT PRIMARY KEY NOT NULL,
       slug TEXT NOT NULL UNIQUE,
@@ -336,6 +381,10 @@ export async function ensureDatabaseSchema() {
   if (userUpdates.length) await db.batch(userUpdates);
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_uid ON users (uid)").run();
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display_name_key ON users (display_name_key)").run();
+  const oneBotColumns = await db.prepare("PRAGMA table_info(onebot_bots)").all<{ name: string }>();
+  if (!(oneBotColumns.results || []).some((column) => column.name === "groups_json")) {
+    await db.prepare("ALTER TABLE onebot_bots ADD COLUMN groups_json TEXT NOT NULL DEFAULT '[]'").run();
+  }
   await db.prepare(`INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, body, created_at)
     SELECT id, 'user', user_id, body, created_at FROM tickets
     WHERE NOT EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = tickets.id)`).run();

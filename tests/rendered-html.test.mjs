@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { register } from "node:module";
 import test from "node:test";
+
+register(new URL("./cloudflare-loader.mjs", import.meta.url));
 
 async function render(pathname = "/", { origin = "http://localhost", env = {} } = {}) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -101,30 +104,40 @@ test("ships Rust community, profile, ticket, Passkey, survey and notification ro
   assert.match(nav, /mobile-menu-trigger/);
 });
 
-test("ships OneBot 11 reverse WebSocket QQ auth and allowlisted card or image notices", async () => {
-  const [main, onebot, migration, multiBotMigration, login, manager, docs] = await Promise.all([
-    readFile(new URL("../backend/src/main.rs", import.meta.url), "utf8"),
-    readFile(new URL("../backend/src/onebot.rs", import.meta.url), "utf8"),
-    readFile(new URL("../backend/migrations/0015_onebot_qq_accounts.sql", import.meta.url), "utf8"),
-    readFile(new URL("../backend/migrations/0016_onebot_multi_bot.sql", import.meta.url), "utf8"),
+test("ships Cloudflare-native OneBot with zero Durable Object storage rows", async () => {
+  const [worker, session, runtime, authRoute, adminRoute, schema, login, manager, docs, configText] = await Promise.all([
+    readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../worker/onebot-session.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/onebot-cloudflare.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/auth/qq/start/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/onebot/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/runtime.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/login/UserLogin.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/admin/OneBotManager.tsx", import.meta.url), "utf8"),
     readFile(new URL("../docs/onebot-11.md", import.meta.url), "utf8"),
+    readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
   ]);
-  assert.match(main, /\/api\/onebot\/ws/);
-  assert.match(main, /\/api\/auth\/qq\/start/);
-  assert.match(main, /\/api\/account\/qq/);
-  assert.match(onebot, /Bearer /);
-  assert.match(onebot, /send_private_msg/);
-  assert.match(onebot, /send_group_msg/);
-  assert.match(onebot, /"type":"share"/);
-  assert.match(onebot, /ONEBOT_MAX_IMAGE_BYTES|MAX_IMAGE_BYTES/);
-  assert.match(migration, /UNIQUE/);
-  assert.match(migration, /onebot_delivery_log/);
-  assert.match(multiBotMigration, /onebot_bots/);
+  const config = JSON.parse(configText);
+  assert.match(worker, /url\.pathname === "\/api\/onebot\/ws"/);
+  assert.match(worker, /cloudflareOneBotApi/);
+  assert.match(session, /extends DurableObject/);
+  assert.match(session, /acceptWebSocket/);
+  assert.match(session, /serializeAttachment/);
+  assert.match(session, /send_private_msg/);
+  assert.doesNotMatch(session, /ctx\.storage|setAlarm|deleteAlarm/);
+  assert.match(runtime, /oneBotStub/);
+  assert.match(authRoute, /createQqChallenge/);
+  assert.match(adminRoute, /type: "share"/);
+  assert.match(adminRoute, /send_group_msg/);
+  assert.match(adminRoute, /MAX_IMAGE_BYTES/);
+  assert.match(schema, /groups_json/);
+  assert.match(schema, /onebot_delivery_daily/);
+  assert.doesNotMatch(schema, /CREATE TABLE IF NOT EXISTS onebot_groups/);
   assert.match(login, /使用 QQ 注册/);
   assert.match(manager, /添加 Bot/);
   assert.match(manager, /轮换令牌/);
   assert.match(manager, /SurveyRichEditor/);
   assert.match(docs, /wss:\/\/rettheory\.top\/api\/onebot\/ws/);
+  assert.ok(config.durable_objects.bindings.some((binding) => binding.name === "ONEBOT" && binding.class_name === "OneBotSession"));
+  assert.ok(config.migrations.some((migration) => migration.new_sqlite_classes?.includes("OneBotSession")));
 });

@@ -36,8 +36,8 @@ Passkeys previously registered in the D1/TypeScript backend are not copied autom
 
 Reader and admin cookies are separate. Mutating requests verify the public origin, and Passkey challenges are single-use with a five-minute TTL.
 
-## OneBot 11 reverse WebSocket
+## OneBot ownership
 
-QQ registration, login, account binding, group share cards and image notices use OneBot 11 reverse WebSockets. Add one or more bot accounts in the protected admin page, save each one-time access token, then point every OneBot implementation at `wss://rettheory.top/api/onebot/ws` with its own bearer token. The bot is marked online after its first lifecycle or event payload identifies the QQ number registered with that token.
+QQ registration, binding and group notifications are intentionally not served by Rust. The Cloudflare Worker owns `/api/onebot/*`, `/api/auth/qq/*`, `/api/account/qq*` and `/api/admin/onebot*`; a hibernatable Durable Object keeps each reverse WebSocket while D1 stores persistent configuration. See `docs/onebot-11.md`.
 
-The site stores bot tokens and one-time verification codes as hashes. Verification codes expire after ten minutes. A QQ account can belong to only one website account. Administrators manage a separate group allowlist for every bot in the site. Rich editor content is sanitized and converted into the standard OneBot `share` card segment; the first safe image becomes its cover. Direct image notices accept files up to 8 MB. Delivery logs contain metadata only.
+The old `0015` and `0016` SQLite migrations remain in the Rust migration history only so an existing Rust database can still validate its applied migration sequence. Rust no longer mounts OneBot routes or opens Bot WebSockets.
