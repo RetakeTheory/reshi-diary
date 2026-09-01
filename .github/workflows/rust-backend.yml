@@ -62,12 +62,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Check generated Cloudflare binding types
-        run: |
-          pnpm run cf:types:check || {
-            pnpm exec wrangler types worker-configuration.d.ts --include-runtime false
-            git diff -- worker-configuration.d.ts
-            exit 1
-          }
+        run: pnpm run cf:types:check
       - name: Lint frontend and integration files
         run: pnpm exec eslint app lib scripts tests worker cloudflare-workers.d.ts --ignore-pattern dist --ignore-pattern .next
       - run: pnpm run build
