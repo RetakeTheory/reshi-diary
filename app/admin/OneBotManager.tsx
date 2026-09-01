@@ -381,7 +381,7 @@ export default function OneBotManager() {
           <h1>{cardTitle.trim() || "卡片标题"}</h1>
           <div className="onebot-render-content" dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(cardContent) || "<p>在这里填写卡片正文。</p>" }} />
         </section>
-        <footer>{cardShowUrl && <b>{renderedCardUrl(cardUrl)}</b>}<span className="onebot-render-datetime">DT:生成时间</span></footer>
+        <footer>{cardShowUrl && <b>{renderedCardUrl(cardUrl)}</b>}<span className="onebot-render-kind">QQ Group Notice</span></footer>
       </article>
     </div>
     {message && <p className={`onebot-message ${isError ? "is-error" : ""}`} role="status">{message}</p>}
