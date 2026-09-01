@@ -47,19 +47,6 @@ function cardUrl(request: Request, value: string) {
   }
 }
 
-function firstCardImage(html: string) {
-  const match = html.match(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
-  if (!match) return null;
-  const source = match[1].trim();
-  if (source.startsWith("/") && !source.startsWith("//")) return `https://rettheory.top${source}`;
-  try {
-    const parsed = new URL(source);
-    return parsed.protocol === "https:" ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
 function oneBotActionSucceeded(payload: Record<string, unknown>) {
   return payload.status === "ok" && Number(payload.retcode) === 0;
 }
@@ -142,7 +129,6 @@ export async function POST(request: Request) {
     }
 
     let message: unknown[];
-    let cardFallbackMessage: unknown[] | null = null;
     if (mode === "card") {
       const title = String(form.get("title") || "").trim();
       const html = String(form.get("contentHtml") || "").trim();
@@ -150,17 +136,15 @@ export async function POST(request: Request) {
       if ([...html].length > MAX_CARD_HTML_CHARS) throw new OneBotHttpError(400, "卡片正文不能超过 20000 字");
       const plain = htmlToPlainText(html);
       if (!plain) throw new OneBotHttpError(400, "请填写卡片正文");
-      const data: Record<string, string> = {
-        url: cardUrl(request, String(form.get("url") || "")),
-        title,
-        content: [...plain].slice(0, 300).join(""),
-      };
-      const image = firstCardImage(html);
-      if (image) data.image = image;
-      message = [{ type: "share", data }];
-      cardFallbackMessage = [{
-        type: "text",
-        data: { text: [title, [...plain].slice(0, 300).join(""), data.url].join("\n") },
+      cardUrl(request, String(form.get("url") || ""));
+      const cardImage = form.get("cardImage");
+      if (!(cardImage instanceof File) || cardImage.type !== "image/png" || cardImage.size < 1) {
+        throw new OneBotHttpError(400, "卡片 PNG 生成失败，请重新发送");
+      }
+      if (cardImage.size > MAX_IMAGE_BYTES) throw new OneBotHttpError(400, "卡片图片不能超过 8 MB");
+      message = [{
+        type: "image",
+        data: { file: `base64://${Buffer.from(await cardImage.arrayBuffer()).toString("base64")}` },
       }];
     } else if (mode === "image") {
       const image = form.get("image");
@@ -176,26 +160,12 @@ export async function POST(request: Request) {
     }
 
     let payload: Record<string, unknown>;
-    let deliveryMode: "card" | "card-text-fallback" | "image" = mode === "card" ? "card" : "image";
+    const deliveryMode: "card-image" | "image" = mode === "card" ? "card-image" : "image";
     try {
       const stub = await oneBotStub(botId);
       payload = await stub.call("send_group_msg", {
         group_id: Number(groupId), message, auto_escape: false,
       });
-      if (cardFallbackMessage && !oneBotActionSucceeded(payload)) {
-        const cardFailure = oneBotFailureDetail(payload);
-        console.warn(JSON.stringify({
-          event: "onebot_group_card_fallback",
-          botId,
-          groupId,
-          retcode: Number(payload.retcode),
-          reason: cardFailure,
-        }));
-        payload = await stub.call("send_group_msg", {
-          group_id: Number(groupId), message: cardFallbackMessage, auto_escape: false,
-        });
-        deliveryMode = "card-text-fallback";
-      }
     } catch (error) {
       await recordDelivery({ adminEmail: session.admin.email, botId, groupId, status: "failed" });
       throw new OneBotHttpError(502, error instanceof Error ? error.message : "QQ Bot 发送通知失败");

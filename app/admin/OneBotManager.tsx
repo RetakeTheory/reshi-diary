@@ -1,9 +1,11 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- object URL previews are local and short-lived */
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import { readJsonOrEmpty } from "../../lib/http-response";
+import { renderOneBotCardPng } from "../../lib/onebot-card-image";
+import { sanitizeRichHtml } from "../../lib/rich-content";
 import SurveyRichEditor from "./SurveyRichEditor";
 
 type OneBotGroup = { groupId: string; displayName: string };
@@ -26,6 +28,18 @@ type TokenReveal = { botId: string; accessToken: string };
 const EMPTY_CONFIG: Config = { configured: false, online: false, bots: [], reverseWsPath: "/api/onebot/ws" };
 const REVERSE_WS_URL = "wss://rettheory.top/api/onebot/ws";
 
+function renderedCardUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "rettheory.top";
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return `rettheory.top${trimmed}`;
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}`;
+  } catch {
+    return trimmed;
+  }
+}
+
 async function requestJson<T>(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
   const result = await readJsonOrEmpty<T & { error?: string }>(response);
@@ -34,6 +48,7 @@ async function requestJson<T>(url: string, init?: RequestInit) {
 }
 
 export default function OneBotManager() {
+  const cardRenderRef = useRef<HTMLElement | null>(null);
   const [config, setConfig] = useState<Config>(EMPTY_CONFIG);
   const [selectedBotId, setSelectedBotId] = useState("");
   const [groupId, setGroupId] = useState("");
@@ -209,11 +224,17 @@ export default function OneBotManager() {
       const form = new FormData();
       form.append("mode", mode); form.append("botId", selectedBot.botId); form.append("groupId", effectiveGroupId);
       if (mode === "image") { form.append("caption", caption); form.append("image", image!); }
-      else { form.append("title", cardTitle); form.append("contentHtml", cardContent); form.append("url", cardUrl); }
-      const result = await requestJson<{ messageId?: string; deliveryMode?: "card" | "card-text-fallback" | "image" }>("/api/admin/onebot", { method: "POST", body: form });
-      const sentLabel = result.deliveryMode === "card-text-fallback"
-        ? "Bot 不支持分享卡片，已自动改发链接消息"
-        : `${mode === "card" ? "卡片" : "图片"}通知已发送`;
+      else {
+        if (!cardRenderRef.current) throw new Error("卡片预览尚未准备好，请重试");
+        const cardImage = await renderOneBotCardPng(cardRenderRef.current);
+        if (cardImage.size > 8 * 1024 * 1024) throw new Error("生成的卡片超过 8 MB，请减少正文图片或内容");
+        form.append("title", cardTitle);
+        form.append("contentHtml", cardContent);
+        form.append("url", cardUrl);
+        form.append("cardImage", new File([cardImage], "reshi-group-card.png", { type: "image/png" }));
+      }
+      const result = await requestJson<{ messageId?: string; deliveryMode?: "card-image" | "image" }>("/api/admin/onebot", { method: "POST", body: form });
+      const sentLabel = `${mode === "card" ? "图片卡片" : "图片"}通知已发送`;
       showMessage(`${sentLabel}${result.messageId ? ` · 消息 ${result.messageId}` : ""}`);
       if (mode === "image") { setCaption(""); setImage(null); }
       else { setCardTitle(""); setCardContent(""); setCardUrl(""); }
@@ -261,16 +282,24 @@ export default function OneBotManager() {
     </section>
 
     <section className="onebot-compose" aria-labelledby="onebot-compose-title">
-      <div className="onebot-section-heading"><div><h3 id="onebot-compose-title">发送群通知</h3><p>选择在线 Bot 和已授权群，发送富文本卡片或图片。</p></div></div>
+      <div className="onebot-section-heading"><div><h3 id="onebot-compose-title">发送群通知</h3><p>富文本卡片会先渲染成高清 PNG，再作为 QQ 图片消息发送。</p></div></div>
       <form onSubmit={send}>
         <div className="onebot-target-fields"><label><span>使用 Bot</span><select value={selectedBotId} onChange={(event) => setSelectedBotId(event.target.value)}>{config.bots.map((bot) => <option value={bot.botId} key={bot.botId}>{bot.displayName} · {bot.online ? "在线" : "离线"}</option>)}</select></label><label><span>发送到群</span><select value={effectiveGroupId} onChange={(event) => setGroupId(event.target.value)}>{selectedBot?.groups.map((group) => <option value={group.groupId} key={group.groupId}>{group.displayName || `QQ群 ${group.groupId}`}</option>)}</select></label></div>
         {!selectedBot?.online || !selectedBot.groups.length ? <div className="onebot-compose-blocked"><Icon name="shield" /><span>{!config.bots.length ? "请先添加 Bot" : !selectedBot?.online ? "所选 Bot 尚未连接" : "请先为所选 Bot 添加允许群"}</span></div> : null}
-        <div className="onebot-mode-switch" role="tablist" aria-label="通知形式"><button type="button" role="tab" aria-selected={mode === "card"} className={mode === "card" ? "is-active" : ""} onClick={() => setMode("card")}><Icon name="link" />富文本卡片</button><button type="button" role="tab" aria-selected={mode === "image"} className={mode === "image" ? "is-active" : ""} onClick={() => setMode("image")}><Icon name="image" />图片通知</button></div>
+        <div className="onebot-mode-switch" role="tablist" aria-label="通知形式"><button type="button" role="tab" aria-selected={mode === "card"} className={mode === "card" ? "is-active" : ""} onClick={() => setMode("card")}><Icon name="image" />富文本图片卡片</button><button type="button" role="tab" aria-selected={mode === "image"} className={mode === "image" ? "is-active" : ""} onClick={() => setMode("image")}><Icon name="image" />图片通知</button></div>
         <div className="onebot-fields">{mode === "card" ? <label><span>卡片标题</span><input value={cardTitle} maxLength={100} onChange={(event) => setCardTitle(event.target.value)} placeholder="群内卡片的标题" required /></label> : <label><span>附带文字（选填）</span><textarea value={caption} maxLength={500} onChange={(event) => setCaption(event.target.value)} placeholder="图片前要发送的说明文字" /></label>}</div>
-        {mode === "card" ? <div className="onebot-card-editor"><SurveyRichEditor compact label="卡片正文" description="发送时会清理 HTML、提取摘要，并把首张图片作为卡片封面。" placeholder="编辑要发送到 QQ 群的通知……" value={cardContent} onChange={setCardContent} /><label><span>点击卡片后打开（选填）</span><input value={cardUrl} maxLength={500} onChange={(event) => setCardUrl(event.target.value)} placeholder="站内路径 /posts/... 或 HTTPS 地址；留空打开首页" /></label></div> : <label className={`onebot-image-picker ${preview ? "has-image" : ""}`}><input type="file" accept="image/avif,image/gif,image/jpeg,image/png,image/webp" onChange={(event) => chooseImage(event.target.files?.[0] || null)} /><span className="onebot-image-icon"><Icon name="image" /></span>{preview ? <img src={preview} alt="待发送图片预览" /> : <span><b>选择通知图片</b><small>AVIF、GIF、JPEG、PNG、WebP · 最大 8 MB</small></span>}</label>}
+        {mode === "card" ? <div className="onebot-card-editor"><SurveyRichEditor compact label="卡片正文" description="正文、列表和图片会按 Andory 字体排版进 PNG；过长内容会在图片底部截断。" placeholder="编辑要发送到 QQ 群的通知……" value={cardContent} onChange={setCardContent} /><label><span>卡片底部链接（选填）</span><input value={cardUrl} maxLength={500} onChange={(event) => setCardUrl(event.target.value)} placeholder="站内路径 /posts/... 或 HTTPS 地址；留空显示首页" /></label></div> : <label className={`onebot-image-picker ${preview ? "has-image" : ""}`}><input type="file" accept="image/avif,image/gif,image/jpeg,image/png,image/webp" onChange={(event) => chooseImage(event.target.files?.[0] || null)} /><span className="onebot-image-icon"><Icon name="image" /></span>{preview ? <img src={preview} alt="待发送图片预览" /> : <span><b>选择通知图片</b><small>AVIF、GIF、JPEG、PNG、WebP · 最大 8 MB</small></span>}</label>}
         <footer><span><Icon name="bot" /> {selectedBot ? `经 ${selectedBot.displayName} 的当前连接发送` : "等待选择 Bot"}</span><button type="submit" disabled={Boolean(busy) || !selectedBot?.online || !effectiveGroupId || (mode === "image" ? !image : !cardTitle.trim() || !cardContent.trim())}>{busy === "send" ? "正在发送…" : `发送${mode === "card" ? "卡片" : "图片"}通知`}</button></footer>
       </form>
     </section>
+    <div className="onebot-card-render-host" aria-hidden="true">
+      <article className="onebot-render-card" ref={cardRenderRef}>
+        <header><span className="onebot-render-brand"><svg viewBox="0 0 32 32"><path d="M8.5 7.5h15v17h-15zM12 12h8M12 16h8M12 20h5" /></svg><b>reshi&apos;s diary</b></span><span>群通知</span></header>
+        <h1>{cardTitle.trim() || "卡片标题"}</h1>
+        <div className="onebot-render-content" dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(cardContent) || "<p>在这里填写卡片正文。</p>" }} />
+        <footer><b>rettheory.top</b><span>{renderedCardUrl(cardUrl)}</span></footer>
+      </article>
+    </div>
     {message && <p className={`onebot-message ${isError ? "is-error" : ""}`} role="status">{message}</p>}
   </section>;
 }
