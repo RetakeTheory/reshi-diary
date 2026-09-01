@@ -78,12 +78,14 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     }
 
     const attachment = socketAttachment(socket);
-    if (!attachment || jsonId(payload.self_id) !== attachment.botId) {
-      socket.close(1008, "self_id does not match configured Bot");
+    if (!attachment) {
+      socket.close(1008, "Missing Bot connection identity");
       return;
     }
-    if (!attachment.verified) {
-      socket.serializeAttachment({ ...attachment, verified: true } satisfies SocketAttachment);
+    const payloadSelfId = jsonId(payload.self_id);
+    if (payloadSelfId && payloadSelfId !== attachment.botId) {
+      socket.close(1008, "self_id does not match configured Bot");
+      return;
     }
 
     const echo = typeof payload.echo === "string" ? payload.echo : "";
@@ -93,6 +95,13 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
       this.pending.delete(echo);
       pending.resolve(payload);
       return;
+    }
+
+    // OneBot action responses normally contain echo/status/retcode but no
+    // self_id. Only event payloads can establish or update Bot identity.
+    if (!payloadSelfId) return;
+    if (!attachment.verified) {
+      socket.serializeAttachment({ ...attachment, verified: true } satisfies SocketAttachment);
     }
 
     const reply = await processOneBotEvent(attachment.botId, payload);
