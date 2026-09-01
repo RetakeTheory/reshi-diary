@@ -1,8 +1,12 @@
-# QQ card font
+# QQ card fonts
 
-`andory-noto-sans-cjk-bold.woff2` is a web-compressed Chinese/Latin subset of
-the `NotoSansCJK-Bold.otf` fallback used by RetakeTheory/Andory-Bot-Services.
-The original local font archive was supplied by the repository owner.
+- `resource-han-rounded-sc-bold.woff2` contains the Simplified Chinese glyphs
+  from Resource Han Rounded CN Bold. Source and license:
+  https://github.com/CyanoHao/Resource-Han-Rounded
+- `noto-sans-sc-bold-latin.woff2` contains Latin letters, numerals and common
+  punctuation from Noto Sans CJK SC Bold. Source and license:
+  https://github.com/notofonts/noto-cjk
 
-Noto Sans CJK is distributed under the SIL Open Font License 1.1:
-https://github.com/notofonts/noto-cjk/blob/main/LICENSE
+Both files are web-compressed WOFF2 subsets used only by the generated QQ image
+card. Both upstream projects distribute their fonts under the SIL Open Font
+License 1.1.

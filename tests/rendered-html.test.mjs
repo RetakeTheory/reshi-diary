@@ -105,7 +105,7 @@ test("ships Rust community, profile, ticket, Passkey, survey and notification ro
 });
 
 test("ships Cloudflare-native OneBot with zero Durable Object storage rows", async () => {
-  const [worker, session, runtime, authRoute, adminRoute, schema, login, manager, docs, configText] = await Promise.all([
+  const [worker, session, runtime, authRoute, adminRoute, schema, login, manager, styles, docs, configText] = await Promise.all([
     readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
     readFile(new URL("../worker/onebot-session.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/onebot-cloudflare.ts", import.meta.url), "utf8"),
@@ -114,6 +114,7 @@ test("ships Cloudflare-native OneBot with zero Durable Object storage rows", asy
     readFile(new URL("../db/runtime.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/login/UserLogin.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/admin/OneBotManager.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../docs/onebot-11.md", import.meta.url), "utf8"),
     readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
   ]);
@@ -146,6 +147,12 @@ test("ships Cloudflare-native OneBot with zero Durable Object storage rows", asy
   assert.match(manager, /SurveyRichEditor/);
   assert.match(manager, /renderOneBotCardPng/);
   assert.match(manager, /富文本图片卡片/);
+  assert.match(manager, /cardShowUrl/);
+  assert.match(manager, /type="color"/);
+  assert.match(manager, /CARD_TONES/);
+  assert.match(manager, /Resource Han Rounded SC Bold|正文、列表和图片会排版进 PNG/);
+  assert.match(styles, /resource-han-rounded-sc-bold\.woff2/);
+  assert.match(styles, /noto-sans-sc-bold-latin\.woff2/);
   assert.match(docs, /wss:\/\/rettheory\.top\/api\/onebot\/ws/);
   assert.ok(config.durable_objects.bindings.some((binding) => binding.name === "ONEBOT" && binding.class_name === "OneBotSession"));
   assert.ok(config.migrations.some((migration) => migration.new_sqlite_classes?.includes("OneBotSession")));
