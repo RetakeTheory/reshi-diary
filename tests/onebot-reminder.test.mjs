@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseReminderCommand } from "../lib/onebot-reminder.ts";
+import { groupReminderCommand, parseReminderCommand } from "../lib/onebot-reminder.ts";
 
 const NOW = Date.UTC(2026, 7, 31, 16); // 2026-09-01 00:00:00 Asia/Shanghai
 
@@ -9,6 +9,12 @@ test("parses relative OneBot reminders", () => {
   assert.deepEqual(parseReminderCommand("20分钟后 提醒我 取快递", NOW), { dueAt: NOW + 1_200_000, text: "取快递" });
   assert.deepEqual(parseReminderCommand("2小时后提醒我开会", NOW), { dueAt: NOW + 7_200_000, text: "开会" });
   assert.deepEqual(parseReminderCommand("3天后提醒我交材料", NOW), { dueAt: NOW + 259_200_000, text: "交材料" });
+});
+
+test("accepts a group reminder after mentioning the connected bot", () => {
+  const command = groupReminderCommand("[CQ:at,qq=3794729228] 20分钟后提醒我集合", "3794729228");
+  assert.deepEqual(parseReminderCommand(command, NOW), { dueAt: NOW + 1_200_000, text: "集合" });
+  assert.equal(groupReminderCommand("[CQ:at,qq=12345678] 20分钟后提醒我集合", "3794729228"), "[CQ:at,qq=12345678] 20分钟后提醒我集合");
 });
 
 test("parses fixed and tomorrow reminders in China Standard Time", () => {

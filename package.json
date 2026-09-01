@@ -24,6 +24,7 @@
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.2",
+    "@vercel/og": "0.8.6",
     "aws4fetch": "1.0.20",
     "drizzle-orm": "0.45.2",
     "highlight.js": "^11.12.0",
