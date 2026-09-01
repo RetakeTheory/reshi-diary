@@ -60,6 +60,22 @@ function firstCardImage(html: string) {
   }
 }
 
+function oneBotActionSucceeded(payload: Record<string, unknown>) {
+  return payload.status === "ok" && Number(payload.retcode) === 0;
+}
+
+function oneBotFailureDetail(payload: Record<string, unknown>) {
+  const retcode = Number(payload.retcode);
+  const reason = [payload.message, payload.wording, payload.msg]
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+    .map((value) => value.replace(/\s+/g, " ").trim())
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .join("；")
+    .slice(0, 240);
+  const code = Number.isFinite(retcode) ? `retcode ${retcode}` : "未知错误码";
+  return reason ? `${reason}（${code}）` : code;
+}
+
 async function recordDelivery(input: { adminEmail: string; botId: string; groupId: string; status: "sent" | "failed"; messageId?: string }) {
   const db = await getD1();
   const now = Date.now();
@@ -126,6 +142,7 @@ export async function POST(request: Request) {
     }
 
     let message: unknown[];
+    let cardFallbackMessage: unknown[] | null = null;
     if (mode === "card") {
       const title = String(form.get("title") || "").trim();
       const html = String(form.get("contentHtml") || "").trim();
@@ -141,6 +158,10 @@ export async function POST(request: Request) {
       const image = firstCardImage(html);
       if (image) data.image = image;
       message = [{ type: "share", data }];
+      cardFallbackMessage = [{
+        type: "text",
+        data: { text: [title, [...plain].slice(0, 300).join(""), data.url].join("\n") },
+      }];
     } else if (mode === "image") {
       const image = form.get("image");
       if (!(image instanceof File) || !safeImages.has(image.type) || image.size < 1) {
@@ -155,21 +176,45 @@ export async function POST(request: Request) {
     }
 
     let payload: Record<string, unknown>;
+    let deliveryMode: "card" | "card-text-fallback" | "image" = mode === "card" ? "card" : "image";
     try {
-      payload = await (await oneBotStub(botId)).call("send_group_msg", {
+      const stub = await oneBotStub(botId);
+      payload = await stub.call("send_group_msg", {
         group_id: Number(groupId), message, auto_escape: false,
       });
+      if (cardFallbackMessage && !oneBotActionSucceeded(payload)) {
+        const cardFailure = oneBotFailureDetail(payload);
+        console.warn(JSON.stringify({
+          event: "onebot_group_card_fallback",
+          botId,
+          groupId,
+          retcode: Number(payload.retcode),
+          reason: cardFailure,
+        }));
+        payload = await stub.call("send_group_msg", {
+          group_id: Number(groupId), message: cardFallbackMessage, auto_escape: false,
+        });
+        deliveryMode = "card-text-fallback";
+      }
     } catch (error) {
       await recordDelivery({ adminEmail: session.admin.email, botId, groupId, status: "failed" });
       throw new OneBotHttpError(502, error instanceof Error ? error.message : "QQ Bot 发送通知失败");
     }
-    const sent = payload.status === "ok" && payload.retcode === 0;
+    const sent = oneBotActionSucceeded(payload);
     const data = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : null;
     const messageId = jsonId(data?.message_id);
     await recordDelivery({ adminEmail: session.admin.email, botId, groupId, status: sent ? "sent" : "failed", messageId });
-    console.log(JSON.stringify({ event: "onebot_group_notice", botId, groupId, status: sent ? "sent" : "failed", messageId }));
-    if (!sent) throw new OneBotHttpError(502, "QQ Bot 发送通知失败");
-    return Response.json({ ok: true, messageId }, { headers: { "Cache-Control": "no-store" } });
+    console.log(JSON.stringify({
+      event: "onebot_group_notice",
+      botId,
+      groupId,
+      deliveryMode,
+      status: sent ? "sent" : "failed",
+      retcode: Number(payload.retcode),
+      messageId,
+    }));
+    if (!sent) throw new OneBotHttpError(502, `QQ Bot 发送通知失败：${oneBotFailureDetail(payload)}`);
+    return Response.json({ ok: true, messageId, deliveryMode }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return oneBotErrorResponse(error);
   }
