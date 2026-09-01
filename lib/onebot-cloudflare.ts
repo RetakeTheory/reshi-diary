@@ -205,40 +205,21 @@ export function pendingChallengeResponse(row: QqChallenge) {
 }
 
 export async function processOneBotEvent(botId: string, payload: OneBotPayload) {
-  if (payload.post_type !== "message" || (payload.message_type !== "private" && payload.message_type !== "group")) return null;
-  const targetType = payload.message_type;
+  if (payload.post_type !== "message" || payload.message_type !== "private") return null;
   const qqId = jsonId(payload.user_id);
   if (!/^\d{5,20}$/.test(qqId) || !Number.isSafeInteger(Number(qqId))) return null;
   const rawMessage = typeof payload.raw_message === "string" ? payload.raw_message : "";
-  const { formatChinaTime, groupReminderCommand, parseReminderCommand } = await import("./onebot-reminder");
-  const reminder = parseReminderCommand(targetType === "group" ? groupReminderCommand(rawMessage, botId) : rawMessage);
+  const { formatChinaTime, parseReminderCommand } = await import("./onebot-reminder");
+  const reminder = parseReminderCommand(rawMessage);
   if (reminder) {
-    const targetId = targetType === "group" ? jsonId(payload.group_id) : qqId;
-    if (!/^\d{5,20}$/.test(targetId) || !Number.isSafeInteger(Number(targetId))) return null;
     try {
-      const { createGroupReminder, createPrivateReminder } = await import("./onebot-scheduler");
-      if (targetType === "group") {
-        await createGroupReminder({ botId, groupId: targetId, userId: qqId, dueAt: reminder.dueAt, text: reminder.text });
-      } else {
-        await createPrivateReminder({ botId, userId: qqId, dueAt: reminder.dueAt, text: reminder.text });
-      }
-      return {
-        targetType,
-        targetId,
-        mentionUserId: targetType === "group" ? qqId : undefined,
-        reply: `好的，将在 ${formatChinaTime(reminder.dueAt)} 提醒你：${reminder.text}`,
-        wakeAt: reminder.dueAt,
-      };
+      const { createPrivateReminder } = await import("./onebot-scheduler");
+      await createPrivateReminder({ botId, userId: qqId, dueAt: reminder.dueAt, text: reminder.text });
+      return { userId: qqId, reply: `好的，将在 ${formatChinaTime(reminder.dueAt)} 提醒你：${reminder.text}`, wakeAt: reminder.dueAt };
     } catch (error) {
-      return {
-        targetType,
-        targetId,
-        mentionUserId: targetType === "group" ? qqId : undefined,
-        reply: error instanceof Error ? error.message : "提醒创建失败，请稍后重试。",
-      };
+      return { userId: qqId, reply: error instanceof Error ? error.message : "提醒创建失败，请稍后重试。" };
     }
   }
-  if (targetType === "group") return null;
   const code = parseQqVerificationMessage(rawMessage);
   if (!code) return null;
 
@@ -249,7 +230,7 @@ export async function processOneBotEvent(botId: string, payload: OneBotPayload) 
     .bind(await hashValue(`qq-auth:${code}`), botId).first<QqChallenge>();
   const now = Date.now();
   if (!row || row.status !== "pending" || row.expires_at <= now) {
-    return { targetType: "private" as const, targetId: qqId, reply: "验证码无效、已过期或已使用，请回网站重新获取。" };
+    return { userId: qqId, reply: "验证码无效、已过期或已使用，请回网站重新获取。" };
   }
 
   let failure = "";
@@ -268,13 +249,12 @@ export async function processOneBotEvent(botId: string, payload: OneBotPayload) 
   if (failure) {
     await db.prepare("UPDATE qq_auth_challenges SET status = 'failed', error = ?, verified_at = ? WHERE flow_id = ? AND status = 'pending'")
       .bind(failure, now, row.flow_id).run();
-    return { targetType: "private" as const, targetId: qqId, reply: failure };
+    return { userId: qqId, reply: failure };
   }
   await db.prepare("UPDATE qq_auth_challenges SET status = 'verified', verified_qq_id = ?, verified_at = ? WHERE flow_id = ? AND status = 'pending'")
     .bind(qqId, now, row.flow_id).run();
   return {
-    targetType: "private" as const,
-    targetId: qqId,
+    userId: qqId,
     reply: row.purpose === "bind" ? "身份验证成功，请返回网站完成绑定。" : "身份验证成功，请返回网站完成登录。",
   };
 }

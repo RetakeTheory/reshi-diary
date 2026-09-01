@@ -244,7 +244,6 @@ export async function ensureDatabaseSchema() {
       message_text TEXT DEFAULT '' NOT NULL,
       image_key TEXT,
       admin_email TEXT,
-      mention_user_id TEXT,
       due_at INTEGER NOT NULL,
       attempts INTEGER DEFAULT 0 NOT NULL,
       claimed_at INTEGER,
@@ -402,10 +401,6 @@ export async function ensureDatabaseSchema() {
   const oneBotColumns = await db.prepare("PRAGMA table_info(onebot_bots)").all<{ name: string }>();
   if (!(oneBotColumns.results || []).some((column) => column.name === "groups_json")) {
     await db.prepare("ALTER TABLE onebot_bots ADD COLUMN groups_json TEXT NOT NULL DEFAULT '[]'").run();
-  }
-  const scheduledOneBotColumns = await db.prepare("PRAGMA table_info(onebot_scheduled_messages)").all<{ name: string }>();
-  if (!(scheduledOneBotColumns.results || []).some((column) => column.name === "mention_user_id")) {
-    await db.prepare("ALTER TABLE onebot_scheduled_messages ADD COLUMN mention_user_id TEXT").run();
   }
   await db.prepare(`INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, body, created_at)
     SELECT id, 'user', user_id, body, created_at FROM tickets

@@ -29,10 +29,6 @@ export function formatChinaTime(timestamp: number) {
   }).format(timestamp);
 }
 
-export function groupReminderCommand(raw: string, botId: string) {
-  return raw.replace(new RegExp(`^(?:\\[CQ:at,qq=${botId}\\]\\s*)+`, "i"), "").trim();
-}
-
 export function parseReminderCommand(raw: string, now = Date.now()) {
   const value = raw.trim();
   const relative = value.match(/^(\d{1,8})\s*(秒|分钟|小时|天)后\s*提醒我[，,:：\s]*([\s\S]+)$/);
