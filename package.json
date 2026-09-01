@@ -10,6 +10,7 @@
     "build": "node scripts/run-vinext.mjs build",
     "deploy:guard": "node scripts/protect-worker-bindings.mjs dist/server/wrangler.json",
     "deploy:verify": "node scripts/verify-worker-bindings.mjs",
+    "cf:types:check": "wrangler types worker-configuration.d.ts --include-runtime false --check",
     "deploy": "pnpm run deploy:guard && wrangler deploy --config dist/server/wrangler.json --keep-vars --strict",
     "start": "node scripts/run-vinext.mjs start",
     "text:edit": "node scripts/visual-editor-server.mjs",

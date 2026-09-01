@@ -21,22 +21,54 @@ interface Fetcher {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
-interface ReshiWorkerEnv {
-  DB: D1Database;
-  ASSETS?: Fetcher;
-  AWS_ACCESS_KEY_ID?: string;
-  AWS_SECRET_ACCESS_KEY?: string;
-  AWS_SESSION_TOKEN?: string;
-  AWS_REGION?: string;
-  AWS_S3_BUCKET?: string;
-  RESEND_API_KEY?: string;
-  RESEND_FROM?: string;
-  ADMIN_EMAIL?: string;
-  GITHUB_TOKEN?: string;
-  GITHUB_REPOSITORY?: string;
-  RUST_BACKEND_ORIGIN?: string;
+type DurableObjectStub = Fetcher;
+
+interface DurableObjectNamespace {
+  getByName(name: string): DurableObjectStub;
+}
+
+interface DurableObjectState {
+  acceptWebSocket(socket: WebSocket, tags?: string[]): void;
+  getWebSockets(tag?: string): WebSocket[];
+}
+
+declare class WebSocketPair {
+  0: WebSocket;
+  1: WebSocket;
+}
+
+interface WebSocket {
+  serializeAttachment(value: unknown): void;
+  deserializeAttachment(): unknown | null;
+}
+
+interface ResponseInit {
+  webSocket?: WebSocket;
+}
+
+declare namespace Cloudflare {
+  interface Env {
+    ASSETS?: Fetcher;
+    IMAGES?: {
+      input(stream: ReadableStream): {
+        transform(options: Record<string, unknown>): {
+          output(options: { format: string; quality: number }): Promise<{ response(): Response }>;
+        };
+      };
+    };
+    AWS_SESSION_TOKEN?: string;
+    RESEND_FROM?: string;
+    ADMIN_EMAIL?: string;
+    GITHUB_REPOSITORY?: string;
+    RUST_BACKEND_ORIGIN?: string;
+  }
 }
 
 declare module "cloudflare:workers" {
-  export const env: ReshiWorkerEnv;
+  export const env: Cloudflare.Env;
+  export abstract class DurableObject<WorkerEnv = Cloudflare.Env> {
+    protected readonly ctx: DurableObjectState;
+    protected readonly env: WorkerEnv;
+    constructor(ctx: DurableObjectState, env: WorkerEnv);
+  }
 }
