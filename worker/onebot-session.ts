@@ -147,9 +147,17 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     const reply = await processOneBotEvent(attachment.botId, payload);
     if (!reply) return;
     if ("wakeAt" in reply && reply.wakeAt) await this.scheduleWake(attachment.botId, reply.wakeAt);
+    const isGroup = reply.targetType === "group";
+    const outgoingMessage = isGroup && reply.mentionUserId
+      ? [{ type: "at", data: { qq: reply.mentionUserId } }, { type: "text", data: { text: ` ${reply.reply}` } }]
+      : reply.reply;
     socket.send(JSON.stringify({
-      action: "send_private_msg",
-      params: { user_id: Number(reply.userId), message: reply.reply, auto_escape: true },
+      action: isGroup ? "send_group_msg" : "send_private_msg",
+      params: {
+        ...(isGroup ? { group_id: Number(reply.targetId) } : { user_id: Number(reply.targetId) }),
+        message: outgoingMessage,
+        auto_escape: !isGroup,
+      },
     }));
   }
 
