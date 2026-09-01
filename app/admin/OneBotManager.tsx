@@ -210,8 +210,11 @@ export default function OneBotManager() {
       form.append("mode", mode); form.append("botId", selectedBot.botId); form.append("groupId", effectiveGroupId);
       if (mode === "image") { form.append("caption", caption); form.append("image", image!); }
       else { form.append("title", cardTitle); form.append("contentHtml", cardContent); form.append("url", cardUrl); }
-      const result = await requestJson<{ messageId?: string }>("/api/admin/onebot", { method: "POST", body: form });
-      showMessage(`${mode === "card" ? "卡片" : "图片"}通知已发送${result.messageId ? ` · 消息 ${result.messageId}` : ""}`);
+      const result = await requestJson<{ messageId?: string; deliveryMode?: "card" | "card-text-fallback" | "image" }>("/api/admin/onebot", { method: "POST", body: form });
+      const sentLabel = result.deliveryMode === "card-text-fallback"
+        ? "Bot 不支持分享卡片，已自动改发链接消息"
+        : `${mode === "card" ? "卡片" : "图片"}通知已发送`;
+      showMessage(`${sentLabel}${result.messageId ? ` · 消息 ${result.messageId}` : ""}`);
       if (mode === "image") { setCaption(""); setImage(null); }
       else { setCardTitle(""); setCardContent(""); setCardUrl(""); }
     } catch (error) { showMessage(error instanceof Error ? error.message : "QQ 通知发送失败", true); }
