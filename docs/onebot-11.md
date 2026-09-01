@@ -30,7 +30,7 @@ Signed-in readers use the same flow with a `绑定` command. Both sides are one-
 
 ## Group cards and image notices
 
-The admin module lets administrators add or remove allowed groups for each bot. Sending a notification requires choosing an online bot and one of that bot's groups. Its default mode reuses the site's SVG-based rich-text editor. The Worker strips HTML to a plain card summary, uses the first safe HTTPS image as the cover, and sends the standard OneBot 11 `share` message segment. This keeps the card compatible across OneBot 11 implementations; typography and layout are ultimately rendered by QQ rather than copied from browser CSS.
+The admin module lets administrators add or remove allowed groups for each bot. Sending a notification requires choosing an online bot and one of that bot's groups. Its default mode reuses the site's SVG-based rich-text editor. Before submission, the browser renders the title, rich text, inline images and destination link into a 960-pixel-wide PNG card. The card uses the Chinese/Latin Noto Sans CJK Bold fallback declared by the Andory renderer. The Worker validates the PNG and forwards it as a OneBot 11 `image` segment; it never converts the card to `share` or plain text.
 
 The alternate mode accepts AVIF, GIF, JPEG, PNG and WebP images up to 8 MB and can prepend up to 500 characters of text. Both modes call `send_group_msg` over the active WebSocket. Delivery auditing is aggregated into one D1 row per UTC day, Bot and group; rich HTML and image bytes are not retained.
 

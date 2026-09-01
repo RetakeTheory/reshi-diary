@@ -27,6 +27,7 @@
     "aws4fetch": "1.0.20",
     "drizzle-orm": "0.45.2",
     "highlight.js": "^11.12.0",
+    "html-to-image": "1.11.13",
     "katex": "0.16.22",
     "maplibre-gl": "^6.6.0",
     "react": "19.2.6",
@@ -58,4 +59,3 @@
   },
   "type": "module"
 }
-

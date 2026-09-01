@@ -130,10 +130,11 @@ test("ships Cloudflare-native OneBot with zero Durable Object storage rows", asy
   assert.doesNotMatch(session, /ctx\.storage|setAlarm|deleteAlarm/);
   assert.match(runtime, /oneBotStub/);
   assert.match(authRoute, /createQqChallenge/);
-  assert.match(adminRoute, /type: "share"/);
+  assert.doesNotMatch(adminRoute, /type: "share"/);
   assert.match(adminRoute, /send_group_msg/);
   assert.match(adminRoute, /Number\(payload\.retcode\) === 0/);
-  assert.match(adminRoute, /card-text-fallback/);
+  assert.match(adminRoute, /cardImage/);
+  assert.match(adminRoute, /card-image/);
   assert.match(adminRoute, /oneBotFailureDetail/);
   assert.match(adminRoute, /MAX_IMAGE_BYTES/);
   assert.match(schema, /groups_json/);
@@ -143,7 +144,8 @@ test("ships Cloudflare-native OneBot with zero Durable Object storage rows", asy
   assert.match(manager, /添加 Bot/);
   assert.match(manager, /轮换令牌/);
   assert.match(manager, /SurveyRichEditor/);
-  assert.match(manager, /Bot 不支持分享卡片，已自动改发链接消息/);
+  assert.match(manager, /renderOneBotCardPng/);
+  assert.match(manager, /富文本图片卡片/);
   assert.match(docs, /wss:\/\/rettheory\.top\/api\/onebot\/ws/);
   assert.ok(config.durable_objects.bindings.some((binding) => binding.name === "ONEBOT" && binding.class_name === "OneBotSession"));
   assert.ok(config.migrations.some((migration) => migration.new_sqlite_classes?.includes("OneBotSession")));
