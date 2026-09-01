@@ -15,7 +15,10 @@ async function waitForImages(node: HTMLElement) {
 }
 
 export async function renderOneBotCardPng(node: HTMLElement) {
-  await document.fonts.load("700 32px 'Andory Card CJK'");
+  await Promise.all([
+    document.fonts.load("700 32px 'OneBot Rounded SC'", "群通知卡片汉字"),
+    document.fonts.load("700 32px 'OneBot Noto Sans SC'", "Andory 2026"),
+  ]);
   await document.fonts.ready;
   await waitForImages(node);
   const content = node.querySelector<HTMLElement>(".onebot-render-content");
