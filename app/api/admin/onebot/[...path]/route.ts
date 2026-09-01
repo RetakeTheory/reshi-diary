@@ -12,6 +12,7 @@ import {
   oneBotTokenHash,
   parseOneBotGroups,
 } from "../../../../../lib/onebot-cloudflare";
+import { removeScheduledById, removeScheduledForBot, removeScheduledForGroup } from "../../../../../lib/onebot-scheduler";
 
 type BotRow = { display_name: string; groups_json: string; enabled: number; created_at: number };
 
@@ -73,6 +74,7 @@ async function deleteBot(request: Request, botIdValue: string) {
   const botId = numericId(botIdValue, "Bot QQ 号");
   const result = await db.prepare("DELETE FROM onebot_bots WHERE bot_id = ?").bind(botId).run();
   if (!changed(result)) throw new OneBotHttpError(404, "Bot 不存在");
+  await removeScheduledForBot(botId);
   await disconnectOneBot(botId, "Bot 已删除");
   return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -116,12 +118,19 @@ async function deleteGroup(request: Request, botIdValue: string, groupIdValue: s
   if (next.length === groups.length) throw new OneBotHttpError(404, "群配置不存在");
   await db.prepare("UPDATE onebot_bots SET groups_json = ?, updated_at = ? WHERE bot_id = ?")
     .bind(encodeOneBotGroups(next), Date.now(), botId).run();
+  await removeScheduledForGroup(botId, groupId);
   return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
 
 async function dispatch(request: Request) {
   const parts = routeParts(request);
   if (request.method === "POST" && parts.length === 1 && parts[0] === "bots") return createBot(request);
+  if (request.method === "DELETE" && parts.length === 2 && parts[0] === "scheduled") {
+    await authorize(request);
+    if (!/^[0-9a-f-]{36}$/i.test(parts[1])) throw new OneBotHttpError(400, "定时任务无效");
+    if (!await removeScheduledById(parts[1])) throw new OneBotHttpError(404, "定时任务不存在或已经发送");
+    return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  }
   if (parts[0] !== "bots" || !parts[1]) throw new OneBotHttpError(404, "OneBot 管理接口不存在");
   if (request.method === "PUT" && parts.length === 2) return updateBot(request, parts[1]);
   if (request.method === "DELETE" && parts.length === 2) return deleteBot(request, parts[1]);

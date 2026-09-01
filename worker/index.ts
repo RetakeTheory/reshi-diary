@@ -3,6 +3,7 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { oneBotTokenHash } from "../lib/onebot-cloudflare";
 import { OneBotSession } from "./onebot-session";
+import { ensureDatabaseSchema } from "../db/runtime";
 
 export { OneBotSession };
 
@@ -76,6 +77,13 @@ const worker = {
     }
 
     return handler.fetch(routedRequest, env ?? {}, ctx);
+  },
+  async scheduled(controller: { scheduledTime: number }, env: Cloudflare.Env) {
+    await ensureDatabaseSchema();
+    const rows = await env.DB.prepare(`SELECT DISTINCT bot_id FROM onebot_scheduled_messages
+      WHERE due_at <= ? AND (claimed_at IS NULL OR claimed_at < ?) LIMIT 50`)
+      .bind(controller.scheduledTime, controller.scheduledTime - 60_000).all<{ bot_id: string }>();
+    await Promise.allSettled((rows.results || []).map((row) => env.ONEBOT.getByName(row.bot_id).processDue(row.bot_id, controller.scheduledTime)));
   },
 };
 

@@ -11,6 +11,8 @@ export type OneBotStub = {
   isOnline(): Promise<boolean>;
   call(action: string, params: OneBotPayload): Promise<OneBotPayload>;
   disconnect(reason?: string): Promise<void>;
+  scheduleWake(botId: string, dueAt: number): Promise<void>;
+  processDue(botId: string, now?: number): Promise<{ sent: number; nextAt: number | null }>;
 };
 
 export type QqChallenge = {
@@ -206,7 +208,19 @@ export async function processOneBotEvent(botId: string, payload: OneBotPayload) 
   if (payload.post_type !== "message" || payload.message_type !== "private") return null;
   const qqId = jsonId(payload.user_id);
   if (!/^\d{5,20}$/.test(qqId) || !Number.isSafeInteger(Number(qqId))) return null;
-  const code = typeof payload.raw_message === "string" ? parseQqVerificationMessage(payload.raw_message) : null;
+  const rawMessage = typeof payload.raw_message === "string" ? payload.raw_message : "";
+  const { formatChinaTime, parseReminderCommand } = await import("./onebot-reminder");
+  const reminder = parseReminderCommand(rawMessage);
+  if (reminder) {
+    try {
+      const { createPrivateReminder } = await import("./onebot-scheduler");
+      await createPrivateReminder({ botId, userId: qqId, dueAt: reminder.dueAt, text: reminder.text });
+      return { userId: qqId, reply: `好的，将在 ${formatChinaTime(reminder.dueAt)} 提醒你：${reminder.text}`, wakeAt: reminder.dueAt };
+    } catch (error) {
+      return { userId: qqId, reply: error instanceof Error ? error.message : "提醒创建失败，请稍后重试。" };
+    }
+  }
+  const code = parseQqVerificationMessage(rawMessage);
   if (!code) return null;
 
   await ensureDatabaseSchema();

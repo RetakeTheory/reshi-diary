@@ -1,6 +1,6 @@
 # OneBot 11 QQ integration
 
-The production Cloudflare Worker owns OneBot connections. Each Bot is assigned its own SQLite-backed Durable Object instance, but the object deliberately uses no Storage API rows: hibernatable WebSocket attachments keep only the Bot identity, and pending action echoes stay in memory until response or timeout. Persistent configuration and QQ account data live in D1.
+The production Cloudflare Worker owns OneBot connections. Each Bot is assigned its own SQLite-backed Durable Object instance. Hibernatable WebSocket attachments keep the Bot identity, pending action echoes stay in memory, and the object stores only a scheduler Bot ID plus one alarm. Persistent configuration, QQ account data and pending reminder contents live in D1.
 
 ## Add a bot
 
@@ -34,11 +34,28 @@ The admin module lets administrators add or remove allowed groups for each bot. 
 
 The alternate mode accepts AVIF, GIF, JPEG, PNG and WebP images up to 8 MB and can prepend up to 500 characters of text. Both modes call `send_group_msg` over the active WebSocket. Delivery auditing is aggregated into one D1 row per UTC day, Bot and group; rich HTML and image bytes are not retained.
 
+Administrators can either send immediately or choose a future local date and time. The final browser-rendered image is temporarily stored under the existing private S3 `uploads/onebot-scheduled/` prefix, while D1 stores only the pending task metadata. A per-Bot Durable Object alarm provides fine-grained wakeups and a once-per-minute Cron Trigger is the recovery path. Successful and cancelled tasks delete both the D1 row and temporary image immediately. Failed tasks retry at most twice, then self-delete on the third failure.
+
+## Private reminder commands
+
+Users can send the Bot a private message in any of these forms:
+
+- `30秒后提醒我喝水`
+- `20分钟后提醒我取快递`
+- `2小时后提醒我开会`
+- `3天后提醒我交材料`
+- `9月4日提醒我缴费`
+- `9/4 12:00提醒我吃饭`
+- `明天12点提醒我签到`
+
+Fixed dates are interpreted in China Standard Time. A date without a year points to the next occurrence that has not passed, and a date without a time defaults to 09:00. Each QQ account may keep at most 30 pending reminders per Bot. Reminder text remains in D1 only until delivery; it is removed immediately after a successful send, cancellation, or the final failed attempt.
+
 ## Storage and cost controls
 
-- `OneBotSession` never calls `ctx.storage`, creates no tables and schedules no alarms.
+- `OneBotSession` stores no message contents. It keeps only one Bot identity key and one next-wakeup alarm per Bot.
 - WebSockets use `ctx.acceptWebSocket()` so idle connections can hibernate.
 - Online status comes from `ctx.getWebSockets()` and is never persisted or heartbeat-polled.
 - Successful QQ challenges are deleted immediately; pending challenges expire after ten minutes.
 - Bot groups are stored in `onebot_bots.groups_json`, avoiding one row per group.
 - Delivery history is daily aggregate metadata rather than one row per message.
+- Scheduled rows exist only while pending. Completed and exhausted tasks are deleted instead of becoming a history table.

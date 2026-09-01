@@ -17,6 +17,7 @@ const requiredSecrets = [
 const config = JSON.parse(await readFile(configPath, "utf8"));
 
 config.keep_vars = true;
+config.triggers = { ...(config.triggers || {}), crons: ["* * * * *"] };
 config.vars = { ...(config.vars || {}), ...requiredVars };
 config.secrets = {
   ...(config.secrets || {}),

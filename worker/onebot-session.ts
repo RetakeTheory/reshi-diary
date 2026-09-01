@@ -1,11 +1,20 @@
 import { DurableObject } from "cloudflare:workers";
 import { jsonId, processOneBotEvent, type OneBotPayload } from "../lib/onebot-cloudflare";
+import { dispatchScheduledForBot } from "../lib/onebot-scheduler";
 
 type SocketAttachment = { botId: string; verified: boolean };
 type PendingCall = {
   resolve(value: OneBotPayload): void;
   reject(reason: Error): void;
   timeout: ReturnType<typeof setTimeout>;
+};
+type SchedulerStorage = {
+  put(key: string, value: string): Promise<void>;
+  get<T>(key: string): Promise<T | undefined>;
+  delete(key: string): Promise<boolean>;
+  getAlarm(): Promise<number | null>;
+  setAlarm(timestamp: number): Promise<void>;
+  deleteAlarm(): Promise<void>;
 };
 
 function socketAttachment(socket: WebSocket): SocketAttachment | null {
@@ -66,6 +75,37 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     this.rejectPending("QQ Bot 连接已断开");
   }
 
+  async scheduleWake(botId: string, dueAt: number) {
+    if (!/^\d{5,20}$/.test(botId) || !Number.isFinite(dueAt)) throw new Error("定时任务无效");
+    const storage = this.schedulerStorage();
+    await storage.put("schedulerBotId", botId);
+    const current = await storage.getAlarm();
+    if (current === null || dueAt < current) await storage.setAlarm(Math.max(Date.now() + 1000, dueAt));
+  }
+
+  async processDue(botId: string, now = Date.now()) {
+    const result = await dispatchScheduledForBot(botId, (action, params) => this.call(action, params), now);
+    if (result.nextAt !== null) await this.scheduleWake(botId, result.nextAt);
+    else {
+      const storage = this.schedulerStorage();
+      await storage.deleteAlarm();
+      await storage.delete("schedulerBotId");
+    }
+    return result;
+  }
+
+  async alarm() {
+    const storage = this.schedulerStorage();
+    const botId = await storage.get<string>("schedulerBotId");
+    if (!botId) return;
+    try {
+      await this.processDue(botId);
+    } catch (error) {
+      console.error(JSON.stringify({ event: "onebot_alarm_failed", botId, reason: error instanceof Error ? error.message : "unknown" }));
+      await storage.setAlarm(Date.now() + 60_000);
+    }
+  }
+
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string") return;
     let payload: OneBotPayload;
@@ -106,6 +146,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
 
     const reply = await processOneBotEvent(attachment.botId, payload);
     if (!reply) return;
+    if ("wakeAt" in reply && reply.wakeAt) await this.scheduleWake(attachment.botId, reply.wakeAt);
     socket.send(JSON.stringify({
       action: "send_private_msg",
       params: { user_id: Number(reply.userId), message: reply.reply, auto_escape: true },
@@ -127,6 +168,10 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
       const attachment = socketAttachment(socket);
       return attachment?.verified && socket.readyState === WebSocket.OPEN;
     });
+  }
+
+  private schedulerStorage() {
+    return (this.ctx as unknown as { storage: SchedulerStorage }).storage;
   }
 
   private rejectPending(message: string) {
