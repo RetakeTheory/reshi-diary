@@ -19,6 +19,9 @@
   },
   "workers_dev": true,
   "preview_urls": true,
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

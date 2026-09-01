@@ -22,10 +22,21 @@ type Config = {
   online: boolean;
   bots: OneBotAccount[];
   reverseWsPath: string;
+  scheduled: ScheduledNotice[];
+  personalReminderCount: number;
 };
 type TokenReveal = { botId: string; accessToken: string };
+type ScheduledNotice = {
+  id: string;
+  bot_id: string;
+  group_id: string;
+  delivery_mode: "card-image" | "image";
+  summary: string;
+  due_at: number;
+  created_at: number;
+};
 
-const EMPTY_CONFIG: Config = { configured: false, online: false, bots: [], reverseWsPath: "/api/onebot/ws" };
+const EMPTY_CONFIG: Config = { configured: false, online: false, bots: [], reverseWsPath: "/api/onebot/ws", scheduled: [], personalReminderCount: 0 };
 const REVERSE_WS_URL = "wss://rettheory.top/api/onebot/ws";
 const CARD_TONES = [
   { label: "靛蓝", value: "#5969D8" },
@@ -67,6 +78,11 @@ function renderedCardUrl(value: string) {
   }
 }
 
+function localDateTimeValue(timestamp: number) {
+  const date = new Date(timestamp - new Date(timestamp).getTimezoneOffset() * 60_000);
+  return date.toISOString().slice(0, 16);
+}
+
 async function requestJson<T>(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
   const result = await readJsonOrEmpty<T & { error?: string }>(response);
@@ -94,6 +110,11 @@ export default function OneBotManager() {
   const [cardTone, setCardTone] = useState(CARD_TONES[0].value);
   const cardToneStyle = useMemo(() => oneBotCardToneStyle(cardTone), [cardTone]);
   const [image, setImage] = useState<File | null>(null);
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [scheduleLimits] = useState(() => {
+    const now = Date.now();
+    return { min: localDateTimeValue(now + 3000), max: localDateTimeValue(now + 366 * 86_400_000) };
+  });
   const preview = useMemo(() => image ? URL.createObjectURL(image) : "", [image]);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
@@ -236,6 +257,17 @@ export default function OneBotManager() {
     finally { setBusy(""); }
   }
 
+  async function cancelScheduled(notice: ScheduledNotice) {
+    if (!window.confirm(`取消“${notice.summary}”的定时发送？`)) return;
+    setBusy(`scheduled-${notice.id}`); showMessage("");
+    try {
+      await requestJson(`/api/admin/onebot/scheduled/${notice.id}`, { method: "DELETE" });
+      await loadConfig();
+      showMessage("定时通知已取消，图片与 D1 记录已清除");
+    } catch (error) { showMessage(error instanceof Error ? error.message : "取消定时通知失败", true); }
+    finally { setBusy(""); }
+  }
+
   function chooseImage(file: File | null) {
     showMessage("");
     if (!file) { setImage(null); return; }
@@ -249,10 +281,13 @@ export default function OneBotManager() {
     if (!selectedBot) { showMessage("请先选择 Bot", true); return; }
     if (mode === "image" && !image) { showMessage("请先选择一张图片", true); return; }
     if (mode === "card" && (!cardTitle.trim() || !cardContent.replace(/<[^>]+>/g, " ").trim())) { showMessage("请填写卡片标题和正文", true); return; }
+    const scheduledTimestamp = scheduleAt ? new Date(scheduleAt).getTime() : 0;
+    if (scheduleAt && (!Number.isFinite(scheduledTimestamp) || scheduledTimestamp < Date.now() + 3000)) { showMessage("请选择至少 3 秒后的发送时间", true); return; }
     setBusy("send"); showMessage("");
     try {
       const form = new FormData();
       form.append("mode", mode); form.append("botId", selectedBot.botId); form.append("groupId", effectiveGroupId);
+      if (scheduledTimestamp) form.append("scheduleAt", String(scheduledTimestamp));
       if (mode === "image") { form.append("caption", caption); form.append("image", image!); }
       else {
         if (!cardRenderRef.current) throw new Error("卡片预览尚未准备好，请重试");
@@ -263,9 +298,12 @@ export default function OneBotManager() {
         form.append("url", cardShowUrl ? cardUrl : "");
         form.append("cardImage", new File([cardImage], "reshi-group-card.png", { type: "image/png" }));
       }
-      const result = await requestJson<{ messageId?: string; deliveryMode?: "card-image" | "image" }>("/api/admin/onebot", { method: "POST", body: form });
-      const sentLabel = `${mode === "card" ? "图片卡片" : "图片"}通知已发送`;
-      showMessage(`${sentLabel}${result.messageId ? ` · 消息 ${result.messageId}` : ""}`);
+      const result = await requestJson<{ messageId?: string; scheduled?: boolean; dueAt?: number; deliveryMode?: "card-image" | "image" }>("/api/admin/onebot", { method: "POST", body: form });
+      const sentLabel = result.scheduled && result.dueAt
+        ? `通知已设定于 ${new Date(result.dueAt).toLocaleString("zh-CN")} 发送`
+        : `${mode === "card" ? "图片卡片" : "图片"}通知已发送${result.messageId ? ` · 消息 ${result.messageId}` : ""}`;
+      showMessage(sentLabel);
+      if (result.scheduled) { setScheduleAt(""); await loadConfig(); }
       if (mode === "image") { setCaption(""); setImage(null); }
       else { setCardTitle(""); setCardContent(""); setCardUrl(""); }
     } catch (error) { showMessage(error instanceof Error ? error.message : "QQ 通知发送失败", true); }
@@ -315,7 +353,7 @@ export default function OneBotManager() {
       <div className="onebot-section-heading"><div><h3 id="onebot-compose-title">发送群通知</h3><p>富文本卡片会先渲染成高清 PNG，再作为 QQ 图片消息发送。</p></div></div>
       <form onSubmit={send}>
         <div className="onebot-target-fields"><label><span>使用 Bot</span><select value={selectedBotId} onChange={(event) => setSelectedBotId(event.target.value)}>{config.bots.map((bot) => <option value={bot.botId} key={bot.botId}>{bot.displayName} · {bot.online ? "在线" : "离线"}</option>)}</select></label><label><span>发送到群</span><select value={effectiveGroupId} onChange={(event) => setGroupId(event.target.value)}>{selectedBot?.groups.map((group) => <option value={group.groupId} key={group.groupId}>{group.displayName || `QQ群 ${group.groupId}`}</option>)}</select></label></div>
-        {!selectedBot?.online || !selectedBot.groups.length ? <div className="onebot-compose-blocked"><Icon name="shield" /><span>{!config.bots.length ? "请先添加 Bot" : !selectedBot?.online ? "所选 Bot 尚未连接" : "请先为所选 Bot 添加允许群"}</span></div> : null}
+        {(!selectedBot?.online && !scheduleAt) || !selectedBot?.groups.length ? <div className="onebot-compose-blocked"><Icon name="shield" /><span>{!config.bots.length ? "请先添加 Bot" : !selectedBot?.groups.length ? "请先为所选 Bot 添加允许群" : "所选 Bot 尚未连接；可改用定时发送，待 Bot 上线后重试"}</span></div> : null}
         <div className="onebot-mode-switch" role="tablist" aria-label="通知形式"><button type="button" role="tab" aria-selected={mode === "card"} className={mode === "card" ? "is-active" : ""} onClick={() => setMode("card")}><Icon name="image" />富文本图片卡片</button><button type="button" role="tab" aria-selected={mode === "image"} className={mode === "image" ? "is-active" : ""} onClick={() => setMode("image")}><Icon name="image" />图片通知</button></div>
         <div className="onebot-fields">{mode === "card" ? <label><span>卡片标题</span><input value={cardTitle} maxLength={100} onChange={(event) => setCardTitle(event.target.value)} placeholder="群内卡片的标题" required /></label> : <label><span>附带文字（选填）</span><textarea value={caption} maxLength={500} onChange={(event) => setCaption(event.target.value)} placeholder="图片前要发送的说明文字" /></label>}</div>
         {mode === "card" ? <div className="onebot-card-editor">
@@ -324,8 +362,17 @@ export default function OneBotManager() {
           <label className="onebot-card-url-toggle" htmlFor="onebot-card-show-url"><input id="onebot-card-show-url" type="checkbox" checked={cardShowUrl} onChange={(event) => setCardShowUrl(event.target.checked)} /><b>显示底部网址</b><small>按参考卡片的底部居中样式显示，可随时关闭。</small></label>
           {cardShowUrl && <label><span>底部网址（选填）</span><input value={cardUrl} maxLength={500} onChange={(event) => setCardUrl(event.target.value)} placeholder="站内路径 /posts/... 或 HTTPS 地址；留空显示首页" /></label>}
         </div> : <label className={`onebot-image-picker ${preview ? "has-image" : ""}`}><input type="file" accept="image/avif,image/gif,image/jpeg,image/png,image/webp" onChange={(event) => chooseImage(event.target.files?.[0] || null)} /><span className="onebot-image-icon"><Icon name="image" /></span>{preview ? <img src={preview} alt="待发送图片预览" /> : <span><b>选择通知图片</b><small>AVIF、GIF、JPEG、PNG、WebP · 最大 8 MB</small></span>}</label>}
-        <footer><span><Icon name="bot" /> {selectedBot ? `经 ${selectedBot.displayName} 的当前连接发送` : "等待选择 Bot"}</span><button type="submit" disabled={Boolean(busy) || !selectedBot?.online || !effectiveGroupId || (mode === "image" ? !image : !cardTitle.trim() || !cardContent.trim())}>{busy === "send" ? "正在发送…" : `发送${mode === "card" ? "卡片" : "图片"}通知`}</button></footer>
+        <fieldset className="onebot-schedule-control"><legend>发送时间</legend><label htmlFor="onebot-schedule-enabled"><input id="onebot-schedule-enabled" type="checkbox" aria-label="启用定时发送" checked={Boolean(scheduleAt)} onChange={(event) => setScheduleAt(event.target.checked ? localDateTimeValue(Date.now() + 10 * 60_000) : "")} /><span><b>定时发送</b><small>关闭时立即发送；开启后即使 Bot 此刻离线也可保存任务。</small></span></label>{scheduleAt && <input type="datetime-local" aria-label="定时发送时间" value={scheduleAt} min={scheduleLimits.min} max={scheduleLimits.max} step="1" onChange={(event) => setScheduleAt(event.target.value)} required />}</fieldset>
+        <footer><span><Icon name="bot" /> {selectedBot ? scheduleAt ? `经 ${selectedBot.displayName} 到期发送` : `经 ${selectedBot.displayName} 的当前连接发送` : "等待选择 Bot"}</span><button type="submit" disabled={Boolean(busy) || (!scheduleAt && !selectedBot?.online) || !effectiveGroupId || (mode === "image" ? !image : !cardTitle.trim() || !cardContent.trim())}>{busy === "send" ? scheduleAt ? "正在保存…" : "正在发送…" : scheduleAt ? "设置定时通知" : `发送${mode === "card" ? "卡片" : "图片"}通知`}</button></footer>
       </form>
+    </section>
+    <section className="onebot-scheduled" aria-labelledby="onebot-scheduled-title">
+      <div className="onebot-section-heading"><div><h3 id="onebot-scheduled-title">待发送任务</h3><p>发送成功或取消后立即删除 D1 记录与临时图片；Bot 私聊另有 {config.personalReminderCount} 条待提醒。</p></div></div>
+      {config.scheduled.length ? <div className="onebot-scheduled-list">{config.scheduled.map((notice) => {
+        const bot = config.bots.find((item) => item.botId === notice.bot_id);
+        const group = bot?.groups.find((item) => item.groupId === notice.group_id);
+        return <article key={notice.id}><span className="onebot-scheduled-icon"><Icon name="bot" /></span><div><b>{notice.summary}</b><small>{new Date(notice.due_at).toLocaleString("zh-CN")} · {bot?.displayName || notice.bot_id} → {group?.displayName || notice.group_id}</small></div><button type="button" onClick={() => cancelScheduled(notice)} disabled={Boolean(busy)}><Icon name="trash" />取消</button></article>;
+      })}</div> : <div className="onebot-empty onebot-scheduled-empty"><Icon name="check" /><div><b>暂无待发送群通知</b><p>定时任务发出后会自动从这里消失。</p></div></div>}
     </section>
     <div className="onebot-card-render-host" aria-hidden="true">
       <article className="onebot-render-card" ref={cardRenderRef} style={cardToneStyle} lang="zh-CN">

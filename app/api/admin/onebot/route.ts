@@ -3,6 +3,7 @@ import { ensureDatabaseSchema, getD1 } from "../../../../db/runtime";
 import { getApiAdmin } from "../../../admin/admin-auth";
 import { sameOrigin } from "../../../../lib/admin-email-auth";
 import { jsonId, numericId, oneBotErrorResponse, OneBotHttpError, oneBotOnline, oneBotStub, parseOneBotGroups } from "../../../../lib/onebot-cloudflare";
+import { deleteS3Object, putS3Object } from "../../../../lib/s3-storage";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_CARD_HTML_CHARS = 20_000;
@@ -96,11 +97,19 @@ export async function GET() {
       createdAt: row.created_at,
       groups: parseOneBotGroups(row.groups_json),
     })));
+    const [scheduled, personal] = await Promise.all([
+      db.prepare(`SELECT id, bot_id, target_id AS group_id, delivery_mode, summary, due_at, created_at
+        FROM onebot_scheduled_messages WHERE target_type = 'group' ORDER BY due_at LIMIT 100`)
+        .all<{ id: string; bot_id: string; group_id: string; delivery_mode: string; summary: string; due_at: number; created_at: number }>(),
+      db.prepare("SELECT COUNT(*) AS count FROM onebot_scheduled_messages WHERE target_type = 'private'").first<{ count: number }>(),
+    ]);
     return Response.json({
       configured: bots.length > 0,
       online: bots.some((bot) => bot.online),
       bots,
       reverseWsPath: "/api/onebot/ws",
+      scheduled: scheduled.results || [],
+      personalReminderCount: personal?.count || 0,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return oneBotErrorResponse(error);
@@ -119,6 +128,11 @@ export async function POST(request: Request) {
     const botId = numericId(String(form.get("botId") || ""), "Bot QQ 号");
     const groupId = numericId(String(form.get("groupId") || ""), "QQ群号");
     const mode = String(form.get("mode") || "");
+    const scheduleValue = String(form.get("scheduleAt") || "").trim();
+    const scheduleAt = scheduleValue ? Number(scheduleValue) : 0;
+    if (scheduleValue && (!Number.isSafeInteger(scheduleAt) || scheduleAt < Date.now() + 3000 || scheduleAt > Date.now() + 366 * 86_400_000)) {
+      throw new OneBotHttpError(400, "定时时间需在 3 秒后至 366 天内");
+    }
 
     await ensureDatabaseSchema();
     const db = await getD1();
@@ -128,7 +142,10 @@ export async function POST(request: Request) {
       throw new OneBotHttpError(403, "所选 Bot 或群不在允许列表中");
     }
 
-    let message: unknown[];
+    let imageFile: File;
+    let messageText = "";
+    let summary = "";
+    const deliveryMode: "card-image" | "image" = mode === "card" ? "card-image" : "image";
     if (mode === "card") {
       const title = String(form.get("title") || "").trim();
       const html = String(form.get("contentHtml") || "").trim();
@@ -142,10 +159,8 @@ export async function POST(request: Request) {
         throw new OneBotHttpError(400, "卡片 PNG 生成失败，请重新发送");
       }
       if (cardImage.size > MAX_IMAGE_BYTES) throw new OneBotHttpError(400, "卡片图片不能超过 8 MB");
-      message = [{
-        type: "image",
-        data: { file: `base64://${Buffer.from(await cardImage.arrayBuffer()).toString("base64")}` },
-      }];
+      imageFile = cardImage;
+      summary = title;
     } else if (mode === "image") {
       const image = form.get("image");
       if (!(image instanceof File) || !safeImages.has(image.type) || image.size < 1) {
@@ -153,14 +168,40 @@ export async function POST(request: Request) {
       }
       if (image.size > MAX_IMAGE_BYTES) throw new OneBotHttpError(400, "图片不能超过 8 MB");
       const caption = [...String(form.get("caption") || "").trim()].slice(0, 500).join("");
-      message = caption ? [{ type: "text", data: { text: caption } }] : [];
-      message.push({ type: "image", data: { file: `base64://${Buffer.from(await image.arrayBuffer()).toString("base64")}` } });
+      imageFile = image;
+      messageText = caption;
+      summary = caption || image.name || "图片通知";
     } else {
       throw new OneBotHttpError(400, "通知类型无效");
     }
 
+    if (scheduleAt) {
+      const pending = await db.prepare("SELECT COUNT(*) AS count FROM onebot_scheduled_messages WHERE target_type = 'group'")
+        .first<{ count: number }>();
+      if ((pending?.count || 0) >= 100) throw new OneBotHttpError(429, "待发送群通知已达 100 条，请先取消部分任务");
+      const id = crypto.randomUUID();
+      const key = `uploads/onebot-scheduled/${id}`;
+      const bytes = await imageFile.arrayBuffer();
+      const uploaded = await putS3Object(key, { body: bytes, filename: imageFile.name || "onebot-notice", contentType: imageFile.type, previewable: true });
+      if (!uploaded.ok) throw new OneBotHttpError(502, `定时图片存储失败（HTTP ${uploaded.status}）`);
+      try {
+        await db.prepare(`INSERT INTO onebot_scheduled_messages
+          (id, bot_id, target_type, target_id, delivery_mode, summary, message_text, image_key, admin_email, due_at, attempts, claimed_at, created_at)
+          VALUES (?, ?, 'group', ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`)
+          .bind(id, botId, groupId, deliveryMode, [...summary].slice(0, 100).join(""), messageText, key, session.admin.email, scheduleAt, Date.now()).run();
+      } catch (error) {
+        await deleteS3Object(key).catch(() => null);
+        throw error;
+      }
+      try { await (await oneBotStub(botId)).scheduleWake(botId, scheduleAt); }
+      catch (error) { console.warn(JSON.stringify({ event: "onebot_alarm_schedule_failed", id, botId, reason: error instanceof Error ? error.message : "unknown" })); }
+      return Response.json({ ok: true, scheduled: true, id, dueAt: scheduleAt, deliveryMode }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    const message: unknown[] = messageText ? [{ type: "text", data: { text: messageText } }] : [];
+    message.push({ type: "image", data: { file: `base64://${Buffer.from(await imageFile.arrayBuffer()).toString("base64")}` } });
+
     let payload: Record<string, unknown>;
-    const deliveryMode: "card-image" | "image" = mode === "card" ? "card-image" : "image";
     try {
       const stub = await oneBotStub(botId);
       payload = await stub.call("send_group_msg", {

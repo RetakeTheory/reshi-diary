@@ -234,6 +234,23 @@ export async function ensureDatabaseSchema() {
       last_sent_at INTEGER NOT NULL,
       PRIMARY KEY (day_key, bot_id, group_id)
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS onebot_scheduled_messages (
+      id TEXT PRIMARY KEY NOT NULL,
+      bot_id TEXT NOT NULL,
+      target_type TEXT NOT NULL CHECK (target_type IN ('private', 'group')),
+      target_id TEXT NOT NULL,
+      delivery_mode TEXT NOT NULL CHECK (delivery_mode IN ('text', 'image', 'card-image')),
+      summary TEXT NOT NULL,
+      message_text TEXT DEFAULT '' NOT NULL,
+      image_key TEXT,
+      admin_email TEXT,
+      due_at INTEGER NOT NULL,
+      attempts INTEGER DEFAULT 0 NOT NULL,
+      claimed_at INTEGER,
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_onebot_scheduled_due ON onebot_scheduled_messages (due_at, claimed_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_onebot_scheduled_bot_due ON onebot_scheduled_messages (bot_id, due_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS surveys (
       id TEXT PRIMARY KEY NOT NULL,
       slug TEXT NOT NULL UNIQUE,
