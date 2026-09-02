@@ -131,6 +131,9 @@ test("ships Cloudflare-native OneBot with bounded scheduled reminders", async ()
   assert.doesNotMatch(session, /jsonId\(payload\.self_id\) !== attachment\.botId/);
   assert.match(session, /setAlarm/);
   assert.match(session, /processDue/);
+  assert.match(session, /waitUntil\(this\.processEvent/);
+  assert.match(session, /await this\.call\(action/);
+  assert.match(session, /onebot_event_process_failed/);
   assert.match(runtime, /oneBotStub/);
   assert.match(authRoute, /createQqChallenge/);
   assert.doesNotMatch(adminRoute, /type: "share"/);

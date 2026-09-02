@@ -66,4 +66,5 @@ jobs:
       - name: Lint frontend and integration files
         run: pnpm exec eslint app lib scripts tests worker cloudflare-workers.d.ts --ignore-pattern dist --ignore-pattern .next
       - run: pnpm run build
-      - run: node --test tests/rendered-html.test.mjs
+      - name: Test frontend and OneBot integrations
+        run: node --experimental-strip-types --test tests/rendered-html.test.mjs tests/onebot-reminder.test.mjs

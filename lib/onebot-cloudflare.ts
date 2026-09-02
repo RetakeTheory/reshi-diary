@@ -209,8 +209,8 @@ export async function processOneBotEvent(botId: string, payload: OneBotPayload) 
   const targetType = payload.message_type;
   const qqId = jsonId(payload.user_id);
   if (!/^\d{5,20}$/.test(qqId) || !Number.isSafeInteger(Number(qqId))) return null;
-  const rawMessage = typeof payload.raw_message === "string" ? payload.raw_message : "";
-  const { formatChinaTime, groupReminderCommand, parseReminderCommand } = await import("./onebot-reminder");
+  const { formatChinaTime, groupReminderCommand, oneBotMessageText, parseReminderCommand } = await import("./onebot-reminder");
+  const rawMessage = oneBotMessageText(payload.raw_message, payload.message);
   const reminder = parseReminderCommand(targetType === "group" ? groupReminderCommand(rawMessage, botId) : rawMessage);
   if (reminder) {
     const targetId = targetType === "group" ? jsonId(payload.group_id) : qqId;
