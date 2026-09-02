@@ -36,6 +36,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     const botId = request.headers.get("x-reshi-onebot-id") || "";
     if (!/^\d{5,20}$/.test(botId)) return new Response("Unauthorized", { status: 401 });
 
+    this.rejectPending("QQ Bot 连接已被新会话替换");
     for (const socket of this.ctx.getWebSockets()) socket.close(1012, "Bot connection replaced");
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -128,7 +129,9 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
       return;
     }
 
-    const echo = typeof payload.echo === "string" ? payload.echo : "";
+    const echo = typeof payload.echo === "string" ? payload.echo
+      : typeof payload.echo === "number" || typeof payload.echo === "boolean" ? String(payload.echo)
+        : "";
     const pending = echo ? this.pending.get(echo) : null;
     if (pending) {
       clearTimeout(pending.timeout);
@@ -144,21 +147,34 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
       socket.serializeAttachment({ ...attachment, verified: true } satisfies SocketAttachment);
     }
 
-    const reply = await processOneBotEvent(attachment.botId, payload);
-    if (!reply) return;
-    if ("wakeAt" in reply && reply.wakeAt) await this.scheduleWake(attachment.botId, reply.wakeAt);
-    const isGroup = reply.targetType === "group";
-    const outgoingMessage = isGroup && reply.mentionUserId
-      ? [{ type: "at", data: { qq: reply.mentionUserId } }, { type: "text", data: { text: ` ${reply.reply}` } }]
-      : reply.reply;
-    socket.send(JSON.stringify({
-      action: isGroup ? "send_group_msg" : "send_private_msg",
-      params: {
+    this.ctx.waitUntil(this.processEvent(attachment.botId, payload));
+  }
+
+  private async processEvent(botId: string, payload: OneBotPayload) {
+    const targetType = payload.message_type === "group" ? "group" : "private";
+    const targetId = jsonId(targetType === "group" ? payload.group_id : payload.user_id);
+    try {
+      const reply = await processOneBotEvent(botId, payload);
+      if (!reply) return;
+      if ("wakeAt" in reply && reply.wakeAt) await this.scheduleWake(botId, reply.wakeAt);
+      const isGroup = reply.targetType === "group";
+      const outgoingMessage = isGroup && reply.mentionUserId
+        ? [{ type: "at", data: { qq: reply.mentionUserId } }, { type: "text", data: { text: ` ${reply.reply}` } }]
+        : reply.reply;
+      const action = isGroup ? "send_group_msg" : "send_private_msg";
+      const response = await this.call(action, {
         ...(isGroup ? { group_id: Number(reply.targetId) } : { user_id: Number(reply.targetId) }),
         message: outgoingMessage,
         auto_escape: !isGroup,
-      },
-    }));
+      });
+      if (response.status !== "ok" || Number(response.retcode) !== 0) {
+        console.error(JSON.stringify({ event: "onebot_event_reply_failed", botId, targetType: reply.targetType,
+          targetId: reply.targetId, retcode: Number(response.retcode) }));
+      }
+    } catch (error) {
+      console.error(JSON.stringify({ event: "onebot_event_process_failed", botId, targetType, targetId,
+        reason: error instanceof Error ? error.message : "unknown" }));
+    }
   }
 
   async webSocketClose(socket: WebSocket, code: number, reason: string) {
