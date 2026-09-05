@@ -33,7 +33,7 @@ test("user averages, edits and withdrawals leave the independent administrator r
   try {
     db.sqlite.exec("CREATE TABLE users (id TEXT PRIMARY KEY); INSERT INTO users VALUES ('a'), ('b'); CREATE TABLE food_rankings (id TEXT PRIMARY KEY, admin_rating INTEGER); INSERT INTO food_rankings VALUES ('meal', 3);");
     const runtime = await readFile(new URL("../db/runtime.ts", import.meta.url), "utf8");
-    const schema = runtime.match(/CREATE TABLE IF NOT EXISTS food_ratings \([\s\S]*?\n    \)/)[0];
+    const schema = runtime.match(/CREATE TABLE IF NOT EXISTS food_ratings \([\s\S]*?\n {4}\)/)[0];
     db.sqlite.exec(schema);
     assert.deepEqual(await saveFoodRating(db, "meal", "a", 5), { averageRating: 5, ratingCount: 1, myRating: 5 });
     assert.deepEqual(await saveFoodRating(db, "meal", "b", 2), { averageRating: 3.5, ratingCount: 2, myRating: 2 });

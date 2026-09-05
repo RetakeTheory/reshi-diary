@@ -49,12 +49,13 @@ export default function RollCall() {
     const data = await api<{ lists: RollCallConfig[] }>(endpoint + "?view=lists"); setLists(data.lists);
   }, []);
   useEffect(() => {
-    void readLists().catch((error) => setMessage(error.message));
+    let active = true;
+    void api<{ lists: RollCallConfig[] }>(endpoint + "?view=lists").then((data) => { if (active) setLists(data.lists); }).catch((error) => { if (active) setMessage(error.message); });
     const key = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.shiftKey && event.code === "KeyM") { event.preventDefault(); dialog.current?.showModal(); }
     };
-    window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
-  }, [readLists]);
+    window.addEventListener("keydown", key); return () => { active = false; window.removeEventListener("keydown", key); };
+  }, []);
 
   function loadConfig(value: RollCallConfig) {
     setConfig(value); setNamesText(value.names.join("\n")); setRequiredText(value.required.join("\n")); setResult(null);
