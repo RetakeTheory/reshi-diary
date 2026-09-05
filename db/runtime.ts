@@ -342,6 +342,14 @@ export async function ensureDatabaseSchema() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_food_ranking_votes_entry ON food_ranking_votes (entry_id, vote)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS food_ratings (
+      entry_id TEXT NOT NULL REFERENCES food_rankings(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (entry_id, user_id)
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS survey_file_uploads (
       key TEXT PRIMARY KEY NOT NULL,
       survey_id TEXT NOT NULL,
@@ -441,6 +449,7 @@ export async function ensureDatabaseSchema() {
   const foodRankingColumns = await db.prepare("PRAGMA table_info(food_rankings)").all<{ name: string }>();
   const foodRankingNames = new Set((foodRankingColumns.results || []).map((item) => item.name));
   if (!foodRankingNames.has("image_url")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN image_url TEXT DEFAULT '' NOT NULL").run();
+  if (!foodRankingNames.has("admin_rating")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN admin_rating INTEGER CHECK (admin_rating BETWEEN 1 AND 5)").run();
   if (!foodRankingNames.has("latitude")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN latitude REAL").run();
   if (!foodRankingNames.has("longitude")) await db.prepare("ALTER TABLE food_rankings ADD COLUMN longitude REAL").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_survey_responses_user ON survey_responses (survey_id, user_id, created_at DESC)").run();

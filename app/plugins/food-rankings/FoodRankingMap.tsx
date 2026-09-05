@@ -4,13 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Map as MapLibreMap, Marker } from "maplibre-gl";
-import type { FoodRankingEntry, FoodRankingType } from "../../../lib/food-rankings";
+import type { FoodRankingEntry } from "../../../lib/food-rankings";
 
 type Position = { latitude: number; longitude: number };
 type Props = {
   entries?: FoodRankingEntry[];
   editable?: boolean;
-  editableType?: FoodRankingType;
   editablePosition?: Position | null;
   onPositionChange?: (position: Position) => void;
   onSelect?: (entry: FoodRankingEntry) => void;
@@ -34,7 +33,7 @@ function hasPosition(entry: FoodRankingEntry) {
   return Number.isFinite(entry.latitude) && Number.isFinite(entry.longitude);
 }
 
-export default function FoodRankingMap({ entries = [], editable = false, editableType = "red", editablePosition = null, onPositionChange, onSelect }: Props) {
+export default function FoodRankingMap({ entries = [], editable = false, editablePosition = null, onPositionChange, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
@@ -79,7 +78,7 @@ export default function FoodRankingMap({ entries = [], editable = false, editabl
     if (editable) {
       const element = document.createElement("button");
       element.type = "button";
-      element.className = `food-map-marker is-${editableType} is-editor`;
+      element.className = "food-map-marker is-rating is-editor";
       element.setAttribute("aria-label", "拖动地图标记调整位置");
       const position: [number, number] = editablePosition ? [editablePosition.longitude, editablePosition.latitude] : (map.getCenter().toArray() as [number, number]);
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" }).setLngLat(position).addTo(map);
@@ -90,18 +89,18 @@ export default function FoodRankingMap({ entries = [], editable = false, editabl
     positionedEntries.forEach((entry) => {
       const element = document.createElement("button");
       element.type = "button";
-      element.className = `food-map-marker is-${entry.listType}`;
-      element.setAttribute("aria-label", `${entry.restaurant}，${entry.listType === "red" ? "红榜" : "黑榜"}`);
+      element.className = "food-map-marker is-rating";
+      element.setAttribute("aria-label", `${entry.restaurant}，用户评分 ${entry.averageRating?.toFixed(1) ?? "暂无"}`);
       element.addEventListener("click", (event) => { event.stopPropagation(); onSelectRef.current?.(entry); });
       markersRef.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat([entry.longitude, entry.latitude]).addTo(map));
     });
-  }, [editable, editablePosition, editableType, entries, ready]);
+  }, [editable, editablePosition, entries, ready]);
 
   return <div className={`food-ranking-map${editable ? " is-editable" : ""}`}>
-    <div ref={containerRef} className="food-ranking-map-canvas" aria-label={editable ? "点击或拖动地图标记设置餐厅位置" : "红黑榜餐厅地图"} />
+    <div ref={containerRef} className="food-ranking-map-canvas" aria-label={editable ? "点击或拖动地图标记设置餐厅位置" : "餐厅评分地图"} />
     {error && <p className="food-ranking-map-error" role="status">{error}</p>}
     {editable && <span className="food-ranking-map-hint">点击地图放置标记，或拖动标记微调位置</span>}
-    {!editable && !entries.some(hasPosition) && <div className="food-ranking-map-empty">管理员尚未为当前榜单设置地图位置</div>}
+    {!editable && !entries.some(hasPosition) && <div className="food-ranking-map-empty">管理员尚未为当前餐厅设置地图位置</div>}
   </div>;
 }
 

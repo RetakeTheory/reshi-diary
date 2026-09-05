@@ -18,7 +18,7 @@
       "wheelCaption": "概率与权重",
       "mapTitle": "动画校园地图",
       "mapCaption": "松江校区缩放导览",
-      "rankingTitle": "学校干饭红黑榜",
+      "rankingTitle": "学校干饭评分",
       "rankingCaption": "搜索推荐与避雷"
     }
   },
@@ -365,16 +365,36 @@
         {
           "id": "plugin-food-rankings-card",
           "type": "pluginCard",
-          "label": "学校干饭红黑榜卡片",
+          "label": "学校干饭评分卡片",
           "hidden": false,
           "canMove": true,
           "canHide": true,
           "fields": {
             "eyebrow": "CAMPUS FOOD / 05",
-            "title": "学校干饭红黑榜",
-            "description": "管理员整理的校内餐厅推荐与避雷，可搜索和筛选",
+            "title": "学校干饭评分",
+            "description": "管理员与注册用户分别评分，发现适合自己的校内餐厅",
             "cta": "打开榜单",
             "href": "/plugins/food-rankings"
+          },
+          "styles": {
+            "spacing": "default",
+            "align": "inherit",
+            "width": "default"
+          }
+        },
+        {
+          "id": "plugin-roll-call-card",
+          "type": "pluginCard",
+          "label": "点名器卡片",
+          "hidden": false,
+          "canMove": true,
+          "canHide": true,
+          "fields": {
+            "eyebrow": "ROLL CALL / 06",
+            "title": "点名器",
+            "description": "导入花名册，轻松点名；随时查询和复用历史记录",
+            "cta": "开始点名",
+            "href": "/plugins/roll-call"
           },
           "styles": {
             "spacing": "default",
@@ -385,20 +405,20 @@
       ]
     },
     "foodRankings": {
-      "label": "学校干饭红黑榜",
+      "label": "学校干饭评分",
       "path": "/plugins/food-rankings",
       "modules": [
         {
           "id": "food-rankings-widget",
           "type": "foodRankingsWidget",
-          "label": "学校干饭红黑榜（内容由管理员维护）",
+          "label": "学校干饭评分（内容由管理员维护）",
           "hidden": false,
           "canMove": false,
           "canHide": true,
           "fields": {
             "back": "返回插件目录",
             "eyebrow": "干饭情报",
-            "title": "学校干饭红黑榜",
+            "title": "学校干饭评分",
             "description": "所以今天吃什么呢"
           },
           "styles": {
@@ -869,7 +889,7 @@
         {
           "id": "admin-food-rankings",
           "type": "adminFoodRankings",
-          "label": "学校干饭红黑榜管理",
+          "label": "学校干饭评分管理",
           "hidden": false,
           "canMove": true,
           "canHide": true,

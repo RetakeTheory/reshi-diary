@@ -1,8 +1,6 @@
-export type FoodRankingType = "red" | "black";
-export type FoodRankingVote = "up" | "down";
 export type FoodRankingEntry = {
   id: string;
-  listType: FoodRankingType;
+  adminRating: number | null;
   restaurant: string;
   location: string;
   category: string;
@@ -12,14 +10,20 @@ export type FoodRankingEntry = {
   imageUrl: string;
   latitude: number | null;
   longitude: number | null;
-  likes: number;
-  dislikes: number;
-  myVote: FoodRankingVote | null;
+  averageRating: number | null;
+  ratingCount: number;
+  myRating: number | null;
   createdAt: number;
   updatedAt: number;
 };
 
 function text(value: unknown, max: number) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
+
+export function normalizeFoodRating(value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 5) throw new Error("评分必须是 1–5 的整数，撤回评分请传 null");
+  return value;
+}
 
 function coordinate(value: unknown, label: string, min: number, max: number) {
   if (value === undefined || value === null || value === "") return null;
@@ -31,7 +35,7 @@ function coordinate(value: unknown, label: string, min: number, max: number) {
 export function normalizeFoodRankingInput(raw: unknown) {
   if (!raw || typeof raw !== "object") throw new Error("榜单内容无效");
   const input = raw as Partial<FoodRankingEntry> & { tags?: unknown };
-  const listType: FoodRankingType = input.listType === "black" ? "black" : "red";
+  const adminRating = normalizeFoodRating(input.adminRating ?? null);
   const restaurant = text(input.restaurant, 100);
   const location = text(input.location, 120);
   const category = text(input.category, 60);
@@ -44,17 +48,19 @@ export function normalizeFoodRankingInput(raw: unknown) {
   if (!restaurant || !summary) throw new Error("请填写餐厅名称和榜单摘要");
   if ((latitude === null) !== (longitude === null)) throw new Error("纬度和经度需同时填写");
   if (imageUrl && !/^\/api\/files\/uploads\/[A-Za-z0-9%._~-]+$/.test(imageUrl)) throw new Error("饭菜照片地址无效，请重新上传");
-  return { listType, restaurant, location, category, summary, details, tags, imageUrl, latitude, longitude };
+  return { adminRating, restaurant, location, category, summary, details, tags, imageUrl, latitude, longitude };
 }
 
 export function foodRankingFromRow(row: Record<string, unknown>): FoodRankingEntry {
   return {
-    id: String(row.id), listType: row.listType === "black" ? "black" : "red", restaurant: String(row.restaurant),
+    id: String(row.id), adminRating: row.adminRating == null ? null : Number(row.adminRating), restaurant: String(row.restaurant),
     location: String(row.location || ""), category: String(row.category || ""), summary: String(row.summary), details: String(row.details || ""),
-    tags: JSON.parse(String(row.tagsJson || "[]")) as string[], imageUrl: String(row.imageUrl || ""), likes: Number(row.likes || 0), dislikes: Number(row.dislikes || 0), myVote: row.myVote === "up" || row.myVote === "down" ? row.myVote : null, createdAt: Number(row.createdAt), updatedAt: Number(row.updatedAt),
+    tags: JSON.parse(String(row.tagsJson || "[]")) as string[], imageUrl: String(row.imageUrl || ""), averageRating: row.averageRating == null ? null : Number(row.averageRating), ratingCount: Number(row.ratingCount || 0), myRating: row.myRating == null ? null : Number(row.myRating), createdAt: Number(row.createdAt), updatedAt: Number(row.updatedAt),
     latitude: row.latitude === null || row.latitude === undefined || row.latitude === "" ? null : Number(row.latitude), longitude: row.longitude === null || row.longitude === undefined || row.longitude === "" ? null : Number(row.longitude),
   };
 }
 
-export const foodRankingSelect = `SELECT id, list_type AS listType, restaurant, location, category, summary, details, tags_json AS tagsJson, image_url AS imageUrl, latitude, longitude, created_at AS createdAt, updated_at AS updatedAt FROM food_rankings`;
+export const foodRankingSelect = `SELECT id, admin_rating AS adminRating, restaurant, location, category, summary, details, tags_json AS tagsJson, image_url AS imageUrl, latitude, longitude, created_at AS createdAt, updated_at AS updatedAt,
+  (SELECT AVG(rating) FROM food_ratings WHERE entry_id = food_rankings.id) AS averageRating,
+  (SELECT COUNT(*) FROM food_ratings WHERE entry_id = food_rankings.id) AS ratingCount FROM food_rankings`;
 

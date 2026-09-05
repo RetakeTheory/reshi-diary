@@ -60,7 +60,7 @@ export default async function AdminPage() {
     "admin-passkeys": { description: "管理后台登录设备与密钥", icon: "key" },
     "admin-tickets": { description: "查看工单并继续回复用户", icon: "comment" },
     "admin-surveys": { description: "创建问卷、考试与结果查询", icon: "table" },
-    "admin-food-rankings": { description: "维护学校餐厅红榜与黑榜", icon: "ranking" },
+    "admin-food-rankings": { description: "维护餐厅资料及管理员评分", icon: "ranking" },
     "admin-posts": { description: "撰写、预览并发布文章", icon: "file" },
   } as const;
   const tabs: AdminDashboardTab[] = page.modules.flatMap((module) => {

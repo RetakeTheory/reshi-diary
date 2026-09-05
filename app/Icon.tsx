@@ -1,5 +1,5 @@
 export type IconName =
-  | "spark" | "food" | "dice" | "wheel" | "menu" | "close" | "user" | "key"
+  | "star" | "spark" | "food" | "dice" | "wheel" | "menu" | "close" | "user" | "key"
   | "heart" | "insight" | "reply" | "comment" | "zoom-in" | "zoom-out" | "reset"
   | "plus" | "minus" | "trash" | "formula" | "table" | "code" | "image" | "file" | "check"
   | "external" | "shield" | "map" | "arrow-left" | "search" | "ranking" | "thumb-up" | "thumb-down"
@@ -9,6 +9,7 @@ export type IconName =
 export default function Icon({ name, className }: { name: IconName; className?: string }) {
   const common = { className, viewBox: "0 0 24 24", "aria-hidden": true } as const;
   switch (name) {
+    case "star": return <svg {...common}><path d="m12 3 2.8 5.7 6.3.9-4.6 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L2.9 9.6l6.3-.9L12 3Z" /></svg>;
     case "spark": return <svg {...common}><path d="M12 2.8c.7 5.3 3.1 7.7 8.4 8.4-5.3.7-7.7 3.1-8.4 8.4-.7-5.3-3.1-7.7-8.4-8.4 5.3-.7 7.7-3.1 8.4-8.4Z" /></svg>;
     case "food": return <svg {...common}><path d="M5 10.5h14v1.2a7 7 0 0 1-14 0v-1.2Z" /><path d="M3.5 10.5h17M8 7.5c0-1 1-1.4 1-2.5M12 7.5c0-1 1-1.4 1-2.5M16 7.5c0-1 1-1.4 1-2.5M8 19h8" /></svg>;
     case "dice": return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="3" /><circle cx="8.5" cy="8.5" r="1" /><circle cx="15.5" cy="8.5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="8.5" cy="15.5" r="1" /><circle cx="15.5" cy="15.5" r="1" /></svg>;
