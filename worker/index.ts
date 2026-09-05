@@ -51,7 +51,10 @@ const worker = {
       || url.pathname.startsWith("/api/account/qq/")
       || url.pathname === "/api/admin/onebot"
       || url.pathname.startsWith("/api/admin/onebot/");
-    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/site-pages") && !cloudflareOneBotApi) {
+    const d1PluginApi = url.pathname === "/api/roll-call"
+      || url.pathname === "/api/food-rankings" || url.pathname.startsWith("/api/food-rankings/")
+      || url.pathname === "/api/admin/food-rankings" || url.pathname.startsWith("/api/admin/food-rankings/");
+    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/site-pages") && !cloudflareOneBotApi && !d1PluginApi) {
       const origin = env?.RUST_BACKEND_ORIGIN?.trim();
       if (origin) {
         const upstream = new URL(`${url.pathname}${url.search}`, origin);

@@ -11,6 +11,7 @@ export default function PluginsPage() {
   const title = splitDisplayText(header.fields.title);
   const cards = page.modules.filter((module) => module.type === "pluginCard");
   const art = {
+    "plugin-roll-call-card": { className: "number-art", icon: "dice" as const, marker: "06" },
     "plugin-food-card": { className: "", icon: "food" as const, marker: "spark" as const },
     "plugin-random-card": { className: "number-art", icon: "dice" as const, marker: "02" },
     "plugin-wheel-card": { className: "wheel-art", icon: "wheel" as const, marker: "03" },
