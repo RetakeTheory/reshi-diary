@@ -169,3 +169,16 @@ test("ships Cloudflare-native OneBot with bounded scheduled reminders", async ()
   assert.ok(config.migrations.some((migration) => migration.new_sqlite_classes?.includes("OneBotSession")));
   assert.deepEqual(config.triggers.crons, ["* * * * *"]);
 });
+
+test("roll call settings are discoverable and D1 plugin authentication bypasses the optional Rust proxy", async () => {
+  const page = await render("/plugins/roll-call");
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /点名设置/);
+  assert.match(html, /展示模式/);
+  assert.match(html, /内定点名/);
+  assert.match(html, /next=%2Fplugins%2Froll-call/);
+  const api = await render("/api/roll-call?view=lists", { env: { RUST_BACKEND_ORIGIN: "https://rust.example.test" } });
+  assert.equal(api.status, 401);
+  assert.match((await api.json()).error, /请先登录/);
+});

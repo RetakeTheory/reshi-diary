@@ -6,6 +6,7 @@ import type { RollCallConfig, RollCallRecord } from "../../../lib/roll-call";
 
 const initial: RollCallConfig = { title: "我的花名册", names: [], required: [], count: 1, cursor: 0, mode: "random", drawn: [], revision: 0 };
 const endpoint = "/api/roll-call";
+type ListsResponse = { lists: RollCallConfig[]; account: { displayName: string; kind: "reader" | "admin" } };
 class ApiError extends Error { status: number; constructor(message: string, status: number) { super(message); this.status = status; } }
 async function api<T>(url: string, body?: unknown): Promise<T> {
   const response = await fetch(url, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -21,6 +22,8 @@ function download(records: RollCallRecord[]) {
 function dateTime(time: number) { return new Date(time).toLocaleString("zh-CN"); }
 
 export default function RollCall() {
+  const [account, setAccount] = useState<ListsResponse["account"] | null | undefined>(undefined);
+  const [presenting, setPresenting] = useState(false);
   const [config, setConfig] = useState(initial);
   const [namesText, setNamesText] = useState("");
   const [requiredText, setRequiredText] = useState("");
@@ -46,16 +49,18 @@ export default function RollCall() {
   const uploadInput = useRef<HTMLInputElement>(null);
 
   const readLists = useCallback(async () => {
-    const data = await api<{ lists: RollCallConfig[] }>(endpoint + "?view=lists"); setLists(data.lists);
+    const data = await api<ListsResponse>(endpoint + "?view=lists"); setLists(data.lists); setAccount(data.account);
   }, []);
   useEffect(() => {
     let active = true;
-    void api<{ lists: RollCallConfig[] }>(endpoint + "?view=lists").then((data) => { if (active) setLists(data.lists); }).catch((error) => { if (active) setMessage(error.message); });
+    void api<ListsResponse>(endpoint + "?view=lists").then((data) => { if (active) { setLists(data.lists); setAccount(data.account); } }).catch((error) => { if (active) { setAccount(null); setMessage(error.message); } });
+    const refreshSession = () => { void readLists().then(() => { if (active) setMessage(""); }).catch((error) => { if (active && error instanceof ApiError && error.status === 401) { setAccount(null); setMessage(error.message); } }); };
+    window.addEventListener("focus", refreshSession);
     const key = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.shiftKey && event.code === "KeyM") { event.preventDefault(); dialog.current?.showModal(); }
     };
-    window.addEventListener("keydown", key); return () => { active = false; window.removeEventListener("keydown", key); };
-  }, []);
+    window.addEventListener("keydown", key); return () => { active = false; window.removeEventListener("keydown", key); window.removeEventListener("focus", refreshSession); };
+  }, [readLists]);
 
   function loadConfig(value: RollCallConfig) {
     setConfig(value); setNamesText(value.names.join("\n")); setRequiredText(value.required.join("\n")); setResult(null);
@@ -132,13 +137,13 @@ export default function RollCall() {
   const remaining = config.mode === "preset" ? config.required.length - config.cursor : config.names.length - config.drawn.length;
   const disabled = busy || pending;
 
-  return <section className="roll-call shell">
+  return <section className={`roll-call shell${presenting ? " is-presenting" : ""}`}>
     <header className="roll-call-head"><p>ROLL CALL / 06</p><h1><button type="button" onClick={() => {
       const now = Date.now(); const clicks = titleClicks.current;
       clicks.count = now - clicks.time < 1500 ? clicks.count + 1 : 1; clicks.time = now;
       if (clicks.count >= 5) { clicks.count = 0; dialog.current?.showModal(); }
     }}>今天，轮到谁？</button></h1><p>把名字交给点名器，把每一次相遇留在历史里。</p></header>
-    <div className="roll-call-tabs"><button type="button" aria-pressed={tab === "draw"} onClick={() => setTab("draw")}>开始点名</button><button type="button" aria-pressed={tab === "history"} onClick={() => { setTab("history"); void history(); }}>历史记录</button><a href="/login">登录账户</a></div>
+    <div className="roll-call-tabs"><button type="button" aria-pressed={tab === "draw"} onClick={() => setTab("draw")}>开始点名</button><button type="button" aria-pressed={tab === "history"} onClick={() => { setTab("history"); void history(); }}>历史记录</button><button type="button" onClick={() => dialog.current?.showModal()}>点名设置</button><button type="button" onClick={() => { setTab("draw"); setPresenting(true); }}>展示模式</button>{account ? <span className="roll-call-account">已登录：{account.displayName}</span> : <a href="/login?next=%2Fplugins%2Froll-call">{account === undefined ? "正在识别登录…" : "登录后返回点名器"}</a>}</div>
     {message && <p className="roll-call-message" role="status">{message}</p>}
     {pending && !busy && <p role="alert">请求结果尚未确认。请点击“重试本次点名”，同一次请求不会重复保存。<button type="button" onClick={() => { pendingDraw.current = null; setPending(false); setMessage("已解除重试状态；请先查询历史并恢复最新进度，再继续点名。"); }}>解除重试状态</button></p>}
     {tab === "draw" ? <div className="roll-call-layout"><section className="roll-call-panel">
@@ -158,6 +163,6 @@ export default function RollCall() {
       {historyError && <p role="alert">{historyError}</p>}{loading ? <p role="status">正在查询…</p> : !records.length ? <p>暂无记录。登录后点名会自动保存，也可以导入之前导出的历史。</p> : <div className="roll-call-history-list">{records.map((record) => <article key={record.id}><header><h3>{record.title}</h3><time dateTime={new Date(record.createdAt).toISOString()}>{dateTime(record.createdAt)}</time></header><p>{record.mode === "preset" ? "内定顺序" : "随机点名"} · {record.count} 人{record.source === "import" ? " · 文件导入" : ""}</p><ol>{record.results.map((name) => <li key={name}>{name}</li>)}</ol><footer><button type="button" disabled={disabled} onClick={() => reuse(record, false)}>恢复名单与进度</button><button type="button" disabled={disabled} onClick={() => reuse(record, true)}>导入已点名单</button><button type="button" onClick={() => download([record])}>导出记录</button></footer></article>)}</div>}
       <footer className="roll-call-pagination"><span>共 {total} 条 · 第 {page} / {Math.max(1, Math.ceil(total / 20))} 页</span><button type="button" disabled={loading || page <= 1} onClick={() => void history(page - 1)}>上一页</button><button type="button" disabled={loading || page * 20 >= total} onClick={() => void history(page + 1)}>下一页</button></footer>
     </section>}
-    <dialog ref={dialog} className="roll-call-settings" aria-labelledby="roll-call-settings-title"><header><h2 id="roll-call-settings-title">点名设置</h2><button type="button" onClick={() => dialog.current?.close()}>关闭</button></header>{message && <p role="status">{message}</p>}<fieldset disabled={disabled}><label>点名模式<select value={config.mode} onChange={(event) => setConfig({ ...config, mode: event.target.value as "random" | "preset" })}><option value="random">随机点名</option><option value="preset">内定点名（仅指定名单，按顺序）</option></select></label><label>指定名单与顺序（每行一人）<textarea rows={8} value={requiredText} onChange={(event) => { setRequiredText(event.target.value); setConfig({ ...config, cursor: 0 }); }} /></label><label>导入指定名单<input type="file" accept=".txt,.csv,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importNames(file, "required"); event.target.value = ""; }} /></label><p>内定模式只点这份名单中的人，严格按从上到下的顺序，本轮已取出 {config.cursor} 人。随机模式使用完整花名册，本轮不重复。修改名单会重置相应进度。</p><button type="button" onClick={() => void save()}>保存设置</button></fieldset></dialog>
+    <dialog ref={dialog} className="roll-call-settings" aria-labelledby="roll-call-settings-title"><header><h2 id="roll-call-settings-title">点名设置</h2><button type="button" onClick={() => dialog.current?.close()}>关闭</button></header>{message && <p role="status">{message}</p>}<p>选择内定模式后，在下方按顺序填写姓名并保存。展示模式隐藏管理入口；按 Ctrl + Shift + M 或连点标题五次可重新打开。</p>{presenting && <button type="button" onClick={() => setPresenting(false)}>退出展示模式</button>}<fieldset disabled={disabled}><label>点名模式<select value={config.mode} onChange={(event) => setConfig({ ...config, mode: event.target.value as "random" | "preset" })}><option value="random">随机点名</option><option value="preset">内定点名（仅指定名单，按顺序）</option></select></label><label>指定名单与顺序（每行一人）<textarea rows={8} value={requiredText} onChange={(event) => { setRequiredText(event.target.value); setConfig({ ...config, cursor: 0 }); }} /></label><label>导入指定名单<input type="file" accept=".txt,.csv,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importNames(file, "required"); event.target.value = ""; }} /></label><p>内定模式只点这份名单中的人，严格按从上到下的顺序，本轮已取出 {config.cursor} 人。随机模式使用完整花名册，本轮不重复。修改名单会重置相应进度。</p><button type="button" onClick={() => void save()}>保存设置</button></fieldset></dialog>
   </section>;
 }
