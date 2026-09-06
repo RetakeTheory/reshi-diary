@@ -1,8 +1,19 @@
+import { resolveRollCallIdentity } from "../../../lib/roll-call-auth";
+import { rustBackendFetch } from "../../../lib/rust-backend";
+import { getAdminSession } from "../../admin/admin-auth";
 import { getD1 } from "../../../db/runtime";
 import { readerFromRequest } from "../../../lib/reader-auth";
 import { sameOrigin } from "../../../lib/admin-email-auth";
 import { drawRollCall, normalizeHistoryImport, normalizeRollCall, RollCallInputError } from "../../../lib/roll-call";
 import { ensureRollCallSchema, queryRollCallHistory, saveRollCallList, saveRollCallRecord } from "../../../lib/roll-call-store";
+
+function rollCallIdentity(request: Request) {
+  return resolveRollCallIdentity(request, {
+    d1Reader: () => readerFromRequest(request),
+    rustReader: (token) => rustBackendFetch("/api/auth/me", { headers: { Cookie: `reshi_user_session=${token}` }, redirect: "error" }),
+    admin: () => getAdminSession(),
+  });
+}
 
 const headers = { "Cache-Control": "no-store" };
 function failure(error: unknown) {
@@ -13,13 +24,13 @@ function failure(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    const user = await readerFromRequest(request);
+    const user = await rollCallIdentity(request);
     if (!user) return Response.json({ error: "请先登录，名单与历史仅自己可见" }, { status: 401, headers });
     const db = await getD1(); await ensureRollCallSchema(db);
     const params = new URL(request.url).searchParams;
     if (params.get("view") === "lists") {
       const rows = await db.prepare("SELECT config_json FROM roll_call_lists WHERE owner_id = ? ORDER BY updated_at DESC LIMIT 100").bind(user.id).all<{ config_json: string }>();
-      return Response.json({ lists: rows.results.map((row) => JSON.parse(row.config_json)) }, { headers });
+      return Response.json({ lists: rows.results.map((row) => JSON.parse(row.config_json)), account: { displayName: user.displayName, kind: user.kind } }, { headers });
     }
     const page = Number(params.get("page") || 1);
     const from = Number(params.get("from") || 0); const to = Number(params.get("to") || Number.MAX_SAFE_INTEGER);
@@ -32,7 +43,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: "请求来源无效" }, { status: 403, headers });
   try {
-    const user = await readerFromRequest(request);
+    const user = await rollCallIdentity(request);
     if (!user) return Response.json({ error: "请先登录，名单与历史仅自己可见" }, { status: 401, headers });
     // Bound the stream before JSON parsing, including requests without Content-Length.
     const reader = request.body?.getReader();

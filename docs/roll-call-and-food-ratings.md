@@ -6,7 +6,7 @@
 
 1. 粘贴花名册，或导入 UTF-8 TXT、简单 CSV、JSON 姓名数组。支持换行、逗号、顿号和制表符；自动去重，同名请增加学号区分。不支持带表头或多列复杂 CSV。
 2. 保存名单。相同名称保存会更新该名单，改名可另存一份。
-3. 点名设置默认隐藏。按 **Ctrl + Shift + M**，或连续点击标题“今天，轮到谁？”五次打开；按 Escape 或“关闭”收起。
+3. 点击“点名设置”配置模式与顺序；准备好后点击“展示模式”隐藏管理入口。展示时按 **Ctrl + Shift + M**，或连续点击标题“今天，轮到谁？”五次重新打开；按 Escape 或“关闭”收起。
 4. 设置随机模式，或内定模式及名单顺序。内定名单中的名字必须同时在完整花名册里。保存设置后开始点名。
 5. 随机模式从花名册中抽取，本轮不重复。内定模式严格按指定顺序取出，名单外的人不会被选中。单人逐个点，多人按队列顺序点；剩余人数不足会提示减少人数，抽完停止。
 6. “开启新一轮”重置进度，保留历史。修改花名册会重置进度；修改内定顺序会重置内定进度。
@@ -27,14 +27,14 @@
 
 沿用 `wrangler.jsonc` 的 `DB` 绑定。餐厅 schema 通过已有 `ensureDatabaseSchema` 添加字段及表，点名器首次请求幂等创建 `roll_call_lists`、`roll_call_history` 和索引，不需要另外申请 D1 数据库。查询使用绑定参数；一次点名和进度推进通过 D1 batch 原子提交。
 
-这两个插件 API 固定走 Worker/D1，不转发 Rust。账户认证沿用现有 D1 读者会话；若另外使用独立 Rust 数据库登录，需先统一账户/会话来源，避免两个数据库中的会话不一致。
+这两个插件 API 固定走 Worker/D1，不转发 Rust。点名器先验证 D1 读者会话，再向已配置的 Rust /api/auth/me 验证网站读者会话，也接受当前域名下已验证的管理员会话。D1 读者保留原 owner ID，Rust 和管理员使用独立的 owner 命名空间；不会复制密码、签发额外会话或绕过过期/封禁检查。登录链接带返回点名器的 next 参数，回到页面时会刷新登录状态。
 
 GitHub 的 `Rust backend` 工作流在 PR 上运行 Rust fmt、clippy、test，以及前端检查、构建和插件测试；合并到 `main` 后沿用 `Deploy Worker` 自动构建、部署并验证生产绑定。
 
 本地验证：
 
 ```sh
-node --experimental-strip-types --test tests/roll-call.test.mjs tests/food-rankings.test.mjs tests/visual-editor.test.mjs
+node --experimental-strip-types --test tests/roll-call.test.mjs tests/roll-call-auth.test.mjs tests/food-rankings.test.mjs tests/visual-editor.test.mjs
 node scripts/check-visual-editor-coverage.mjs
 ```
 
