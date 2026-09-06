@@ -84,7 +84,8 @@ const worker = {
   async scheduled(controller: { scheduledTime: number }, env: Cloudflare.Env) {
     await ensureDatabaseSchema();
     const rows = await env.DB.prepare(`SELECT DISTINCT bot_id FROM onebot_scheduled_messages
-      WHERE due_at <= ? AND (claimed_at IS NULL OR claimed_at < ?) LIMIT 50`)
+      WHERE due_at <= ? AND (claimed_at IS NULL OR claimed_at < ?)
+      UNION SELECT bot_id FROM onebot_bots WHERE enabled = 1 LIMIT 50`)
       .bind(controller.scheduledTime, controller.scheduledTime - 60_000).all<{ bot_id: string }>();
     await Promise.allSettled((rows.results || []).map((row) => env.ONEBOT.getByName(row.bot_id).processDue(row.bot_id, controller.scheduledTime)));
   },

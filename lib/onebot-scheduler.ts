@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { ensureDatabaseSchema, getD1 } from "../db/runtime";
 import { renderOneBotReminderCard } from "./onebot-reminder-card";
-import { deleteS3Object, getS3Object, putS3Object } from "./s3-storage";
+import { deleteS3Object, getS3Object } from "./s3-storage";
 
 const MAX_ATTEMPTS = 3;
 
@@ -78,24 +78,12 @@ export async function createGroupReminder(input: { botId: string; groupId: strin
 
   const id = crypto.randomUUID();
   const now = Date.now();
-  const key = `uploads/onebot-scheduled/${id}.png`;
-  const card = await renderOneBotReminderCard({ text: input.text, dueAt: input.dueAt, generatedAt: now });
-  const uploaded = await putS3Object(key, {
-    body: card,
-    filename: "group-reminder-card.png",
-    contentType: "image/png",
-    previewable: true,
-  });
-  if (!uploaded.ok) throw new Error(`提醒卡片存储失败（HTTP ${uploaded.status}）`);
-  try {
-    await db.prepare(`INSERT INTO onebot_scheduled_messages
-      (id, bot_id, target_type, target_id, delivery_mode, summary, message_text, image_key, admin_email, mention_user_id, due_at, attempts, claimed_at, created_at)
-      VALUES (?, ?, 'group', ?, 'card-image', ?, '', ?, NULL, ?, ?, 0, NULL, ?)`)
-      .bind(id, input.botId, input.groupId, [...input.text].slice(0, 80).join(""), key, input.userId, input.dueAt, now).run();
-  } catch (error) {
-    await deleteS3Object(key).catch(() => null);
-    throw error;
-  }
+  // Persist first so command acknowledgement never waits for font loading or S3.
+  // The card is rendered when the reminder becomes due; failures then use text.
+  await db.prepare(`INSERT INTO onebot_scheduled_messages
+    (id, bot_id, target_type, target_id, delivery_mode, summary, message_text, image_key, admin_email, mention_user_id, due_at, attempts, claimed_at, created_at)
+    VALUES (?, ?, 'group', ?, 'card-image', ?, ?, NULL, NULL, ?, ?, 0, NULL, ?)`)
+    .bind(id, input.botId, input.groupId, [...input.text].slice(0, 80).join(""), input.text, input.userId, input.dueAt, now).run();
   return id;
 }
 
@@ -113,7 +101,18 @@ async function scheduledMessage(row: ScheduledOneBotRow) {
     : [];
   if (row.message_text) message.push({ type: "text", data: { text: row.message_text } });
   if (row.delivery_mode === "text") return message;
-  if (!row.image_key) throw new Error("定时图片不存在");
+  if (!row.image_key && row.delivery_mode === "card-image") {
+    try {
+      const bytes = await renderOneBotReminderCard({ text: row.message_text || row.summary, dueAt: row.due_at });
+      message.splice(row.mention_user_id ? 2 : 0);
+      message.push({ type: "image", data: { file: `base64://${Buffer.from(bytes).toString("base64")}` } });
+      return message;
+    } catch {
+      // A readable reminder is more useful than retrying a broken renderer.
+      return message;
+    }
+  }
+  if (!row.image_key) return message;
   const object = await getS3Object(row.image_key);
   if (!object.ok) throw new Error(`读取定时图片失败（HTTP ${object.status}）`);
   const bytes = await object.arrayBuffer();

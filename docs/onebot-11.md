@@ -50,6 +50,8 @@ Users can send the Bot a private message in any of these forms:
 
 Fixed dates are interpreted in China Standard Time. A date without a year points to the next occurrence that has not passed, and a date without a time defaults to 09:00. Each QQ account may keep at most 30 pending reminders per Bot. Reminder text remains in D1 only until delivery; it is removed immediately after a successful send, cancellation, or the final failed attempt.
 
+Group reminder creation writes the pending row before replying, so the confirmation does not wait for fonts, PNG rendering or S3. The card is generated when the reminder becomes due and falls back to text if rendering fails. Commands that take more than three seconds send a processing notice; malformed reminder text and unknown slash commands receive a usage response instead of being ignored.
+
 ## Storage and cost controls
 
 - `OneBotSession` stores no message contents. It keeps only one Bot identity key and one next-wakeup alarm per Bot.
