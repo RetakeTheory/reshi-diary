@@ -64,7 +64,7 @@ export function wrapOneBotReminderText(value: string, maxWidth = 19, maxLines = 
 }
 
 async function fetchCardFont(path: string) {
-  const response = await fetch(new URL(path, FONT_ORIGIN));
+  const response = await fetch(new URL(path, FONT_ORIGIN), { signal: AbortSignal.timeout(8_000) });
   if (!response.ok) throw new Error(`提醒卡片字体加载失败（HTTP ${response.status}）`);
   return response.arrayBuffer();
 }
@@ -82,13 +82,15 @@ async function loadCardFonts() {
 
 export async function renderOneBotReminderCard(input: {
   text: string;
+  title?: string;
+  menu?: boolean;
   dueAt: number;
   generatedAt?: number;
   fonts?: OneBotCardFonts;
 }) {
   const generatedAt = input.generatedAt ?? Date.now();
-  const lines = wrapOneBotReminderText(input.text);
-  const height = Math.min(900, Math.max(560, 430 + lines.length * 52));
+  const lines = wrapOneBotReminderText(input.text, input.menu ? 30 : 19, input.menu ? 20 : MAX_LINES);
+  const height = Math.min(input.menu ? 1400 : 900, Math.max(560, 430 + lines.length * 52));
   const fonts = input.fonts || await loadCardFonts();
   const fontFamily = "OneBot Noto Sans SC, OneBot Rounded SC";
   const image = new ImageResponse(
@@ -123,7 +125,7 @@ export async function renderOneBotReminderCard(input: {
         color: "#ffffff",
         fontSize: 25,
       }, "i"),
-      "定时提醒",
+      input.title || "定时提醒",
     ),
     element("div", { display: "flex", color: "#4b7fc5", fontSize: 20 }, "REMINDER")),
     element("div", {
@@ -137,12 +139,12 @@ export async function renderOneBotReminderCard(input: {
       background: "#ffffff",
     },
     element("div", { display: "flex", flexDirection: "column" },
-      element("div", { display: "flex", color: "#7194c3", fontSize: 21, marginBottom: 16 }, "提醒时间到了"),
+      element("div", { display: "flex", color: "#7194c3", fontSize: 21, marginBottom: 16 }, input.title || "提醒时间到了"),
       element("div", {
         display: "flex",
         whiteSpace: "pre-wrap",
         color: "#2e3745",
-        fontSize: 42,
+        fontSize: input.menu ? 30 : 42,
         lineHeight: 1.34,
         letterSpacing: "0.01em",
       }, lines.join("\n"))),
@@ -158,7 +160,7 @@ export async function renderOneBotReminderCard(input: {
       color: "#5477a5",
       fontSize: 21,
     },
-    element("span", { display: "flex" }, "设定时间"),
+    element("span", { display: "flex" }, input.title ? "更新时间" : "设定时间"),
     element("span", { display: "flex" }, chinaDateTime(input.dueAt)))),
     element("div", {
       display: "flex",

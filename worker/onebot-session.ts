@@ -2,6 +2,10 @@ import { DurableObject } from "cloudflare:workers";
 import { jsonId, processOneBotEvent, type OneBotPayload } from "../lib/onebot-cloudflare";
 import { dispatchScheduledForBot } from "../lib/onebot-scheduler";
 
+import { OneBotChaoxing, type CxStorage, CX_MENU } from "../lib/onebot-chaoxing";
+import { sendOneBotReply } from "../lib/onebot-reply";
+import { groupReminderCommand, oneBotMessageText } from "../lib/onebot-reminder";
+
 type SocketAttachment = { botId: string; verified: boolean };
 type PendingCall = {
   resolve(value: OneBotPayload): void;
@@ -27,6 +31,16 @@ function socketAttachment(socket: WebSocket): SocketAttachment | null {
 }
 
 export class OneBotSession extends DurableObject<Cloudflare.Env> {
+  private readonly chaoxing = new OneBotChaoxing(
+    (this.ctx as unknown as { storage: CxStorage }).storage,
+    async (qq, text, image) => {
+      await sendOneBotReply((action, params) => this.call(action, params), "private", qq, text, image ? async () => {
+        const { renderOneBotReminderCard } = await import("../lib/onebot-reminder-card");
+        return renderOneBotReminderCard({ text, title: "学习通助手", menu: text === CX_MENU, dueAt: Date.now() });
+      } : undefined);
+    },
+  );
+  private dueTask: Promise<{ sent: number; nextAt: number | null }> | null = null;
   private readonly pending = new Map<string, PendingCall>();
 
   async fetch(request: Request) {
@@ -81,11 +95,21 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     const storage = this.schedulerStorage();
     await storage.put("schedulerBotId", botId);
     const current = await storage.getAlarm();
-    if (current === null || dueAt < current) await storage.setAlarm(Math.max(Date.now() + 1000, dueAt));
+    if (current === null || current <= Date.now() || dueAt < current) await storage.setAlarm(Math.max(Date.now() + 1000, dueAt));
   }
 
   async processDue(botId: string, now = Date.now()) {
+    if (this.dueTask) return this.dueTask;
+    const task = this.processAllDue(botId, now);
+    this.dueTask = task;
+    try { return await task; } finally { this.dueTask = null; }
+  }
+
+  private async processAllDue(botId: string, now: number) {
     const result = await dispatchScheduledForBot(botId, (action, params) => this.call(action, params), now);
+    const bot = await this.env.DB.prepare("SELECT enabled FROM onebot_bots WHERE bot_id = ?").bind(botId).first<{ enabled: number }>();
+    const cxNext = bot?.enabled ? await this.chaoxing.poll(now) : null;
+    if (cxNext !== null) result.nextAt = Math.min(result.nextAt ?? Infinity, Math.max(Date.now() + 5000, cxNext));
     if (result.nextAt !== null) await this.scheduleWake(botId, result.nextAt);
     else {
       const storage = this.schedulerStorage();
@@ -153,9 +177,39 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
   private async processEvent(botId: string, payload: OneBotPayload) {
     const targetType = payload.message_type === "group" ? "group" : "private";
     const targetId = jsonId(targetType === "group" ? payload.group_id : payload.user_id);
+    const rawText = oneBotMessageText(Array.isArray(payload.message) ? undefined : payload.raw_message, payload.message);
+    const commandText = targetType === "group" ? groupReminderCommand(rawText, botId) : rawText;
+    const canReply = payload.post_type === "message" && ["private", "group"].includes(String(payload.message_type))
+      && /^\d{5,20}$/.test(targetId) && Number.isSafeInteger(Number(targetId));
+    const sendText = (text: string) => sendOneBotReply((action, params) => this.call(action, params), targetType, targetId, text);
+    const slowNotice = canReply && commandText && !commandText.startsWith("/register")
+      ? setTimeout(() => { void sendText("正在处理，请稍候；如长时间没有结果，可发送 /status 查询。").catch(() => {}); }, 3000) : null;
     try {
+      const qq = jsonId(payload.user_id);
+      if (payload.post_type === "message" && ["private", "group"].includes(String(payload.message_type))
+        && /^\d{5,20}$/.test(qq) && Number.isSafeInteger(Number(qq))) {
+        const handled = await this.chaoxing.command(qq, commandText, targetType === "group", async (text, image) => {
+          if (!/^\d{5,20}$/.test(targetId) || !Number.isSafeInteger(Number(targetId))) return;
+          await sendOneBotReply((action, params) => this.call(action, params), "group", targetId, text, image ? async () => {
+            const { renderOneBotReminderCard } = await import("../lib/onebot-reminder-card");
+            return renderOneBotReminderCard({ text, title: "QQ Bot 菜单", menu: true, dueAt: Date.now() });
+          } : undefined);
+        });
+        if (handled) {
+          const next = await this.chaoxing.nextAt();
+          if (next !== null) await this.scheduleWake(botId, next);
+          return;
+        }
+      }
       const reply = await processOneBotEvent(botId, payload);
-      if (!reply) return;
+      if (!reply) {
+        if (canReply && commandText.includes("提醒")) {
+          await sendText("没有识别到提醒时间。示例：10分钟后提醒我 喝水，或 明天 08:00 提醒我 上课。");
+        } else if (canReply && commandText.startsWith("/")) {
+          await sendText("未识别的命令，请发送 /help 查看菜单。");
+        }
+        return;
+      }
       if ("wakeAt" in reply && reply.wakeAt) await this.scheduleWake(botId, reply.wakeAt);
       const isGroup = reply.targetType === "group";
       const outgoingMessage = isGroup && reply.mentionUserId
@@ -174,6 +228,9 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     } catch (error) {
       console.error(JSON.stringify({ event: "onebot_event_process_failed", botId, targetType, targetId,
         reason: error instanceof Error ? error.message : "unknown" }));
+      if (canReply) await sendText("处理失败或机器人接口超时，请稍后重试。请勿重复发送含密码的消息。").catch(() => {});
+    } finally {
+      if (slowNotice !== null) clearTimeout(slowNotice);
     }
   }
 
