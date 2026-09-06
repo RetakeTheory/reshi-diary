@@ -4,6 +4,7 @@ import { createElement, type CSSProperties, type ReactNode } from "react";
 const CARD_WIDTH = 960;
 const MAX_LINES = 10;
 const FONT_ORIGIN = "https://rettheory.top";
+const MENU_CACHE_URL = "https://onebot-card-cache.invalid/help-menu-v2.png";
 
 export type OneBotCardFonts = {
   rounded: ArrayBuffer;
@@ -64,9 +65,22 @@ export function wrapOneBotReminderText(value: string, maxWidth = 19, maxLines = 
 }
 
 async function fetchCardFont(path: string) {
-  const response = await fetch(new URL(path, FONT_ORIGIN), { signal: AbortSignal.timeout(8_000) });
+  let response: Response | null = null;
+  try {
+    const { env } = await import("cloudflare:workers");
+    const assets = (env as unknown as { ASSETS?: { fetch(request: Request): Promise<Response> } }).ASSETS;
+    if (assets) response = await assets.fetch(new Request(new URL(path, FONT_ORIGIN)));
+  } catch {
+    // Tests and non-Worker runtimes do not expose the Cloudflare asset binding.
+  }
+  response ||= await fetch(new URL(path, FONT_ORIGIN), { signal: AbortSignal.timeout(12_000) });
   if (!response.ok) throw new Error(`提醒卡片字体加载失败（HTTP ${response.status}）`);
   return response.arrayBuffer();
+}
+
+function defaultCardCache() {
+  if (typeof caches === "undefined") return null;
+  return (caches as CacheStorage & { default?: Cache }).default || null;
 }
 
 async function loadCardFonts() {
@@ -88,6 +102,11 @@ export async function renderOneBotReminderCard(input: {
   generatedAt?: number;
   fonts?: OneBotCardFonts;
 }) {
+  const cache = input.menu ? defaultCardCache() : null;
+  if (cache) {
+    const cached = await cache.match(MENU_CACHE_URL).catch(() => undefined);
+    if (cached?.ok) return cached.arrayBuffer();
+  }
   const generatedAt = input.generatedAt ?? Date.now();
   const lines = wrapOneBotReminderText(input.text, input.menu ? 30 : 19, input.menu ? 20 : MAX_LINES);
   const height = Math.min(input.menu ? 1400 : 900, Math.max(560, 430 + lines.length * 52));
@@ -180,6 +199,11 @@ export async function renderOneBotReminderCard(input: {
   const signature = new Uint8Array(png, 0, Math.min(8, png.byteLength));
   if (png.byteLength < 1000 || signature[0] !== 0x89 || signature[1] !== 0x50) {
     throw new Error("提醒卡片 PNG 生成失败");
+  }
+  if (cache) {
+    await cache.put(MENU_CACHE_URL, new Response(png.slice(0), {
+      headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" },
+    })).catch(() => undefined);
   }
   return png;
 }
