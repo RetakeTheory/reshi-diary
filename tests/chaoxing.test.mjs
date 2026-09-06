@@ -69,6 +69,12 @@ test("login credentials stay out of URLs and upstream error text",async()=>{
   });
   await assert.rejects(client.login("13800138000","secret"), e=>!e.message.includes("secret"));
 });
+test("Chaoxing requests retry network failures and distinguish timeouts",async()=>{
+  let attempts=0;
+  const client=new ChaoxingClient({},async()=>{ attempts++; throw new DOMException("timed out","TimeoutError"); });
+  await assert.rejects(client.login("13800138000","secret"), e=>/响应超过 20 秒/.test(e.message));
+  assert.equal(attempts,2);
+});
 
 test("image failures fall back to text and explicit QQ failure is surfaced",async()=>{
   const {sendOneBotReply}=await import("../lib/onebot-reply.ts"); const messages=[];

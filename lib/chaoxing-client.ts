@@ -38,9 +38,23 @@ export class ChaoxingClient {
     headers.set("User-Agent", UA);
     const cookie = Object.entries(this.cookies).map(([k,v]) => k + "=" + v).join("; ");
     if (cookie) headers.set("Cookie", cookie);
-    let response: Response;
-    try { response = await this.request(url, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(8000) }); }
-    catch { throw new CxError("学习通网络连接失败，请稍后重试"); }
+    let response: Response | null = null;
+    let lastError: unknown;
+    const timeoutMs = url.includes("passport2.chaoxing.com") ? 20_000 : 15_000;
+    for (let attempt = 0; attempt < 2 && !response; attempt++) {
+      try {
+        response = await this.request(url, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+      } catch (error) {
+        lastError = error;
+        if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 350));
+      }
+    }
+    if (!response) {
+      const timedOut = lastError instanceof Error && /timeout/i.test(`${lastError.name} ${lastError.message}`);
+      throw new CxError(timedOut
+        ? `学习通响应超过 ${timeoutMs / 1000} 秒，请稍后重试`
+        : "Cloudflare 无法连接学习通；可能是学习通限制了当前服务器出口 IP");
+    }
     if (response.status >= 300 && response.status < 400 || response.status === 401) throw new CxError("登录已失效，请重新 /register");
     if (!response.ok) throw new CxError("学习通服务暂不可用，请稍后重试");
     for (const line of response.headers.getSetCookie()) {
