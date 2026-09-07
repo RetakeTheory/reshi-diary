@@ -72,8 +72,24 @@ test("login credentials stay out of URLs and upstream error text",async()=>{
 test("Chaoxing requests retry network failures and distinguish timeouts",async()=>{
   let attempts=0;
   const client=new ChaoxingClient({},async()=>{ attempts++; throw new DOMException("timed out","TimeoutError"); });
-  await assert.rejects(client.login("13800138000","secret"), e=>/响应超过 20 秒/.test(e.message));
+  await assert.rejects(client.login("13800138000","secret"), e=>/两条登录线路/.test(e.message));
   assert.equal(attempts,2);
+});
+test("login falls back to the POST mobile endpoint without credentials in the URL",async()=>{
+  const calls=[];
+  const client=new ChaoxingClient({},async(url,init)=>{
+    calls.push({url:String(url),body:String(init.body)});
+    assert.ok(!String(url).includes("13800138000")); assert.ok(!String(url).includes("secret"));
+    if(String(url).includes("loginregister")) return new Response(JSON.stringify({status:true,uid:"123"}),{
+      headers:{"Set-Cookie":"vc3=session; Path=/"},
+    });
+    if(String(url).includes("courselistdata")) return new Response('<div id="course_1_2">课程</div>');
+    throw new Error("unexpected request");
+  });
+  const session=await client.login("13800138000","secret");
+  assert.equal(session.cookies._uid,"123"); assert.equal(session.cookies.vc3,"session");
+  assert.deepEqual(session.courses,[{courseId:"1",classId:"2"}]);
+  assert.match(calls[0].body,/uname=13800138000/); assert.match(calls[0].body,/code=secret/);
 });
 
 test("image failures fall back to text and explicit QQ failure is surfaced",async()=>{
@@ -93,4 +109,7 @@ test("reminder creation acknowledges without rendering or S3 and command errors 
   assert.match(session, /正在处理，请稍候/);
   assert.match(session, /没有识别到提醒时间/);
   assert.match(session, /未识别的命令/);
+  assert.ok(session.indexOf("const response = await this.call(action") < session.indexOf("onebot_reminder_alarm_schedule_failed"));
+  assert.match(session, /提醒处理失败或机器人接口超时/);
 });
+
