@@ -48,6 +48,7 @@ interface ResponseInit {
 
 declare namespace Cloudflare {
   interface Env {
+    ONEBOT_REMINDERS: R2Bucket;
     ASSETS?: Fetcher;
     IMAGES?: {
       input(stream: ReadableStream): {
@@ -72,3 +73,4 @@ declare module "cloudflare:workers" {
     constructor(ctx: DurableObjectState, env: WorkerEnv);
   }
 }
+
