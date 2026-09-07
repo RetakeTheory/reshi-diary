@@ -180,10 +180,16 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
   }
 
   private async processEvent(botId: string, payload: OneBotPayload) {
+    if (payload.post_type === "message" && jsonId(payload.user_id) === botId) {
+      // Some OneBot implementations report the bot's own outgoing message as
+      // a normal message event. Ignore it to prevent self-reply loops.
+      return;
+    }
     const targetType = payload.message_type === "group" ? "group" : "private";
     const targetId = jsonId(targetType === "group" ? payload.group_id : payload.user_id);
     const rawText = oneBotMessageText(Array.isArray(payload.message) ? undefined : payload.raw_message, payload.message);
     const commandText = targetType === "group" ? groupReminderCommand(rawText, botId) : rawText;
+    const isReminderCommand = commandText.includes("提醒我");
     const canReply = payload.post_type === "message" && ["private", "group"].includes(String(payload.message_type))
       && /^\d{5,20}$/.test(targetId) && Number.isSafeInteger(Number(targetId));
     const sendText = (text: string) => sendOneBotReply((action, params) => this.call(action, params), targetType, targetId, text);
@@ -213,7 +219,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
       }
       const reply = await processOneBotEvent(botId, payload);
       if (!reply) {
-        if (canReply && commandText.includes("提醒")) {
+        if (canReply && isReminderCommand) {
           await sendText("没有识别到提醒时间。示例：10分钟后提醒我 喝水，或 明天 08:00 提醒我 上课。");
         } else if (canReply && commandText.startsWith("/")) {
           await sendText("未识别的命令，请发送 /help 查看菜单。");
@@ -246,7 +252,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
       if (canReply) {
         const failure = commandText.startsWith("/register")
           ? "注册处理失败或机器人接口超时，请稍后重试。请勿重复发送含密码的消息。"
-          : commandText.includes("提醒")
+          : isReminderCommand
             ? "提醒处理失败或机器人接口超时，请稍后重试。"
             : "命令处理失败或机器人接口超时，请稍后重试。";
         await sendText(failure).catch(() => {});
