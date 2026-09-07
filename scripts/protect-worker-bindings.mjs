@@ -36,6 +36,11 @@ const durableMigrations = Array.isArray(config.migrations) ? config.migrations :
 if (!durableMigrations.some((migration) => migration?.new_sqlite_classes?.includes("OneBotSession"))) {
   throw new Error("部署已中止：生成的 Wrangler 配置缺少 OneBotSession SQLite migration");
 }
+const r2Bindings = Array.isArray(config.r2_buckets) ? config.r2_buckets : [];
+if (!r2Bindings.some((binding) => binding?.binding === "ONEBOT_REMINDERS")) {
+  r2Bindings.push({ binding: "ONEBOT_REMINDERS", bucket_name: "reshi-diary-onebot-reminders" });
+}
+config.r2_buckets = r2Bindings;
 
 await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 
@@ -45,5 +50,7 @@ console.log(
     ...requiredSecrets,
     "DB",
     "ONEBOT",
+    "ONEBOT_REMINDERS",
   ].join(", ")}`,
 );
+
