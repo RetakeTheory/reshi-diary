@@ -1,9 +1,25 @@
 import { Buffer } from "node:buffer";
+import { env } from "cloudflare:workers";
 import { ensureDatabaseSchema, getD1 } from "../db/runtime";
+import {
+  deleteR2Reminder,
+  deleteR2ReminderById,
+  deleteR2RemindersForBot,
+  deleteR2RemindersForGroup,
+  listR2Reminders,
+  putR2Reminder,
+  type ReminderR2Bucket,
+} from "./onebot-reminder-r2";
 import { renderOneBotReminderCard } from "./onebot-reminder-card";
 import { deleteS3Object, getS3Object } from "./s3-storage";
 
 const MAX_ATTEMPTS = 3;
+
+function reminderBucket() {
+  const bucket = env.ONEBOT_REMINDERS as unknown as ReminderR2Bucket | undefined;
+  if (!bucket) throw new Error("定时提醒存储尚未配置，请联系管理员检查 R2 绑定。");
+  return bucket;
+}
 
 export type ScheduledOneBotRow = {
   id: string;
@@ -43,15 +59,21 @@ function oneBotFailureDetail(payload: Record<string, unknown>) {
 export async function createPrivateReminder(input: { botId: string; userId: string; dueAt: number; text: string }) {
   await ensureDatabaseSchema();
   const db = await getD1();
-  const pending = await db.prepare("SELECT COUNT(*) AS count FROM onebot_scheduled_messages WHERE bot_id = ? AND target_type = 'private' AND target_id = ?")
-    .bind(input.botId, input.userId).first<{ count: number }>();
-  if ((pending?.count || 0) >= 30) throw new Error("你的待发送提醒已达 30 条，请等待部分提醒发出后再添加。");
+  const [pending, r2Rows] = await Promise.all([
+    db.prepare("SELECT COUNT(*) AS count FROM onebot_scheduled_messages WHERE bot_id = ? AND target_type = 'private' AND target_id = ?")
+      .bind(input.botId, input.userId).first<{ count: number }>(),
+    listR2Reminders(reminderBucket(), input.botId),
+  ]);
+  const r2Count = r2Rows.filter((row) => row.target_type === "private" && row.target_id === input.userId).length;
+  if ((pending?.count || 0) + r2Count >= 30) throw new Error("你的待发送提醒已达 30 条，请等待部分提醒发出后再添加。");
   const id = crypto.randomUUID();
   const now = Date.now();
-  await db.prepare(`INSERT INTO onebot_scheduled_messages
-    (id, bot_id, target_type, target_id, delivery_mode, summary, message_text, image_key, admin_email, due_at, attempts, claimed_at, created_at)
-    VALUES (?, ?, 'private', ?, 'text', ?, ?, NULL, NULL, ?, 0, NULL, ?)`)
-    .bind(id, input.botId, input.userId, [...input.text].slice(0, 80).join(""), input.text, input.dueAt, now).run();
+  await putR2Reminder(reminderBucket(), {
+    id, bot_id: input.botId, target_type: "private", target_id: input.userId,
+    delivery_mode: "text", summary: [...input.text].slice(0, 80).join(""), message_text: input.text,
+    image_key: null, admin_email: null, mention_user_id: null, due_at: input.dueAt,
+    attempts: 0, claimed_at: null, created_at: now,
+  });
   return id;
 }
 
@@ -69,29 +91,43 @@ export async function createGroupReminder(input: { botId: string; groupId: strin
     allowed = false;
   }
   if (!allowed) throw new Error("本群尚未加入 Bot 的允许列表，无法创建提醒。");
-  const pending = await db.prepare(`SELECT COUNT(*) AS group_count,
+  const [pending, r2Rows] = await Promise.all([
+    db.prepare(`SELECT COUNT(*) AS group_count,
       SUM(CASE WHEN mention_user_id = ? THEN 1 ELSE 0 END) AS user_count
     FROM onebot_scheduled_messages WHERE bot_id = ? AND target_type = 'group' AND target_id = ?`)
-    .bind(input.userId, input.botId, input.groupId).first<{ group_count: number; user_count: number }>();
-  if ((pending?.group_count || 0) >= 100) throw new Error("本群的待发送任务已达 100 条，请等待部分任务发出后再添加。");
-  if ((pending?.user_count || 0) >= 30) throw new Error("你在本群的待发送提醒已达 30 条，请等待部分提醒发出后再添加。");
+      .bind(input.userId, input.botId, input.groupId).first<{ group_count: number; user_count: number }>(),
+    listR2Reminders(reminderBucket(), input.botId),
+  ]);
+  const groupRows = r2Rows.filter((row) => row.target_type === "group" && row.target_id === input.groupId);
+  if ((pending?.group_count || 0) + groupRows.length >= 100) throw new Error("本群的待发送任务已达 100 条，请等待部分任务发出后再添加。");
+  if ((pending?.user_count || 0) + groupRows.filter((row) => row.mention_user_id === input.userId).length >= 30) {
+    throw new Error("你在本群的待发送提醒已达 30 条，请等待部分提醒发出后再添加。");
+  }
 
   const id = crypto.randomUUID();
   const now = Date.now();
-  // Persist first so command acknowledgement never waits for font loading or S3.
-  // The card is rendered when the reminder becomes due; failures then use text.
-  await db.prepare(`INSERT INTO onebot_scheduled_messages
-    (id, bot_id, target_type, target_id, delivery_mode, summary, message_text, image_key, admin_email, mention_user_id, due_at, attempts, claimed_at, created_at)
-    VALUES (?, ?, 'group', ?, 'card-image', ?, ?, NULL, NULL, ?, ?, 0, NULL, ?)`)
-    .bind(id, input.botId, input.groupId, [...input.text].slice(0, 80).join(""), input.text, input.userId, input.dueAt, now).run();
+  await putR2Reminder(reminderBucket(), {
+    id, bot_id: input.botId, target_type: "group", target_id: input.groupId,
+    delivery_mode: "card-image", summary: [...input.text].slice(0, 80).join(""), message_text: input.text,
+    image_key: null, admin_email: null, mention_user_id: input.userId, due_at: input.dueAt,
+    attempts: 0, claimed_at: null, created_at: now,
+  });
   return id;
 }
 
 export async function nextScheduledAt(botId: string) {
   const db = await getD1();
-  const row = await db.prepare("SELECT MIN(due_at) AS due_at FROM onebot_scheduled_messages WHERE bot_id = ?")
-    .bind(botId).first<{ due_at: number | null }>();
-  return row?.due_at ?? null;
+  const [row, r2Rows] = await Promise.all([
+    db.prepare("SELECT MIN(due_at) AS due_at FROM onebot_scheduled_messages WHERE bot_id = ?")
+      .bind(botId).first<{ due_at: number | null }>(),
+    listR2Reminders(reminderBucket(), botId),
+  ]);
+  const candidates = [row?.due_at, r2Rows[0]?.due_at].filter((value): value is number => Number.isFinite(value));
+  return candidates.length ? Math.min(...candidates) : null;
+}
+
+export async function listStoredR2Reminders(botId?: string) {
+  return listR2Reminders(reminderBucket(), botId);
 }
 
 async function scheduledMessage(row: ScheduledOneBotRow) {
@@ -185,6 +221,35 @@ export async function dispatchScheduledForBot(botId: string, call: ScheduledOneB
       }
     }
   }
+  const r2Rows = (await listR2Reminders(reminderBucket(), botId))
+    .filter((row) => row.due_at <= now)
+    .slice(0, 20);
+  for (const row of r2Rows) {
+    try {
+      if (!await groupStillAllowed(row)) {
+        await deleteR2Reminder(reminderBucket(), row);
+        console.warn(JSON.stringify({ event: "onebot_r2_reminder_allowlist_removed", id: row.id, botId, targetId: row.target_id }));
+        continue;
+      }
+      const message = await scheduledMessage(row);
+      const action = row.target_type === "group" ? "send_group_msg" : "send_private_msg";
+      const target = row.target_type === "group" ? { group_id: Number(row.target_id) } : { user_id: Number(row.target_id) };
+      const payload = await call(action, { ...target, message, auto_escape: row.delivery_mode === "text" });
+      if (!oneBotActionSucceeded(payload)) throw new Error(oneBotFailureDetail(payload));
+      await deleteR2Reminder(reminderBucket(), row);
+      sent += 1;
+      console.log(JSON.stringify({ event: "onebot_r2_reminder_sent", id: row.id, botId, targetType: row.target_type, deliveryMode: row.delivery_mode }));
+    } catch (error) {
+      const attempts = row.attempts + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        await deleteR2Reminder(reminderBucket(), row);
+        console.error(JSON.stringify({ event: "onebot_r2_reminder_dropped", id: row.id, botId, attempts, reason: error instanceof Error ? error.message : "unknown" }));
+      } else {
+        const retryAt = Date.now() + (attempts === 1 ? 30_000 : 120_000);
+        await putR2Reminder(reminderBucket(), { ...row, attempts, due_at: retryAt });
+      }
+    }
+  }
   return { sent, nextAt: await nextScheduledAt(botId) };
 }
 
@@ -192,10 +257,12 @@ export async function removeScheduledById(id: string, targetType: "group" | "pri
   const db = await getD1();
   const row = await db.prepare("SELECT id, image_key FROM onebot_scheduled_messages WHERE id = ? AND target_type = ? LIMIT 1")
     .bind(id, targetType).first<{ id: string; image_key: string | null }>();
-  if (!row) return false;
-  await db.prepare("DELETE FROM onebot_scheduled_messages WHERE id = ?").bind(id).run();
-  if (row.image_key) await deleteS3Object(row.image_key).catch(() => null);
-  return true;
+  if (row) {
+    await db.prepare("DELETE FROM onebot_scheduled_messages WHERE id = ?").bind(id).run();
+    if (row.image_key) await deleteS3Object(row.image_key).catch(() => null);
+    return true;
+  }
+  return deleteR2ReminderById(reminderBucket(), id, targetType);
 }
 
 export async function removeScheduledForBot(botId: string) {
@@ -203,7 +270,10 @@ export async function removeScheduledForBot(botId: string) {
   const rows = await db.prepare("SELECT image_key FROM onebot_scheduled_messages WHERE bot_id = ? AND image_key IS NOT NULL")
     .bind(botId).all<{ image_key: string }>();
   await db.prepare("DELETE FROM onebot_scheduled_messages WHERE bot_id = ?").bind(botId).run();
-  await Promise.allSettled((rows.results || []).map((row) => deleteS3Object(row.image_key)));
+  await Promise.allSettled([
+    ...(rows.results || []).map((row) => deleteS3Object(row.image_key)),
+    deleteR2RemindersForBot(reminderBucket(), botId),
+  ]);
 }
 
 export async function removeScheduledForGroup(botId: string, groupId: string) {
@@ -213,5 +283,9 @@ export async function removeScheduledForGroup(botId: string, groupId: string) {
     .bind(botId, groupId).all<{ image_key: string }>();
   await db.prepare("DELETE FROM onebot_scheduled_messages WHERE bot_id = ? AND target_type = 'group' AND target_id = ?")
     .bind(botId, groupId).run();
-  await Promise.allSettled((rows.results || []).map((row) => deleteS3Object(row.image_key)));
+  await Promise.allSettled([
+    ...(rows.results || []).map((row) => deleteS3Object(row.image_key)),
+    deleteR2RemindersForGroup(reminderBucket(), botId, groupId),
+  ]);
 }
+
