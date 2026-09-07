@@ -25,4 +25,3 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 declare namespace NodeJS {
 	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "AWS_REGION" | "AWS_S3_BUCKET" | "AWS_ACCESS_KEY_ID" | "AWS_SECRET_ACCESS_KEY" | "GITHUB_TOKEN" | "RESEND_API_KEY">> {}
 }
-
