@@ -12,6 +12,7 @@ type PendingCall = {
   reject(reason: Error): void;
   timeout: ReturnType<typeof setTimeout>;
 };
+const ONEBOT_ACTION_ACK_GRACE_MS = 800;
 type SchedulerStorage = {
   put(key: string, value: string): Promise<void>;
   get<T>(key: string): Promise<T | undefined>;
@@ -70,8 +71,12 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     const result = new Promise<OneBotPayload>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(echo);
-        reject(new Error("QQ Bot 响应超时"));
-      }, 20_000);
+        // Some OneBot 11 implementations execute reverse-WebSocket actions but
+        // never return an echo response. A successful socket write is the only
+        // acknowledgement available in that mode, so do not turn every command
+        // into a false 20-second timeout or resend it as a failure.
+        resolve({ status: "ok", retcode: 0, data: { accepted: true } });
+      }, ONEBOT_ACTION_ACK_GRACE_MS);
       this.pending.set(echo, { resolve, reject, timeout });
     });
     try {
@@ -280,4 +285,3 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     this.pending.clear();
   }
 }
-
