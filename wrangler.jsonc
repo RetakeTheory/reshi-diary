@@ -29,6 +29,12 @@
       "database_id": "552881a1-f18c-4519-b659-7aa2cd648d8b"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "ONEBOT_REMINDERS",
+      "bucket_name": "reshi-diary-onebot-reminders"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -57,3 +63,4 @@
     "enabled": true
   }
 }
+

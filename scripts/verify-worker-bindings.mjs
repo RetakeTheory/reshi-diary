@@ -29,6 +29,7 @@ const required = [
   ["RESEND_API_KEY", "secret_text"],
   ["DB", "d1"],
   ["ONEBOT", "durable_object_namespace"],
+  ["ONEBOT_REMINDERS", "r2_bucket"],
 ];
 
 const problems = [];
@@ -46,4 +47,5 @@ if (problems.length) {
   throw new Error(`生产绑定校验失败：${problems.join("；")}`);
 }
 
-console.log(`Worker ${scriptName} 的 S3、邮件、D1 与 OneBot Durable Object 绑定校验通过${rustBackendOrigin ? "，非 OneBot API 的 Rust 代理已启用" : "，当前使用 D1 API"}`);
+console.log(`Worker ${scriptName} 的 S3、邮件、D1、R2 与 OneBot Durable Object 绑定校验通过${rustBackendOrigin ? "，非 OneBot API 的 Rust 代理已启用" : ""}`);
+

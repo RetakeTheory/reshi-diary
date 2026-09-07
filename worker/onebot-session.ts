@@ -197,7 +197,12 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
         });
         if (handled) {
           const next = await this.chaoxing.nextAt();
-          if (next !== null) await this.scheduleWake(botId, next);
+          if (next !== null) {
+            await this.scheduleWake(botId, next).catch((error) => console.warn(JSON.stringify({
+              event: "onebot_chaoxing_alarm_schedule_failed", botId,
+              reason: error instanceof Error ? error.message : "unknown",
+            })));
+          }
           return;
         }
       }
@@ -210,7 +215,6 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
         }
         return;
       }
-      if ("wakeAt" in reply && reply.wakeAt) await this.scheduleWake(botId, reply.wakeAt);
       const isGroup = reply.targetType === "group";
       const outgoingMessage = isGroup && reply.mentionUserId
         ? [{ type: "at", data: { qq: reply.mentionUserId } }, { type: "text", data: { text: ` ${reply.reply}` } }]
@@ -225,10 +229,23 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
         console.error(JSON.stringify({ event: "onebot_event_reply_failed", botId, targetType: reply.targetType,
           targetId: reply.targetId, retcode: Number(response.retcode) }));
       }
+      if ("wakeAt" in reply && reply.wakeAt) {
+        await this.scheduleWake(botId, reply.wakeAt).catch((error) => console.warn(JSON.stringify({
+          event: "onebot_reminder_alarm_schedule_failed", botId, targetType: reply.targetType, targetId: reply.targetId,
+          reason: error instanceof Error ? error.message : "unknown",
+        })));
+      }
     } catch (error) {
       console.error(JSON.stringify({ event: "onebot_event_process_failed", botId, targetType, targetId,
         reason: error instanceof Error ? error.message : "unknown" }));
-      if (canReply) await sendText("处理失败或机器人接口超时，请稍后重试。请勿重复发送含密码的消息。").catch(() => {});
+      if (canReply) {
+        const failure = commandText.startsWith("/register")
+          ? "注册处理失败或机器人接口超时，请稍后重试。请勿重复发送含密码的消息。"
+          : commandText.includes("提醒")
+            ? "提醒处理失败或机器人接口超时，请稍后重试。"
+            : "命令处理失败或机器人接口超时，请稍后重试。";
+        await sendText(failure).catch(() => {});
+      }
     } finally {
       if (slowNotice !== null) clearTimeout(slowNotice);
     }
@@ -263,3 +280,4 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     this.pending.clear();
   }
 }
+

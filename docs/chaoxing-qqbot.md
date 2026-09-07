@@ -17,7 +17,7 @@
 
 每个 Bot 最多 20 个账号；会话、用户位置、最近 200 个活动结果和待发通知保存在该 Bot 的 Durable Object 私有存储。依赖平台静态加密，不额外保存密码，也不将登录会话暴露给网站 API。删除 DO 数据会同时丢失账号。
 
-群定时提醒创建时只写入 D1 并立即回复确认；到期时再生成卡片，避免字体或 S3 请求阻塞命令响应。超过 3 秒的命令会先发“正在处理”，图片链路失败则发送文字。无法识别的斜杠命令和提醒格式都会给出用法，不再静默忽略。
+新建的私聊和群定时提醒以 JSON 对象写入 `reshi-diary-onebot-reminders` R2 桶并立即回复确认；D1 中升级前已存在的提醒继续读取并正常发完。到期时再生成卡片，避免字体或 S3 请求阻塞命令响应。超过 3 秒的命令会先发“正在处理”，图片链路失败则发送文字。无法识别的斜杠命令和提醒格式都会给出用法，不再静默忽略。
 
 卡片继续使用 Resource Han Rounded SC Bold 和 Noto Sans SC Bold。Worker 优先通过内部 ASSETS binding 读取原字体，避免绕公网下载约 7 MB 字体；`/help` 的静态 PNG 使用 Cloudflare Cache API 缓存一天。动态签到结果仍按原字体现场生成。
 
@@ -27,8 +27,11 @@
 
 登录过期需要重新 /register；网络错误退避到最多 15 分钟。为了不保存密码，不做密码自动重登录。
 
+登录优先使用 `passport2-api.chaoxing.com/v11/loginregister` 的 HTTPS POST 表单，手机号和密码不会进入 URL；失败后尝试 `passport2.chaoxing.com/fanyalogin`。两条线路各限制为 12 秒一次，避免在 QQ 中长期无响应。若两个域名均被 Cloudflare 出口限制，机器人会明确提示需要国内代理；当前部署未配置 `RUST_BACKEND_ORIGIN`，因此无法自动切换到代理。
+
 ## 接口依据与验证边界
 
 签到协议参考 MIT 项目 https://github.com/cxOrz/chaoxing-signin （停止维护），许可证见 chaoxing-third-party.txt。AES-CBC 登录参数参考 https://github.com/LnYo-Cly/ChaoXingAutoSign/blob/main/login.py 的公开协议；没有复制该 Python 源码。
 
 自动测试使用模拟学习通响应验证凭据处理、坐标编码、命令隔离、签到去重与通知重试。没有真实学习通账号和正在进行的签到用于端到端验证，不能保证超星未公开接口仍兼容或允许 Cloudflare 出口 IP。遇到验证码、接口变更或上游限制会返回失败提示，需要实际联调。
+

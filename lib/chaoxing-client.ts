@@ -6,6 +6,7 @@ export type CxSession = { cookies: Record<string, string>; courses: CxCourse[] }
 const MOBILE = "https://mobilelearn.chaoxing.com";
 const UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36";
 export class CxError extends Error {}
+type CxRequestPolicy = { attempts?: number; timeoutMs?: number };
 const obj = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const id = (v: unknown) => /^\d+$/.test(String(v)) ? String(v) : "";
 export function parseLocation(text: string): CxLocation | null {
@@ -33,20 +34,21 @@ export class ChaoxingClient {
   constructor(cookies: Record<string, string> = {}, request: typeof fetch = fetch) {
     this.cookies = { ...cookies }; this.request = request;
   }
-  private async text(url: string, init: RequestInit = {}) {
+  private async text(url: string, init: RequestInit = {}, policy: CxRequestPolicy = {}) {
     const headers = new Headers(init.headers);
     headers.set("User-Agent", UA);
     const cookie = Object.entries(this.cookies).map(([k,v]) => k + "=" + v).join("; ");
     if (cookie) headers.set("Cookie", cookie);
     let response: Response | null = null;
     let lastError: unknown;
-    const timeoutMs = url.includes("passport2.chaoxing.com") ? 20_000 : 15_000;
-    for (let attempt = 0; attempt < 2 && !response; attempt++) {
+    const timeoutMs = policy.timeoutMs ?? (url.includes("passport2.chaoxing.com") ? 20_000 : 15_000);
+    const attempts = policy.attempts ?? 2;
+    for (let attempt = 0; attempt < attempts && !response; attempt++) {
       try {
         response = await this.request(url, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
       } catch (error) {
         lastError = error;
-        if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 350));
+        if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 350));
       }
     }
     if (!response) {
@@ -65,11 +67,26 @@ export class ChaoxingClient {
     if (value.length > 2_000_000) throw new CxError("学习通响应异常");
     return value;
   }
-  private async json(url: string, init: RequestInit = {}) {
-    const text = await this.text(url, init);
+  private async json(url: string, init: RequestInit = {}, policy: CxRequestPolicy = {}) {
+    const text = await this.text(url, init, policy);
     try { return obj(JSON.parse(text)); } catch { throw new CxError("学习通接口返回异常，请检查登录状态"); }
   }
   async login(phone: string, password: string): Promise<CxSession> {
+    const mobileBody = new URLSearchParams({ uname: phone, code: password, loginType: "1", roleSelect: "true" });
+    try {
+      const mobile = await this.json("https://passport2-api.chaoxing.com/v11/loginregister?cx_xxt_passport=json", {
+        method: "POST", body: mobileBody,
+        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+      }, { attempts: 1, timeoutMs: 12_000 });
+      const mobileUid = id(mobile.uid) || id(mobile.puid);
+      if (mobileUid && !this.cookies._uid) this.cookies._uid = mobileUid;
+      if ((mobile.status === true || mobile.mes === "验证通过") && id(this.cookies._uid)) {
+        return { cookies: this.cookies, courses: await this.courses() };
+      }
+    } catch (error) {
+      if (!(error instanceof CxError)) throw error;
+    }
+
     // Current web login uses AES-CBC; this protocol key is public, not a storage encryption key.
     const bytes = new TextEncoder().encode("u2oh6Vu^HWe4_AES");
     const key = await crypto.subtle.importKey("raw", bytes, "AES-CBC", false, ["encrypt"]);
@@ -79,7 +96,15 @@ export class ChaoxingClient {
     };
     const body = new URLSearchParams({ fid: "-1", uname: await encode(phone), password: await encode(password),
       refer: "https%3A%2F%2Fi.chaoxing.com", t: "true", forbidotherlogin: "0", validate: "", doubleFactorLogin: "0" });
-    const value = await this.json("https://passport2.chaoxing.com/fanyalogin", { method: "POST", body });
+    let value: Record<string, unknown>;
+    try {
+      value = await this.json("https://passport2.chaoxing.com/fanyalogin", { method: "POST", body }, { attempts: 1, timeoutMs: 12_000 });
+    } catch (error) {
+      if (error instanceof CxError && /响应超过|Cloudflare 无法连接/.test(error.message)) {
+        throw new CxError("Cloudflare 无法连接学习通的两条登录线路，需要配置可访问学习通的国内代理");
+      }
+      throw error;
+    }
     if (value.status !== true || !id(this.cookies._uid)) throw new CxError("登录失败，请核对账号密码；如需验证码，请先在学习通完成验证");
     return { cookies: this.cookies, courses: await this.courses() };
   }
@@ -119,3 +144,4 @@ export class ChaoxingClient {
     return "未完成签到，请打开学习通核对（可能需要额外验证）";
   }
 }
+

@@ -3,6 +3,7 @@ import { ensureDatabaseSchema, getD1 } from "../../../../db/runtime";
 import { getApiAdmin } from "../../../admin/admin-auth";
 import { sameOrigin } from "../../../../lib/admin-email-auth";
 import { jsonId, numericId, oneBotErrorResponse, OneBotHttpError, oneBotOnline, oneBotStub, parseOneBotGroups } from "../../../../lib/onebot-cloudflare";
+import { listStoredR2Reminders } from "../../../../lib/onebot-scheduler";
 import { deleteS3Object, putS3Object } from "../../../../lib/s3-storage";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -97,19 +98,32 @@ export async function GET() {
       createdAt: row.created_at,
       groups: parseOneBotGroups(row.groups_json),
     })));
-    const [scheduled, personal] = await Promise.all([
+    const [scheduled, personal, r2Reminders] = await Promise.all([
       db.prepare(`SELECT id, bot_id, target_id AS group_id, delivery_mode, summary, due_at, created_at
         FROM onebot_scheduled_messages WHERE target_type = 'group' ORDER BY due_at LIMIT 100`)
         .all<{ id: string; bot_id: string; group_id: string; delivery_mode: string; summary: string; due_at: number; created_at: number }>(),
       db.prepare("SELECT COUNT(*) AS count FROM onebot_scheduled_messages WHERE target_type = 'private'").first<{ count: number }>(),
+      listStoredR2Reminders(),
     ]);
+    const r2Scheduled = r2Reminders.filter((row) => row.target_type === "group").map((row) => ({
+      id: row.id,
+      bot_id: row.bot_id,
+      group_id: row.target_id,
+      delivery_mode: row.delivery_mode,
+      summary: row.summary,
+      due_at: row.due_at,
+      created_at: row.created_at,
+    }));
+    const allScheduled = [...(scheduled.results || []), ...r2Scheduled]
+      .sort((left, right) => left.due_at - right.due_at)
+      .slice(0, 100);
     return Response.json({
       configured: bots.length > 0,
       online: bots.some((bot) => bot.online),
       bots,
       reverseWsPath: "/api/onebot/ws",
-      scheduled: scheduled.results || [],
-      personalReminderCount: personal?.count || 0,
+      scheduled: allScheduled,
+      personalReminderCount: (personal?.count || 0) + r2Reminders.filter((row) => row.target_type === "private").length,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return oneBotErrorResponse(error);
@@ -176,9 +190,14 @@ export async function POST(request: Request) {
     }
 
     if (scheduleAt) {
-      const pending = await db.prepare("SELECT COUNT(*) AS count FROM onebot_scheduled_messages WHERE target_type = 'group'")
-        .first<{ count: number }>();
-      if ((pending?.count || 0) >= 100) throw new OneBotHttpError(429, "待发送群通知已达 100 条，请先取消部分任务");
+      const [pending, r2Reminders] = await Promise.all([
+        db.prepare("SELECT COUNT(*) AS count FROM onebot_scheduled_messages WHERE target_type = 'group'")
+          .first<{ count: number }>(),
+        listStoredR2Reminders(),
+      ]);
+      if ((pending?.count || 0) + r2Reminders.filter((row) => row.target_type === "group").length >= 100) {
+        throw new OneBotHttpError(429, "待发送群通知已达 100 条，请先取消部分任务");
+      }
       const id = crypto.randomUUID();
       const key = `uploads/onebot-scheduled/${id}`;
       const bytes = await imageFile.arrayBuffer();
@@ -230,3 +249,4 @@ export async function POST(request: Request) {
     return oneBotErrorResponse(error);
   }
 }
+
