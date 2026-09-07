@@ -9,9 +9,13 @@ interface __BaseEnv_Env {
 	AWS_SECRET_ACCESS_KEY: string;
 	GITHUB_TOKEN: string;
 	RESEND_API_KEY: string;
-	ONEBOT: DurableObjectNamespace /* OneBotSession */;
+	ONEBOT: DurableObjectNamespace<import("./worker/index").OneBotSession>;
 }
 declare namespace Cloudflare {
+	interface GlobalProps {
+		mainModule: typeof import("./worker/index");
+		durableNamespaces: "OneBotSession";
+	}
 	interface Env extends __BaseEnv_Env {}
 }
 interface Env extends __BaseEnv_Env {}
