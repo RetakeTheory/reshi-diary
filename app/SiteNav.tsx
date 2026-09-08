@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import ArrowIcon from "./ArrowIcon";
 import Icon from "./Icon";
 import ReaderAvatar from "./ReaderAvatar";
+import BrandMark from "./BrandMark";
 import { sitePages } from "../lib/site-pages";
 
 const copy = sitePages.globals.navigation;
@@ -41,7 +42,7 @@ export default function SiteNav({ backHref, backLabel }: { backHref?: string; ba
 
   return (
     <nav className="nav shell site-nav" aria-label="主导航">
-      <a className="brand" href="/#top"><span>RE</span>{copy.brand}</a>
+      <a className="brand" href="/#top"><BrandMark />{copy.brand}</a>
       <div className="nav-links">
         <a href="/">{copy.home}</a><a href="/posts">{copy.posts}</a>
         <div className="nav-directory">

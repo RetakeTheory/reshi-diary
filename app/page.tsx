@@ -5,6 +5,7 @@ import Link from "next/link";
 import EditableModule from "./EditableModule";
 import EditableText from "./EditableText";
 import { pageDocument, splitDisplayText } from "../lib/site-pages";
+import BrandMark from "./BrandMark";
 
 export default function Home() {
   const page = pageDocument("home");
@@ -52,7 +53,7 @@ export default function Home() {
           <form><label className="sr-only" htmlFor="email">邮箱地址</label><input id="email" type="email" placeholder={fields.placeholder} required /><button type="submit">{fields.cta} <ArrowIcon /></button></form><div className="mail-object" aria-hidden="true"><Icon name="spark" /></div>
         </div></section></EditableModule>;
         if (module.id === "home-footer") return <EditableModule module={module} key={module.id}><footer className="footer" id="archive">
-          <div className="shell footer-top"><a className="brand" href="#top"><span>RE</span>{fields.brand}</a><p><EditableText text={fields.slogan} /></p></div>
+          <div className="shell footer-top"><a className="brand" href="#top"><BrandMark />{fields.brand}</a><p><EditableText text={fields.slogan} /></p></div>
           <div className="shell footer-bottom"><p>{fields.copyright}</p><div><span>{fields.social}</span><a href={fields.githubHref} target="_blank" rel="noopener noreferrer">{fields.github}</a><a href={fields.emailHref}>{fields.email}</a></div><a href="#top">{fields.backTop} <ArrowIcon direction="up" /></a></div>
         </footer></EditableModule>;
         return null;

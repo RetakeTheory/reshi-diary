@@ -17,6 +17,7 @@ import OneBotManager from "./OneBotManager";
 import AdminDashboardTabs, { type AdminDashboardTab } from "./AdminDashboardTabs";
 import EditableModule from "../EditableModule";
 import { pageDocument } from "../../lib/site-pages";
+import BrandMark from "../BrandMark";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +75,7 @@ export default async function AdminPage() {
   return (
     <main className="admin-shell">
       <header className="admin-topbar">
-        <a className="brand" href="https://rettheory.top/"><span>RE</span>reshi 的日记本</a>
+        <a className="brand" href="https://rettheory.top/"><BrandMark />reshi 的日记本</a>
         <div><a href="/admin/pages">页面编辑器</a><span>管理员 · {admin.displayName}</span><form action="/api/admin/auth/logout" method="post"><button type="submit">退出</button></form></div>
       </header>
       <AdminDashboardTabs items={tabs} />
