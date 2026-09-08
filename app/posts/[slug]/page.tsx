@@ -10,19 +10,23 @@ import SiteNav from "../../SiteNav";
 import Link from "next/link";
 import EditableModule from "../../EditableModule";
 import { pageDocument, pageModule } from "../../../lib/site-pages";
+import { createOpenGraph, createTwitterCard, DEFAULT_DESCRIPTION, SITE_URL } from "../../../lib/open-graph";
 
 export const dynamic = "force-dynamic";
 type PageProps = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const post = await getPublicPost((await params).slug);
+  const { slug } = await params;
+  const post = await getPublicPost(slug);
   if (!post) return { title: "文章不存在｜reshi的日记本" };
   const title = `${post.title}｜reshi的日记本`;
+  const description = post.excerpt || DEFAULT_DESCRIPTION;
+  const url = new URL(`/posts/${encodeURIComponent(slug)}`, SITE_URL).toString();
   return {
     title,
-    description: post.excerpt,
-    openGraph: { title, description: post.excerpt, images: [] },
-    twitter: { card: "summary", title, description: post.excerpt, images: [] },
+    description,
+    openGraph: createOpenGraph(title, description, url),
+    twitter: createTwitterCard(title, description),
   };
 }
 

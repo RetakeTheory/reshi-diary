@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-html-link-for-pages -- full-page navigation remains reliable in the deployed Worker */
 import { redirect } from "next/navigation";
 import { ADMIN_EMAIL, getAdminSession } from "../admin-auth";
 import EmailLogin from "./EmailLogin";
@@ -7,6 +6,7 @@ import Icon from "../../Icon";
 import EditableModule from "../../EditableModule";
 import EditableText from "../../EditableText";
 import { pageModule } from "../../../lib/site-pages";
+import BrandMark from "../../BrandMark";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export default async function AdminLoginPage() {
   const fields = loginModule.fields;
   return (
     <main className="login-page">
-      <a className="brand login-brand" href="https://rettheory.top/"><span>RE</span>reshi 的日记本</a>
+      <a className="brand login-brand" href="https://rettheory.top/"><BrandMark />reshi 的日记本</a>
       <EditableModule module={loginModule}><section className="login-card">
         <div className="login-mark"><Icon name="spark" /></div>
         <p>{fields.eyebrow}</p>

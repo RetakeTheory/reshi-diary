@@ -3,16 +3,18 @@ import "./globals.css";
 import ThemeControls from "./ThemeControls";
 import NoticeBanner from "./NoticeBanner";
 import "katex/dist/katex.min.css";
+import { createOpenGraph, createTwitterCard, SITE_URL } from "../lib/open-graph";
 
 export function generateMetadata(): Metadata {
   const title = "reshi的日记本｜日常碎片存档中";
   const description = "reshi 的私人存档点，收集日常、脑洞、喜欢的东西和偶尔触发的支线任务。";
   return {
+    metadataBase: new URL(SITE_URL),
     title,
     description,
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
-    openGraph: { title, description, images: [] },
-    twitter: { card: "summary", title, description, images: [] },
+    openGraph: createOpenGraph(title, description),
+    twitter: createTwitterCard(title, description),
   };
 }
 
