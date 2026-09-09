@@ -12,6 +12,64 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+const RUST_SAFE_TIMEOUT_MS = 6_000;
+const RUST_MUTATION_TIMEOUT_MS = 15_000;
+const RUST_RETRY_STATUSES = new Set([502, 503, 504]);
+
+function rustUnavailable(status = 504) {
+  return Response.json({ error: "服务暂时繁忙，请稍后重试" }, {
+    status,
+    headers: { "Cache-Control": "no-store", "Retry-After": "2" },
+  });
+}
+
+async function proxyRustApi(request: Request, upstream: URL) {
+  const method = request.method.toUpperCase();
+  const safe = method === "GET" || method === "HEAD";
+  const attempts = safe ? 2 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(new Request(upstream, {
+        method,
+        headers: request.headers,
+        body: safe ? undefined : request.body,
+        redirect: "manual",
+        signal: AbortSignal.timeout(safe ? RUST_SAFE_TIMEOUT_MS : RUST_MUTATION_TIMEOUT_MS),
+      }));
+      if (safe && attempt + 1 < attempts && RUST_RETRY_STATUSES.has(response.status)) {
+        await response.body?.cancel().catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        continue;
+      }
+      return response;
+    } catch (error) {
+      console.warn(JSON.stringify({ event: "rust_api_proxy_failed", path: upstream.pathname, method,
+        attempt: attempt + 1, reason: error instanceof Error ? error.message : "unknown" }));
+      if (attempt + 1 < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        continue;
+      }
+    }
+  }
+  return rustUnavailable();
+}
+
+async function warmRustBackend(env: Cloudflare.Env) {
+  const origin = env.RUST_BACKEND_ORIGIN?.trim();
+  if (!origin) return;
+  try {
+    const response = await fetch(new URL("/healthz", origin), {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) console.warn(JSON.stringify({ event: "rust_backend_warm_failed", status: response.status }));
+    await response.body?.cancel().catch(() => undefined);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "rust_backend_warm_failed",
+      reason: error instanceof Error ? error.message : "unknown" }));
+  }
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -61,7 +119,7 @@ const worker = {
         const headers = new Headers(routedRequest.headers);
         headers.set("X-Forwarded-Host", url.host);
         headers.set("X-Forwarded-Proto", url.protocol.slice(0, -1));
-        return fetch(new Request(upstream, { method: routedRequest.method, headers, body: routedRequest.body, redirect: "manual" }));
+        return proxyRustApi(new Request(routedRequest, { headers }), upstream);
       }
     }
 
@@ -87,7 +145,10 @@ const worker = {
       WHERE due_at <= ? AND (claimed_at IS NULL OR claimed_at < ?)
       UNION SELECT bot_id FROM onebot_bots WHERE enabled = 1 LIMIT 50`)
       .bind(controller.scheduledTime, controller.scheduledTime - 60_000).all<{ bot_id: string }>();
-    await Promise.allSettled((rows.results || []).map((row) => env.ONEBOT.getByName(row.bot_id).processDue(row.bot_id, controller.scheduledTime)));
+    await Promise.allSettled([
+      warmRustBackend(env),
+      ...(rows.results || []).map((row) => env.ONEBOT.getByName(row.bot_id).processDue(row.bot_id, controller.scheduledTime)),
+    ]);
   },
 };
 

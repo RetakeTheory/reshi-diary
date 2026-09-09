@@ -3,7 +3,7 @@ use std::{
     path::{Path as FsPath, PathBuf},
     str::FromStr,
     sync::{Arc, LazyLock},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use ammonia::Builder as HtmlSanitizer;
@@ -134,7 +134,11 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         db,
         config,
-        http: reqwest::Client::new(),
+        http: reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(15))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .build()?,
         webauthn: Arc::new(webauthn),
     };
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;

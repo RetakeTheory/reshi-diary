@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "dist/**",
     "out/**",
     "build/**",
+    ".wrangler/**",
+    ".wrangler-dry-run/**",
     "next-env.d.ts",
   ]),
   eslint.configs.recommended,

@@ -41,6 +41,20 @@ test("help produces an image and unrelated verification commands pass through", 
   const f=fixture(); assert.equal(await f.bot.command("12345","验证 ABC123",false,async()=>{}),false);
   await f.bot.command("12345","/help",false,async()=>{}); assert.equal(f.sent[0].image,true);
 });
+test("help responds while a Chaoxing poll is still waiting", async()=>{
+  const f=fixture(); await f.bot.command("12345","/register 13800138000 secret",false,async()=>{});
+  let markStarted, releasePoll;
+  const started=new Promise(resolve=>{ markStarted=resolve; });
+  const blocked=new Promise(resolve=>{ releasePoll=resolve; });
+  f.client.activities=async()=>{ markStarted(); await blocked; return []; };
+  const poll=f.bot.poll(Date.now()+1000);
+  await started;
+  const help=f.bot.command("12345","/help",false,async()=>{});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(f.sent.some(item=>item.image && item.text.includes("QQ Bot 菜单")));
+  releasePoll();
+  await Promise.all([poll,help]);
+});
 test("help includes both reminder and Chaoxing commands", async()=>{
   const {CX_MENU}=await import("../lib/onebot-chaoxing.ts");
   assert.match(CX_MENU,/10分钟后提醒我/); assert.match(CX_MENU,/\/register/); assert.match(CX_MENU,/\/location/);
@@ -111,5 +125,6 @@ test("reminder creation acknowledges without rendering or S3 and command errors 
   assert.match(session, /未识别的命令/);
   assert.ok(session.indexOf("const response = await this.call(action") < session.indexOf("onebot_reminder_alarm_schedule_failed"));
   assert.match(session, /提醒处理失败或机器人接口超时/);
+  assert.match(session, /this\.call\("get_status", \{\}\)/);
+  assert.match(session, /verified: true/);
 });
-
