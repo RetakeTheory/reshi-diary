@@ -113,9 +113,10 @@ test("image failures fall back to text and explicit QQ failure is surfaced",asyn
   await assert.rejects(sendOneBotReply(async()=>({status:"failed",retcode:100}),"private","12345","菜单"));
 });
 test("reminder creation acknowledges without rendering or S3 and command errors reply",async()=>{
-  const [scheduler, session] = await Promise.all([
+  const [scheduler, session, cloudflare] = await Promise.all([
     readFile(new URL("../lib/onebot-scheduler.ts", import.meta.url), "utf8"),
     readFile(new URL("../worker/onebot-session.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/onebot-cloudflare.ts", import.meta.url), "utf8"),
   ]);
   const create = scheduler.slice(scheduler.indexOf("export async function createGroupReminder"), scheduler.indexOf("export async function nextScheduledAt"));
   assert.doesNotMatch(create, /renderOneBotReminderCard|putS3Object/);
@@ -127,4 +128,6 @@ test("reminder creation acknowledges without rendering or S3 and command errors 
   assert.match(session, /提醒处理失败或机器人接口超时/);
   assert.match(session, /this\.call\("get_status", \{\}\)/);
   assert.match(session, /verified: true/);
+  assert.match(session, /canReply && \(isExplicitCommand \|\| isReminderCommand\)/);
+  assert.doesNotMatch(cloudflare, /await import\("\.\/onebot-reminder"\)/);
 });

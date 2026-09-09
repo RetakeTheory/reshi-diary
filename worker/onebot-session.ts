@@ -206,6 +206,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     const rawText = oneBotMessageText(Array.isArray(payload.message) ? undefined : payload.raw_message, payload.message);
     const commandText = targetType === "group" ? groupReminderCommand(rawText, botId) : rawText;
     const isReminderCommand = commandText.includes("提醒我");
+    const isExplicitCommand = commandText.startsWith("/") || /^(绑定|验证|登录|注册)/.test(commandText.trim());
     const canReply = payload.post_type === "message" && ["private", "group"].includes(String(payload.message_type))
       && /^\d{5,20}$/.test(targetId) && Number.isSafeInteger(Number(targetId));
     const sendText = (text: string) => sendOneBotReply((action, params) => this.call(action, params), targetType, targetId, text);
@@ -265,7 +266,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     } catch (error) {
       console.error(JSON.stringify({ event: "onebot_event_process_failed", botId, targetType, targetId,
         reason: error instanceof Error ? error.message : "unknown" }));
-      if (canReply) {
+      if (canReply && (isExplicitCommand || isReminderCommand)) {
         const failure = commandText.startsWith("/register")
           ? "注册处理失败或机器人接口超时，请稍后重试。请勿重复发送含密码的消息。"
           : isReminderCommand

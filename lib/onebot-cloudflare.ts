@@ -1,5 +1,6 @@
 import { ensureDatabaseSchema, getD1 } from "../db/runtime";
 import { hashValue, randomToken } from "./admin-email-auth";
+import { formatChinaTime, groupReminderCommand, oneBotMessageText, parseReminderCommand } from "./onebot-reminder";
 
 const QQ_AUTH_TTL_MS = 10 * 60 * 1000;
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -209,7 +210,6 @@ export async function processOneBotEvent(botId: string, payload: OneBotPayload) 
   const targetType = payload.message_type;
   const qqId = jsonId(payload.user_id);
   if (!/^\d{5,20}$/.test(qqId) || !Number.isSafeInteger(Number(qqId))) return null;
-  const { formatChinaTime, groupReminderCommand, oneBotMessageText, parseReminderCommand } = await import("./onebot-reminder");
   const rawMessage = oneBotMessageText(payload.raw_message, payload.message);
   const reminder = parseReminderCommand(targetType === "group" ? groupReminderCommand(rawMessage, botId) : rawMessage);
   if (reminder) {

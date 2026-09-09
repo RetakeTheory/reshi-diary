@@ -15,6 +15,16 @@ interface ExecutionContext {
 const RUST_SAFE_TIMEOUT_MS = 6_000;
 const RUST_MUTATION_TIMEOUT_MS = 15_000;
 const RUST_RETRY_STATUSES = new Set([502, 503, 504]);
+const PUBLIC_API_CACHE_TTL = 30;
+
+function isPublicCacheableApi(pathname: string) {
+  return pathname === "/api/posts" || pathname === "/api/notifications/active"
+    || /^\/api\/posts\/[^/]+$/.test(pathname);
+}
+
+function defaultCache() {
+  return typeof caches === "undefined" ? null : (caches as CacheStorage & { default?: Cache }).default || null;
+}
 
 function rustUnavailable(status = 504) {
   return Response.json({ error: "服务暂时繁忙，请稍后重试" }, {
@@ -23,9 +33,15 @@ function rustUnavailable(status = 504) {
   });
 }
 
-async function proxyRustApi(request: Request, upstream: URL) {
+async function proxyRustApi(request: Request, upstream: URL, ctx: ExecutionContext) {
   const method = request.method.toUpperCase();
   const safe = method === "GET" || method === "HEAD";
+  const cache = method === "GET" && isPublicCacheableApi(upstream.pathname) ? defaultCache() : null;
+  const cacheKey = cache ? new Request(request.url, { method: "GET" }) : null;
+  if (cache && cacheKey) {
+    const cached = await cache.match(cacheKey).catch(() => undefined);
+    if (cached) return cached;
+  }
   const attempts = safe ? 2 : 1;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
@@ -40,6 +56,13 @@ async function proxyRustApi(request: Request, upstream: URL) {
         await response.body?.cancel().catch(() => undefined);
         await new Promise((resolve) => setTimeout(resolve, 150));
         continue;
+      }
+      if (cache && cacheKey && response.ok) {
+        const headers = new Headers(response.headers);
+        headers.delete("set-cookie");
+        headers.set("Cache-Control", `public, s-maxage=${PUBLIC_API_CACHE_TTL}, stale-while-revalidate=300`);
+        const cached = new Response(response.clone().body, { status: response.status, statusText: response.statusText, headers });
+        ctx.waitUntil(cache.put(cacheKey, cached));
       }
       return response;
     } catch (error) {
@@ -119,7 +142,7 @@ const worker = {
         const headers = new Headers(routedRequest.headers);
         headers.set("X-Forwarded-Host", url.host);
         headers.set("X-Forwarded-Proto", url.protocol.slice(0, -1));
-        return proxyRustApi(new Request(routedRequest, { headers }), upstream);
+        return proxyRustApi(new Request(routedRequest, { headers }), upstream, ctx);
       }
     }
 
