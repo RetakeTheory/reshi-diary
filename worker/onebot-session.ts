@@ -55,7 +55,9 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
     for (const socket of this.ctx.getWebSockets()) socket.close(1012, "Bot connection replaced");
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-    server.serializeAttachment({ botId, verified: false } satisfies SocketAttachment);
+    // The Worker already authenticated the reverse-WebSocket token before it
+    // forwarded this request, so the socket can accept calls immediately.
+    server.serializeAttachment({ botId, verified: true } satisfies SocketAttachment);
     this.ctx.acceptWebSocket(server, [`bot:${botId}`]);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -111,6 +113,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
   }
 
   private async processAllDue(botId: string, now: number) {
+    await this.keepAlive(botId);
     const result = await dispatchScheduledForBot(botId, (action, params) => this.call(action, params), now);
     const bot = await this.env.DB.prepare("SELECT enabled FROM onebot_bots WHERE bot_id = ?").bind(botId).first<{ enabled: number }>();
     const cxNext = bot?.enabled ? await this.chaoxing.poll(now) : null;
@@ -122,6 +125,19 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
       await storage.delete("schedulerBotId");
     }
     return result;
+  }
+
+  private async keepAlive(botId: string) {
+    if (!this.verifiedSockets().length) return;
+    try {
+      const response = await this.call("get_status", {});
+      if (response.status && response.status !== "ok") {
+        console.warn(JSON.stringify({ event: "onebot_keepalive_rejected", botId, retcode: Number(response.retcode) }));
+      }
+    } catch (error) {
+      console.warn(JSON.stringify({ event: "onebot_keepalive_failed", botId,
+        reason: error instanceof Error ? error.message : "unknown" }));
+    }
   }
 
   async alarm() {

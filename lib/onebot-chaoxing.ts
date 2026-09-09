@@ -31,11 +31,22 @@ export class OneBotChaoxing {
       return true;
     }
     if (/^\/register(?:$|\s|\+)/.test(text)) await this.send(qq, "请立即撤回刚才的注册消息，保护手机号和密码。机器人不会保存密码；撤回不会影响登录处理。");
+    // Read-only commands must not wait behind a slow upstream poll or login.
+    if (text === "/help") {
+      await this.send(qq, CX_MENU, true);
+      return true;
+    }
+    if (text === "/status") {
+      const account = await this.storage.get<Account>("cx:account:" + qq);
+      if (!account) await this.send(qq, "尚未绑定，请私聊 /register 手机号 密码");
+      else await this.send(qq, (account.enabled ? "监听中" : "已暂停") + "\n课程数：" + account.session.courses.length +
+        "\n位置：" + (account.location ? "已设置" : "未设置") + "\n" + account.lastStatus, true);
+      return true;
+    }
     await this.serial(qq, async () => {
       try {
         const key = "cx:account:" + qq;
         const account = await this.storage.get<Account>(key);
-        if (text === "/help") { await this.send(qq, CX_MENU, true); return; }
         if (/^\/register(?:$|\s|\+)/.test(text)) {
           const credentials = parseRegistration(text);
           if (!credentials) { await this.send(qq, "格式：/register 手机号 密码，或 /register+手机号+密码"); return; }
@@ -56,10 +67,6 @@ export class OneBotChaoxing {
           await this.send(qq, "已停止监听并删除保存的登录会话、位置和签到记录"); return;
         }
         if (!account) { await this.send(qq, "尚未绑定，请私聊 /register 手机号 密码"); return; }
-        if (text === "/status") {
-          await this.send(qq, (account.enabled ? "监听中" : "已暂停") + "\n课程数：" + account.session.courses.length +
-            "\n位置：" + (account.location ? "已设置" : "未设置") + "\n" + account.lastStatus, true); return;
-        }
         if (text === "/stop") account.enabled = false;
         else if (text === "/start") { account.enabled = true; account.nextAt = Date.now(); account.failures = 0; }
         else if (text.startsWith("/location")) {
