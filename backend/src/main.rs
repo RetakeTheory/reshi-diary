@@ -10,9 +10,9 @@ use ammonia::Builder as HtmlSanitizer;
 use anyhow::Context;
 use axum::{
     Json, Router,
-    body::Body,
+    body::{Body, Bytes},
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -61,6 +61,7 @@ struct Config {
     resend_from_email: String,
     passkey_rp_id: String,
     passkey_rp_name: String,
+    chaoxing_relay_token: Option<String>,
 }
 
 impl Config {
@@ -99,6 +100,9 @@ impl Config {
             passkey_rp_id,
             passkey_rp_name: std::env::var("PASSKEY_RP_NAME")
                 .unwrap_or_else(|_| "reshi diary".into()),
+            chaoxing_relay_token: std::env::var("CHAOXING_RELAY_TOKEN")
+                .ok()
+                .filter(|value| value.len() >= 32),
         })
     }
 }
@@ -152,6 +156,7 @@ async fn main() -> anyhow::Result<()> {
 fn routes(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
+        .route("/internal/chaoxing-relay", axum::routing::any(chaoxing_relay))
         .route("/api/posts", get(list_public_posts))
         .route("/api/posts/{slug}", get(get_public_post))
         .route("/api/posts/{slug}/community", get(community::get_community))
@@ -292,6 +297,102 @@ fn routes(state: AppState) -> Router {
         .layer(DefaultBodyLimit::max(101 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+async fn chaoxing_relay(
+    State(state): State<AppState>,
+    method: Method,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, AppError> {
+    let expected = state
+        .config
+        .chaoxing_relay_token
+        .as_deref()
+        .ok_or(AppError::Unavailable("学习通中继尚未启用"))?;
+    let provided = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .unwrap_or("");
+    if hash_value(provided) != hash_value(expected) {
+        return Err(AppError::Forbidden);
+    }
+    if method != Method::GET && method != Method::POST {
+        return Err(AppError::BadRequest("中继仅支持 GET 与 POST".into()));
+    }
+    if body.len() > 512 * 1024 {
+        return Err(AppError::PayloadTooLarge);
+    }
+
+    let target = headers
+        .get("x-chaoxing-target")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| AppError::BadRequest("缺少学习通目标地址".into()))?;
+    let url = reqwest::Url::parse(target)
+        .map_err(|_| AppError::BadRequest("学习通目标地址无效".into()))?;
+    let allowed = matches!(
+        url.host_str(),
+        Some(
+            "mobilelearn.chaoxing.com"
+                | "mooc1-1.chaoxing.com"
+                | "passport2-api.chaoxing.com"
+                | "passport2.chaoxing.com"
+        )
+    );
+    if url.scheme() != "https"
+        || !allowed
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err(AppError::Forbidden);
+    }
+
+    let relay_method = reqwest::Method::from_bytes(method.as_str().as_bytes())
+        .map_err(|_| AppError::BadRequest("请求方法无效".into()))?;
+    let mut request = state.http.request(relay_method, url);
+    for name in [
+        header::ACCEPT,
+        header::CONTENT_TYPE,
+        header::COOKIE,
+        header::USER_AGENT,
+    ] {
+        if let Some(value) = headers.get(&name) {
+            request = request.header(name.as_str(), value.as_bytes());
+        }
+    }
+    if !body.is_empty() {
+        request = request.body(body);
+    }
+    let upstream = request
+        .send()
+        .await
+        .map_err(|_| AppError::Upstream("学习通网络连接失败"))?;
+    let status =
+        StatusCode::from_u16(upstream.status().as_u16()).map_err(|_| AppError::Internal)?;
+    if upstream
+        .content_length()
+        .is_some_and(|length| length > 4 * 1024 * 1024)
+    {
+        return Err(AppError::Upstream("学习通响应过大"));
+    }
+    let upstream_headers = upstream.headers().clone();
+    let bytes = upstream
+        .bytes()
+        .await
+        .map_err(|_| AppError::Upstream("学习通响应读取失败"))?;
+    if bytes.len() > 4 * 1024 * 1024 {
+        return Err(AppError::Upstream("学习通响应过大"));
+    }
+    let mut response = Response::builder().status(status);
+    for name in [header::CONTENT_TYPE, header::LOCATION, header::SET_COOKIE] {
+        for value in upstream_headers.get_all(name.as_str()) {
+            response = response.header(name.as_str(), value.as_bytes());
+        }
+    }
+    response
+        .body(Body::from(bytes))
+        .map_err(|_| AppError::Internal)
 }
 
 async fn health() -> Json<serde_json::Value> {

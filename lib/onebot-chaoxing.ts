@@ -7,6 +7,7 @@ export interface CxStorage {
 }
 type Account = { session: CxSession; location?: CxLocation; enabled: boolean; nextAt: number; refreshedAt: number;
   cursor: number; failures: number; receipts: Record<string,string>; outbox: string[]; lastStatus: string };
+export const MAX_CX_ACCOUNTS = 200;
 export const CX_MENU = ["QQ Bot 菜单", "10分钟后提醒我 喝水", "明天 08:00 提醒我 上课", "/register 手机号 密码", "登录并开启监听（仅私聊）", "/location 纬度 经度 地址", "设置定位签到的位置", "/status 查看监听状态", "/stop 暂停  /start 继续", "/unregister 删除登录资料", "普通、已设位置签到自动提交", "其他验证方式发送提醒", "注册消息发出后请立即撤回"].join("\n");
 export class OneBotChaoxing {
   private storage: CxStorage;
@@ -52,8 +53,8 @@ export class OneBotChaoxing {
           if (!credentials) { await this.send(qq, "格式：/register 手机号 密码，或 /register+手机号+密码"); return; }
           const rateKey = "cx:login:" + qq, last = await this.storage.get<number>(rateKey) || 0;
           if (Date.now() - last < 60_000) { await this.send(qq, "请等待一分钟再尝试登录"); return; }
-          if (!account && (await this.storage.list({ prefix: "cx:account:", limit: 20 })).size >= 20) {
-            await this.send(qq, "当前机器人已达到 20 个监听账号上限"); return;
+          if (!account && (await this.storage.list({ prefix: "cx:account:", limit: MAX_CX_ACCOUNTS })).size >= MAX_CX_ACCOUNTS) {
+            await this.send(qq, `当前机器人已达到 ${MAX_CX_ACCOUNTS} 个监听账号上限`); return;
           }
           await this.storage.put(rateKey, Date.now());
           const session = await this.client().login(credentials.phone, credentials.password);
@@ -82,12 +83,12 @@ export class OneBotChaoxing {
     return true;
   }
   async nextAt() {
-    const accounts = await this.storage.list<Account>({ prefix: "cx:account:", limit: 20 });
+    const accounts = await this.storage.list<Account>({ prefix: "cx:account:", limit: MAX_CX_ACCOUNTS });
     const times = [...accounts.values()].filter(a => a.enabled || a.outbox.length).map(a => a.nextAt);
     return times.length ? Math.min(...times) : null;
   }
   async poll(now = Date.now()) {
-    const accounts = await this.storage.list<Account>({ prefix: "cx:account:", limit: 20 });
+    const accounts = await this.storage.list<Account>({ prefix: "cx:account:", limit: MAX_CX_ACCOUNTS });
     // One due account per invocation bounds upstream work and lets QQ events continue.
     const due = [...accounts].filter(([,a]) => (a.enabled || a.outbox.length) && a.nextAt <= now).sort((a,b) => a[1].nextAt-b[1].nextAt)[0];
     if (!due) return this.nextAt();

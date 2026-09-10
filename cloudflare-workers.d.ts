@@ -62,6 +62,8 @@ declare namespace Cloudflare {
     ADMIN_EMAIL?: string;
     GITHUB_REPOSITORY?: string;
     RUST_BACKEND_ORIGIN?: string;
+    CHAOXING_RELAY_ORIGIN?: string;
+    CHAOXING_RELAY_TOKEN?: string;
   }
 }
 
@@ -73,4 +75,3 @@ declare module "cloudflare:workers" {
     constructor(ctx: DurableObjectState, env: WorkerEnv);
   }
 }
-
