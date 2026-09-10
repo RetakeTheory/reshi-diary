@@ -156,7 +156,10 @@ async fn main() -> anyhow::Result<()> {
 fn routes(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
-        .route("/internal/chaoxing-relay", axum::routing::any(chaoxing_relay))
+        .route(
+            "/internal/chaoxing-relay",
+            axum::routing::any(chaoxing_relay),
+        )
         .route("/api/posts", get(list_public_posts))
         .route("/api/posts/{slug}", get(get_public_post))
         .route("/api/posts/{slug}/community", get(community::get_community))
@@ -340,10 +343,7 @@ async fn chaoxing_relay(
                 | "passport2.chaoxing.com"
         )
     );
-    if url.scheme() != "https"
-        || !allowed
-        || !url.username().is_empty()
-        || url.password().is_some()
+    if url.scheme() != "https" || !allowed || !url.username().is_empty() || url.password().is_some()
     {
         return Err(AppError::Forbidden);
     }
