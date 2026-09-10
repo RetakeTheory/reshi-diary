@@ -15,6 +15,12 @@ Without `RESEND_API_KEY`, debug builds print the six-digit login code to the bac
 
 Build `backend/Dockerfile`, attach a persistent volume at `/app/data`, set `PUBLIC_ORIGIN` to the public frontend origin, then set the optional frontend Worker variable `RUST_BACKEND_ORIGIN` to this service's HTTPS origin. When it is absent, the Worker uses its built-in D1 API.
 
+## Mainland Chaoxing relay
+
+To give Chaoxing requests a mainland China egress IP, deploy the same backend image on a mainland HTTPS host and set a random token of at least 32 characters as `CHAOXING_RELAY_TOKEN`. The relay endpoint only accepts authenticated GET/POST requests to the four Chaoxing hosts used by the bot; it cannot be used as a general-purpose proxy.
+
+Configure the production Worker with `CHAOXING_RELAY_ORIGIN=https://your-mainland-host.example` and the same `CHAOXING_RELAY_TOKEN` secret. The existing `wrangler deploy --keep-vars` workflow preserves both values. If either value is absent, the bot uses the normal Cloudflare route.
+
 Rust is the production backend for all API capabilities. Existing D1 posts are not copied automatically; export/import them before switching production traffic.
 
 Passkey registration and login are implemented by `webauthn-rs`. `PASSKEY_RP_ID` must be the public site's registrable domain (for example `rettheory.top`) and `PUBLIC_ORIGIN` must exactly match the browser origin. Challenges and credential counters are stored server-side in SQLite.

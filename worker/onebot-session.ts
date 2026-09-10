@@ -3,6 +3,8 @@ import { jsonId, processOneBotEvent, type OneBotPayload } from "../lib/onebot-cl
 import { dispatchScheduledForBot } from "../lib/onebot-scheduler";
 
 import { OneBotChaoxing, type CxStorage, CX_MENU } from "../lib/onebot-chaoxing";
+import { createChaoxingFetch } from "../lib/chaoxing-relay";
+import { ChaoxingClient } from "../lib/chaoxing-client";
 import { sendOneBotReply } from "../lib/onebot-reply";
 import { groupReminderCommand, oneBotMessageText } from "../lib/onebot-reminder";
 
@@ -32,6 +34,7 @@ function socketAttachment(socket: WebSocket): SocketAttachment | null {
 }
 
 export class OneBotSession extends DurableObject<Cloudflare.Env> {
+  private readonly chaoxingFetch = createChaoxingFetch(this.env);
   private readonly chaoxing = new OneBotChaoxing(
     (this.ctx as unknown as { storage: CxStorage }).storage,
     async (qq, text, image) => {
@@ -39,7 +42,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
         const { renderOneBotReminderCard } = await import("../lib/onebot-reminder-card");
         return renderOneBotReminderCard({ text, title: "学习通助手", menu: text === CX_MENU, dueAt: Date.now() });
       } : undefined);
-    },
+    }, (session) => new ChaoxingClient(session?.cookies, this.chaoxingFetch),
   );
   private dueTask: Promise<{ sent: number; nextAt: number | null }> | null = null;
   private readonly pending = new Map<string, PendingCall>();

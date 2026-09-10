@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ChaoxingClient, parseRegistration, parseLocation, parseActivities } from "../lib/chaoxing-client.ts";
-import { OneBotChaoxing } from "../lib/onebot-chaoxing.ts";
+import { createChaoxingFetch } from "../lib/chaoxing-relay.ts";
+import { OneBotChaoxing, MAX_CX_ACCOUNTS } from "../lib/onebot-chaoxing.ts";
 function fixture() {
   const data = new Map(), sent = [], order = [];
   const storage = { async get(k) { return structuredClone(data.get(k)); }, async put(k,v) { data.set(k,structuredClone(v)); }, async delete(k) { return data.delete(k); }, async list({prefix}) { return new Map([...data].filter(([k])=>k.startsWith(prefix)).map(([k,v])=>[k,structuredClone(v)])); } };
@@ -59,6 +60,9 @@ test("help includes both reminder and Chaoxing commands", async()=>{
   const {CX_MENU}=await import("../lib/onebot-chaoxing.ts");
   assert.match(CX_MENU,/10分钟后提醒我/); assert.match(CX_MENU,/\/register/); assert.match(CX_MENU,/\/location/);
 });
+test("one bot accepts up to 200 monitored Chaoxing accounts",()=>{
+  assert.equal(MAX_CX_ACCOUNTS,200);
+});
 test("activities parse every open sign and reject malformed responses",()=>{
   const rows=parseActivities({data:{activeList:[{id:1,status:1,otherId:0},{id:2,status:1,otherId:4},{id:3,status:2,otherId:0}]}},{courseId:"1",classId:"2"});
   assert.deepEqual(rows.map(x=>x.id),["1","2"]); assert.throws(()=>parseActivities({data:null},{}));
@@ -88,6 +92,17 @@ test("Chaoxing requests retry network failures and distinguish timeouts",async()
   const client=new ChaoxingClient({},async()=>{ attempts++; throw new DOMException("timed out","TimeoutError"); });
   await assert.rejects(client.login("13800138000","secret"), e=>/两条登录线路/.test(e.message));
   assert.equal(attempts,2);
+});
+test("Chaoxing relay keeps credentials out of the relay URL and forwards only selected headers",async()=>{
+  let seen;
+  const relay=createChaoxingFetch({CHAOXING_RELAY_ORIGIN:"https://relay.example.cn",CHAOXING_RELAY_TOKEN:"x".repeat(32)},async(input,init)=>{
+    const request=new Request(input,init); seen={url:request.url,authorization:request.headers.get("authorization"),target:request.headers.get("x-chaoxing-target"),cookie:request.headers.get("cookie"),body:await request.text()};
+    return new Response("ok");
+  });
+  await relay("https://passport2.chaoxing.com/fanyalogin",{method:"POST",headers:{cookie:"vc3=session","x-ignore":"no"},body:"uname=13800138000&password=secret"});
+  assert.equal(seen.url,"https://relay.example.cn/internal/chaoxing-relay");
+  assert.equal(seen.authorization,"Bearer "+"x".repeat(32)); assert.equal(seen.target,"https://passport2.chaoxing.com/fanyalogin");
+  assert.equal(seen.cookie,"vc3=session"); assert.match(seen.body,/password=secret/); assert.ok(!seen.url.includes("secret"));
 });
 test("login falls back to the POST mobile endpoint without credentials in the URL",async()=>{
   const calls=[];
