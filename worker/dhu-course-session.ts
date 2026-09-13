@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { normalizeDhuTask, type DhuTask } from "../lib/dhu-course";
+import { normalizeDhuTask, parseDhuCourseOptions, type DhuCourseOption, type DhuTask } from "../lib/dhu-course";
 import {
   SchoolHttp, authPrefixFrom, encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
   type SchoolState,
@@ -36,9 +36,12 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
   private async school() { return await this.storage.get<SchoolState>("school"); }
 
   private async summary() {
-    const [tasks, state] = await Promise.all([this.tasks(), this.school()]);
+    const [tasks, state, courses] = await Promise.all([
+      this.tasks(), this.school(), this.storage.get<DhuCourseOption[]>("courses"),
+    ]);
     return {
       tasks,
+      courses: state?.stage === "ready" ? courses || [] : [],
       schoolSession: state?.stage === "ready" && state.coursePageUrl
         ? { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } : null,
       login: state ? { stage: state.stage, username: state.username || null } : null,
@@ -106,6 +109,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     state.stage = "mfa";
     state.username = schoolUser;
     state.updatedAt = Date.now();
+    await this.storage.delete("courses");
     await this.storage.put("school", state);
     return { login: { stage: "mfa", username: schoolUser } };
   }
@@ -169,6 +173,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     }
     state.coursePageUrl = url.href;
     state.updatedAt = Date.now();
+    await this.storage.put("courses", parseDhuCourseOptions(html));
     const scriptSource = html.match(/<script[^>]+src=["']([^"']*selecthome\.js[^"']*)["']/i)?.[1];
     if (scriptSource) {
       try {

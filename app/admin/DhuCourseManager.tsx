@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DhuTask } from "../../lib/dhu-course";
+import type { DhuCourseOption, DhuTask } from "../../lib/dhu-course";
 import styles from "./DhuCourseManager.module.css";
 
 type Status = {
   tasks: DhuTask[];
+  courses: DhuCourseOption[];
   schoolSession: { savedAt: number; coursePageUrl: string } | null;
   login: { stage: "passport" | "mfa" | "ready"; username: string | null } | null;
 };
 
-const empty: Status = { tasks: [], schoolSession: null, login: null };
+const empty: Status = { tasks: [], courses: [], schoolSession: null, login: null };
 const labels: Record<DhuTask["status"], string> = {
   scheduled: "等待执行", watching: "监听中", needs_login: "需重新登录", paused: "已暂停", submitted: "已提交待核实",
   success: "报名成功", failed: "未报名", cancelled: "已取消",
@@ -123,6 +124,10 @@ export default function DhuCourseManager() {
       <h3>添加课程</h3>
       <p className={styles.notice}>学校选课提交接口正在核验。登录与课程列表可先连接，自动报名暂不开放，避免预约到点后没有实际提交。</p>
       <form onSubmit={(event) => { event.preventDefault(); if (canPreview) setConfirm(true); }} className={styles.form}>
+        {status.courses.length > 0 && <label>从学校课程列表选择（已读取 {status.courses.length} 门）<select value={status.courses.some((course) => course.courseCode === courseCode) ? courseCode : ""} onChange={(event) => setCourseCode(event.target.value)}>
+          <option value="">请选择课程</option>
+          {status.courses.map((course) => <option key={course.courseCode} value={course.courseCode}>{course.courseCode} · {course.name} · {course.status}</option>)}
+        </select></label>}
         <label>课程编号<input inputMode="numeric" pattern="[0-9]{6,12}" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="例如 030158" required /></label>
         <label>选课序号<input inputMode="numeric" pattern="[0-9]{6,12}" value={sectionNumber} onChange={(event) => setSectionNumber(event.target.value)} placeholder="例如 288755" required /></label>
         <label>开始报名时间<input type="datetime-local" step="1" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required /></label>
