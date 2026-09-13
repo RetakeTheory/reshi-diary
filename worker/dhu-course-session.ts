@@ -93,7 +93,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const params = record(policy?.param);
     const encrypted = encryptSchoolPassword(password, String(params.publicKey || ""), String(params.publicKeyId || ""));
     const result = (await school.json(`${state.authPrefix}/esc-sso/authn/login`, "POST", {
-      authType: "webLocalAuth", dataField: { username, ...encrypted },
+      authType: "webLocalAuth", dataField: { username, ...encrypted, vcode: "" }, redirectUri: "",
     }, landing.url.href)).body;
     const redirect = schoolRedirect(result.data, state.authPrefix);
     if (redirect) await school.request(redirect);
