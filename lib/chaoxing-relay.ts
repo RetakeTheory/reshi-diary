@@ -12,6 +12,10 @@ export function createChaoxingFetch(env: RelayEnv, directFetch: typeof fetch = f
     if (!relayOrigin || !relayToken) return directFetch(input, init);
 
     const source = input instanceof Request ? input : new Request(input, init);
+    const target = new URL(source.url);
+    if (target.protocol !== "https:" || !/^(?:[a-z0-9-]+\.)*chaoxing\.com$/i.test(target.hostname)) {
+      return directFetch(input, init);
+    }
     const method = (init?.method || source.method || "GET").toUpperCase();
     const sourceHeaders = new Headers(source.headers);
     if (init?.headers) new Headers(init.headers).forEach((value, name) => sourceHeaders.set(name, value));

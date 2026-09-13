@@ -27,7 +27,12 @@ function record(value: unknown): Record<string, unknown> {
 
 function schoolMessage(value: unknown) {
   const message = String(value || "学校认证失败");
-  return message.length <= 120 ? message : "学校认证失败";
+  return message.length <= 240 ? message : `${message.slice(0, 239)}…`;
+}
+
+async function schoolStep<T>(step: string, action: Promise<T>): Promise<T> {
+  try { return await action; }
+  catch (error) { throw new Error(`${step}：${errorMessage(error)}`); }
 }
 
 export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
@@ -84,23 +89,23 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
 
     const state: SchoolState = { cookies: [], stage: "passport", username, updatedAt: Date.now() };
     const school = new SchoolHttp(state);
-    const landing = await school.request("https://webproxy.dhu.edu.cn/login");
+    const landing = await schoolStep("学校通行证入口", school.request("https://webproxy.dhu.edu.cn/login"));
     if (!landing.response.ok) throw new Error("学校通行证入口暂不可用");
     state.authPrefix = authPrefixFrom(landing.url);
-    const page = (await school.json(`${state.authPrefix}/esc-sso/dynamic/page?appCode=webproxy443&pageUrl=/identity/login`)).body.data;
+    const page = (await schoolStep("学校登录页初始化", school.json(`${state.authPrefix}/esc-sso/dynamic/page?appCode=webproxy443&pageUrl=/identity/login`))).body.data;
     const template = Array.isArray(page?.templates) ? record(page.templates[0]) : {};
     const pageId = String(template.pageId || "");
     if (!/^[a-zA-Z0-9]{8,64}$/.test(pageId)) throw new Error("学校登录页初始化失败");
     await school.request(`${state.authPrefix}/pd-entry/page/${pageId}/index.html`);
-    const policy = (await school.json(`${state.authPrefix}/esc-sso/authn/policy?app=webproxy443`)).body.data;
+    const policy = (await schoolStep("学校登录策略", school.json(`${state.authPrefix}/esc-sso/authn/policy?app=webproxy443`))).body.data;
     const params = record(policy?.param);
     const encrypted = encryptSchoolPassword(password, String(params.publicKey || ""), String(params.publicKeyId || ""));
-    const result = (await school.json(`${state.authPrefix}/esc-sso/authn/login`, "POST", {
-      authType: "webLocalAuth", dataField: { username, ...encrypted, vcode: "" }, redirectUri: "",
-    }, landing.url.href)).body;
+    const result = (await schoolStep("学校通行证账号验证", school.json(`${state.authPrefix}/esc-sso/authn/login`, "POST", {
+      authType: "webLocalAuth", dataField: { username, ...encrypted },
+    }, landing.url.href))).body;
     const redirect = schoolRedirect(result.data, state.authPrefix);
-    if (redirect) await school.request(redirect);
-    const enhanced = (await school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`)).body.data;
+    if (redirect) await schoolStep("学校登录跳转", school.request(redirect));
+    const enhanced = (await schoolStep("学校企业微信步骤", school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`))).body.data;
     const config = record(enhanced?.config);
     const mfa = record(config.mfaAuth);
     if (mfa.status !== "1") throw new Error("学校未返回预期的企业微信认证步骤，请在学校官网核对登录状态");

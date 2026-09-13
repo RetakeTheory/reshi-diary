@@ -104,6 +104,16 @@ test("Chaoxing relay keeps credentials out of the relay URL and forwards only se
   assert.equal(seen.authorization,"Bearer "+"x".repeat(32)); assert.equal(seen.target,"https://passport2.chaoxing.com/fanyalogin");
   assert.equal(seen.cookie,"vc3=session"); assert.match(seen.body,/password=secret/); assert.ok(!seen.url.includes("secret"));
 });
+
+test("mainland relay is limited to Chaoxing; school gateway uses the ordinary channel",async()=>{
+  const calls=[];
+  const relay=createChaoxingFetch({CHAOXING_RELAY_ORIGIN:"https://relay.example.cn",CHAOXING_RELAY_TOKEN:"x".repeat(32)},async(input,init)=>{
+    calls.push(new Request(input,init).url);
+    return new Response("ok");
+  });
+  await relay("https://webproxy.dhu.edu.cn/login");
+  assert.deepEqual(calls,["https://webproxy.dhu.edu.cn/login"]);
+});
 test("login falls back to the POST mobile endpoint without credentials in the URL",async()=>{
   const calls=[];
   const client=new ChaoxingClient({},async(url,init)=>{
