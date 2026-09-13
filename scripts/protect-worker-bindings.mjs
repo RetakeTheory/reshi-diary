@@ -16,6 +16,7 @@ const requiredSecrets = [
 
 const config = JSON.parse(await readFile(configPath, "utf8"));
 
+delete config.browser;
 config.keep_vars = true;
 config.triggers = { ...(config.triggers || {}), crons: ["* * * * *"] };
 config.vars = { ...(config.vars || {}), ...requiredVars };
@@ -42,9 +43,6 @@ if (!durableMigrations.some((migration) => migration?.new_sqlite_classes?.includ
 if (!durableMigrations.some((migration) => migration?.new_sqlite_classes?.includes("DhuCourseSession"))) {
   throw new Error("部署已中止：生成的 Wrangler 配置缺少课程预约 SQLite migration");
 }
-if (config.browser?.binding !== "BROWSER") {
-  throw new Error("部署已中止：生成的 Wrangler 配置缺少 Browser Run 绑定");
-}
 const r2Bindings = Array.isArray(config.r2_buckets) ? config.r2_buckets : [];
 if (!r2Bindings.some((binding) => binding?.binding === "ONEBOT_REMINDERS")) {
   r2Bindings.push({ binding: "ONEBOT_REMINDERS", bucket_name: "reshi-diary-onebot-reminders" });
@@ -60,7 +58,6 @@ console.log(
     "DB",
     "ONEBOT",
     "DHU_COURSE",
-    "BROWSER",
     "ONEBOT_REMINDERS",
   ].join(", ")}`,
 );

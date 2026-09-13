@@ -35,9 +35,6 @@
       "bucket_name": "reshi-diary-onebot-reminders"
     }
   ],
-  "browser": {
-    "binding": "BROWSER"
-  },
   "durable_objects": {
     "bindings": [
       {

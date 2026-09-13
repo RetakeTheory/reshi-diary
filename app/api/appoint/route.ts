@@ -37,7 +37,9 @@ export async function POST(request: Request) {
   if (!token) return Response.json({ error: "请刷新页面后重试" }, { status: 401 });
   if (!request.headers.get("content-type")?.startsWith("application/json")) return Response.json({ error: "请求格式无效" }, { status: 415 });
   const input = await request.json().catch(() => null) as { action?: string; [key: string]: unknown } | null;
-  const path = ({ startLogin: "/login/start", finishLogin: "/login/finish", addTask: "/task", cancelTask: "/task/cancel" })[input?.action as "startLogin" | "finishLogin" | "addTask" | "cancelTask"];
+  const path = ({ startLogin: "/login/start", sendCode: "/login/code", finishLogin: "/login/finish",
+    openCoursePage: "/login/course", addTask: "/task", cancelTask: "/task/cancel" })[
+    input?.action as "startLogin" | "sendCode" | "finishLogin" | "openCoursePage" | "addTask" | "cancelTask"];
   if (!path) return Response.json({ error: "操作不支持" }, { status: 400 });
   return forward(token, path, "POST", input);
 }

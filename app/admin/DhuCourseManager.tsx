@@ -7,12 +7,12 @@ import styles from "./DhuCourseManager.module.css";
 type Status = {
   tasks: DhuTask[];
   schoolSession: { savedAt: number; coursePageUrl: string } | null;
-  login: { liveUrl: string; expiresAt: number } | null;
+  login: { stage: "passport" | "mfa" | "ready"; username: string | null } | null;
 };
 
 const empty: Status = { tasks: [], schoolSession: null, login: null };
 const labels: Record<DhuTask["status"], string> = {
-  scheduled: "等待执行", watching: "监听中", needs_login: "需重新登录", submitted: "已提交待核实",
+  scheduled: "等待执行", watching: "监听中", needs_login: "需重新登录", paused: "已暂停", submitted: "已提交待核实",
   success: "报名成功", failed: "未报名", cancelled: "已取消",
 };
 
@@ -34,6 +34,10 @@ export default function DhuCourseManager() {
   const [courseCode, setCourseCode] = useState("");
   const [sectionNumber, setSectionNumber] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [coursePageUrl, setCoursePageUrl] = useState("");
   const [buyMaterial, setBuyMaterial] = useState<boolean | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -78,39 +82,62 @@ export default function DhuCourseManager() {
   return <div className={styles.root}>
     <div className={styles.intro}>
       <h2>东华大学课程预约</h2>
-      <p>在本站完成设置；学校登录与企业微信验证仍由学校页面处理。预约前请先在下方窗口打开目标课程类别列表。</p>
-      <p className={styles.notice}>学校会话会过期；系统发现过期后暂停提交并提示重新验证。后端浏览器操作仍可能被学校识别或限制，无法保证名额或精确到毫秒。预约记录与本机浏览器关联，请不要在预约结束前清除本站 Cookie。</p>
+      <p>在本站填写学校通行证信息，再用学校发送的企业微信验证码完成验证。本站后端直接请求学校 webproxy 网址。</p>
+      <p className={styles.notice}>学校会话会过期；系统发现过期后会提示重新验证。预约记录与本机浏览器关联，请不要在预约结束前清除本站 Cookie。</p>
     </div>
 
     <section className={styles.card}>
-      <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession ? styles.good : styles.warn}>{status.schoolSession ? `已保存 · ${when(status.schoolSession.savedAt)}` : "尚未保存"}</span></div>
-      <p>先打开学校通行证，登录后完成学校弹出的企业微信验证，再进入所需课程类别的课程列表。整个过程不需要向本站提交学校密码或验证码。</p>
-      <button type="button" disabled={busy} onClick={() => void act("startLogin")}>{status.schoolSession ? "重新验证学校登录" : "打开学校登录窗口"}</button>
-      {status.login && <div className={styles.live}>
-        <iframe src={status.login.liveUrl} title="学校登录与选课页面" referrerPolicy="no-referrer" />
-        <div className={styles.liveFoot}><span>完成验证并打开课程列表后，点击保存登录状态。</span><button type="button" disabled={busy} onClick={() => void act("finishLogin")}>保存登录状态</button></div>
-      </div>}
+      <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession ? styles.good : styles.warn}>{status.schoolSession ? `已连接 · ${when(status.schoolSession.savedAt)}` : status.login?.stage === "mfa" ? "等待企业微信验证码" : status.login?.stage === "ready" ? "已验证，待连接课程列表" : "尚未连接"}</span></div>
+      <p>密码和验证码经本站传给学校认证接口，仅学校会话 Cookie 保存在当前访问者的独立会话中。本站不保存密码或验证码。</p>
+      <form className={styles.form} onSubmit={async (event) => {
+        event.preventDefault();
+        const submittedPassword = password;
+        setPassword("");
+        await act("startLogin", { username: username.trim(), password: submittedPassword });
+      }}>
+        <label>学校通行证账号<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
+        <label>学校通行证密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        <button type="submit" disabled={busy || !username.trim() || !password}>登录学校通行证</button>
+      </form>
+      {status.login?.stage === "mfa" && <form className={styles.form} onSubmit={async (event) => {
+        event.preventDefault();
+        const submittedCode = code;
+        setCode("");
+        await act("finishLogin", { code: submittedCode });
+      }}>
+        <label>学校企业微信验证码<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} required /></label>
+        <button type="button" disabled={busy} onClick={() => void act("sendCode")}>通过学校发送验证码</button>
+        <button type="submit" disabled={busy || !code.trim()}>验证并登录</button>
+      </form>}
+      {status.login?.stage === "ready" && <form className={styles.form} onSubmit={(event) => {
+        event.preventDefault();
+        void act("openCoursePage", { coursePageUrl: coursePageUrl.trim() });
+      }}>
+        <label>学校 toSH 课程列表完整网址<input type="url" value={coursePageUrl} onChange={(event) => setCoursePageUrl(event.target.value)} placeholder="https://webproxy.dhu.edu.cn/https/…/dhu/selectcourse/toSH" required /></label>
+        <button type="submit" disabled={busy || !coursePageUrl.trim()}>连接课程列表</button>
+      </form>}
       {status.schoolSession && <small>当前课程类别页面：{status.schoolSession.coursePageUrl}</small>}
     </section>
 
     <section className={styles.card}>
       <h3>添加课程</h3>
+      <p className={styles.notice}>学校选课提交接口正在核验。登录与课程列表可先连接，自动报名暂不开放，避免预约到点后没有实际提交。</p>
       <form onSubmit={(event) => { event.preventDefault(); if (canPreview) setConfirm(true); }} className={styles.form}>
         <label>课程编号<input inputMode="numeric" pattern="[0-9]{6,12}" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="例如 030158" required /></label>
         <label>选课序号<input inputMode="numeric" pattern="[0-9]{6,12}" value={sectionNumber} onChange={(event) => setSectionNumber(event.target.value)} placeholder="例如 288755" required /></label>
         <label>开始报名时间<input type="datetime-local" step="1" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required /></label>
         <fieldset><legend>是否选教材</legend><label><input type="radio" name="material" checked={buyMaterial === true} onChange={() => setBuyMaterial(true)} /> 需要教材</label><label><input type="radio" name="material" checked={buyMaterial === false} onChange={() => setBuyMaterial(false)} /> 不需要教材</label></fieldset>
-        <button type="submit" disabled={!canPreview || busy || !status.schoolSession}>核对报名信息</button>
+        <button type="submit" disabled>核对报名信息（对接中）</button>
       </form>
     </section>
 
     <section className={styles.card}>
       <h3>预约列表</h3>
       {status.tasks.length === 0 ? <p>还没有预约课程。</p> : <div className={styles.tasks}>{status.tasks.map((task) => <article key={task.id} className={styles.task}>
-        <div><strong>{task.courseCode} · {task.sectionNumber}</strong><span className={task.status === "success" ? styles.good : task.status === "needs_login" || task.status === "failed" ? styles.warn : ""}>{labels[task.status]}</span></div>
+        <div><strong>{task.courseCode} · {task.sectionNumber}</strong><span className={task.status === "success" ? styles.good : task.status === "needs_login" || task.status === "paused" || task.status === "failed" ? styles.warn : ""}>{labels[task.status]}</span></div>
         <small>{when(task.scheduledAt)} · {task.buyMaterial ? "需要教材" : "不需要教材"}</small>
         <p>{task.message}</p>
-        {["scheduled", "watching", "needs_login"].includes(task.status) && <button type="button" disabled={busy} onClick={() => void act("cancelTask", { id: task.id })}>取消预约</button>}
+        {["scheduled", "watching", "needs_login", "paused"].includes(task.status) && <button type="button" disabled={busy} onClick={() => void act("cancelTask", { id: task.id })}>取消预约</button>}
       </article>)}</div>}
     </section>
 

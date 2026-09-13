@@ -1,4 +1,4 @@
-export type DhuTaskStatus = "scheduled" | "watching" | "needs_login" | "submitted" | "success" | "failed" | "cancelled";
+export type DhuTaskStatus = "scheduled" | "watching" | "needs_login" | "paused" | "submitted" | "success" | "failed" | "cancelled";
 
 export type DhuTask = {
   id: string;
