@@ -35,11 +35,18 @@
       "bucket_name": "reshi-diary-onebot-reminders"
     }
   ],
+  "browser": {
+    "binding": "BROWSER"
+  },
   "durable_objects": {
     "bindings": [
       {
         "name": "ONEBOT",
         "class_name": "OneBotSession"
+      },
+      {
+        "name": "DHU_COURSE",
+        "class_name": "DhuCourseSession"
       }
     ]
   },
@@ -47,6 +54,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["OneBotSession"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["DhuCourseSession"]
     }
   ],
   "routes": [

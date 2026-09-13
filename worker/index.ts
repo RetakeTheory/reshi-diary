@@ -3,9 +3,11 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { oneBotTokenHash } from "../lib/onebot-cloudflare";
 import { OneBotSession } from "./onebot-session";
+import { DhuCourseSession } from "./dhu-course-session";
 import { ensureDatabaseSchema } from "../db/runtime";
 
 export { OneBotSession };
+export { DhuCourseSession };
 
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -135,7 +137,7 @@ const worker = {
     const d1PluginApi = url.pathname === "/api/roll-call"
       || url.pathname === "/api/food-rankings" || url.pathname.startsWith("/api/food-rankings/")
       || url.pathname === "/api/admin/food-rankings" || url.pathname.startsWith("/api/admin/food-rankings/");
-    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/site-pages") && !cloudflareOneBotApi && !d1PluginApi) {
+    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/site-pages") && url.pathname !== "/api/admin/dhu" && !cloudflareOneBotApi && !d1PluginApi) {
       const origin = env?.RUST_BACKEND_ORIGIN?.trim();
       if (origin) {
         const upstream = new URL(`${url.pathname}${url.search}`, origin);

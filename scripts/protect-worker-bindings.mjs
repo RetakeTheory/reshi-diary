@@ -32,9 +32,18 @@ const durableBindings = Array.isArray(config.durable_objects?.bindings) ? config
 if (!durableBindings.some((binding) => binding?.name === "ONEBOT" && binding?.class_name === "OneBotSession")) {
   throw new Error("部署已中止：生成的 Wrangler 配置缺少 ONEBOT Durable Object 绑定");
 }
+if (!durableBindings.some((binding) => binding?.name === "DHU_COURSE" && binding?.class_name === "DhuCourseSession")) {
+  throw new Error("部署已中止：生成的 Wrangler 配置缺少课程预约 Durable Object 绑定");
+}
 const durableMigrations = Array.isArray(config.migrations) ? config.migrations : [];
 if (!durableMigrations.some((migration) => migration?.new_sqlite_classes?.includes("OneBotSession"))) {
   throw new Error("部署已中止：生成的 Wrangler 配置缺少 OneBotSession SQLite migration");
+}
+if (!durableMigrations.some((migration) => migration?.new_sqlite_classes?.includes("DhuCourseSession"))) {
+  throw new Error("部署已中止：生成的 Wrangler 配置缺少课程预约 SQLite migration");
+}
+if (config.browser?.binding !== "BROWSER") {
+  throw new Error("部署已中止：生成的 Wrangler 配置缺少 Browser Run 绑定");
 }
 const r2Bindings = Array.isArray(config.r2_buckets) ? config.r2_buckets : [];
 if (!r2Bindings.some((binding) => binding?.binding === "ONEBOT_REMINDERS")) {
@@ -50,6 +59,8 @@ console.log(
     ...requiredSecrets,
     "DB",
     "ONEBOT",
+    "DHU_COURSE",
+    "BROWSER",
     "ONEBOT_REMINDERS",
   ].join(", ")}`,
 );

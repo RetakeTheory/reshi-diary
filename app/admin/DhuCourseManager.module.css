@@ -1,0 +1,37 @@
+.root { display: grid; gap: 18px; color: #202226; }
+.intro h2 { margin: 0 0 8px; font-size: 1.45rem; }
+.intro p { margin: 0 0 8px; line-height: 1.6; }
+.notice { color: #86510d; }
+.card { min-width: 0; padding: 20px; border: 1px solid #d9dee5; border-radius: 16px; background: #fff; box-shadow: 0 3px 18px #162b4510; }
+.card h3 { margin: 0 0 12px; font-size: 1.1rem; }
+.card p { line-height: 1.6; }
+.card small { display: block; overflow-wrap: anywhere; color: #596273; }
+.sectionHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sectionHead h3 { margin: 0; }
+.good { color: #167248; font-weight: 700; }
+.warn { color: #a34d18; font-weight: 700; }
+.root button { cursor: pointer; border: 1px solid #9d1d22; border-radius: 9px; padding: 10px 16px; background: #9d1d22; color: white; font: inherit; font-weight: 650; }
+.root button:disabled { cursor: not-allowed; opacity: .5; }
+.form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.form label { display: grid; gap: 6px; font-weight: 600; }
+.form input:not([type="radio"]) { width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid #bbc3ce; border-radius: 9px; font: inherit; }
+.form fieldset { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 18px; margin: 0; padding: 12px; border: 1px solid #bbc3ce; border-radius: 9px; }
+.form fieldset legend { padding: 0 4px; font-weight: 600; }
+.form fieldset label { display: inline-flex; align-items: center; gap: 6px; }
+.form > button { justify-self: start; }
+.live { margin-top: 16px; border: 1px solid #c7cdd6; border-radius: 12px; overflow: hidden; }
+.live iframe { display: block; width: 100%; height: min(70vh, 700px); border: 0; background: #f2f4f6; }
+.liveFoot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px; background: #f6f7f9; }
+.tasks { display: grid; gap: 10px; }
+.task { padding: 14px; border: 1px solid #e0e3e8; border-radius: 10px; }
+.task > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.task p { margin: 8px 0; }
+.task button { background: #fff; color: #9d1d22; }
+.scrim { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 18px; background: #07111aba; }
+.dialog { width: min(100%, 440px); padding: 22px; border-radius: 16px; background: #fff; box-shadow: 0 20px 70px #0004; }
+.dialog p { margin: 8px 0; }
+.dialog > div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.dialog > div button:first-child { color: #9d1d22; background: white; }
+.error, .toast { position: fixed; z-index: 1001; right: 16px; bottom: 16px; max-width: min(400px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 10px; color: white; background: #a1262d; box-shadow: 0 8px 30px #0003; }
+.toast { background: #187149; }
+@media (max-width: 680px) { .card { padding: 16px; } .form { grid-template-columns: 1fr; } .liveFoot { align-items: stretch; flex-direction: column; } .live iframe { height: 64vh; } }

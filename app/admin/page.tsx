@@ -14,6 +14,7 @@ import SurveyManager from "./SurveyManager";
 import UserManager from "./UserManager";
 import FoodRankingManager from "./FoodRankingManager";
 import OneBotManager from "./OneBotManager";
+import DhuCourseManager from "./DhuCourseManager";
 import AdminDashboardTabs, { type AdminDashboardTab } from "./AdminDashboardTabs";
 import EditableModule from "../EditableModule";
 import { pageDocument } from "../../lib/site-pages";
@@ -71,6 +72,7 @@ export default async function AdminPage() {
   });
   tabs.push({ id: "admin-users", label: "注册用户管理", description: "搜索用户并处理恶意账户", icon: "user", content: <UserManager /> });
   tabs.push({ id: "admin-onebot", label: "QQ群通知", description: "查看 Bot 连接并发送群图片", icon: "bot", content: <OneBotManager /> });
+  tabs.push({ id: "admin-dhu-course", label: "课程预约", description: "学校登录、教材选择与报名状态", icon: "table", content: <DhuCourseManager /> });
 
   return (
     <main className="admin-shell">

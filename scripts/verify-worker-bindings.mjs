@@ -29,6 +29,7 @@ const required = [
   ["RESEND_API_KEY", "secret_text"],
   ["DB", "d1"],
   ["ONEBOT", "durable_object_namespace"],
+  ["DHU_COURSE", "durable_object_namespace"],
   ["ONEBOT_REMINDERS", "r2_bucket"],
 ];
 
@@ -46,6 +47,7 @@ for (const [name, type, expectedText] of required) {
 if (problems.length) {
   throw new Error(`生产绑定校验失败：${problems.join("；")}`);
 }
+if (!bindings.has("BROWSER")) throw new Error("生产绑定校验失败：BROWSER 缺失");
 
-console.log(`Worker ${scriptName} 的 S3、邮件、D1、R2 与 OneBot Durable Object 绑定校验通过${rustBackendOrigin ? "，非 OneBot API 的 Rust 代理已启用" : ""}`);
+console.log(`Worker ${scriptName} 的 S3、邮件、D1、R2、Browser Run 与 Durable Object 绑定校验通过${rustBackendOrigin ? "，非 OneBot API 的 Rust 代理已启用" : ""}`);
 
