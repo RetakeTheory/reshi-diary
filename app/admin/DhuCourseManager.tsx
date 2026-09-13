@@ -37,6 +37,7 @@ export default function DhuCourseManager() {
   const [scheduledAt, setScheduledAt] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [relogin, setRelogin] = useState(false);
   const [code, setCode] = useState("");
   const [coursePageUrl, setCoursePageUrl] = useState("");
   const [buyMaterial, setBuyMaterial] = useState<boolean | null>(null);
@@ -79,6 +80,7 @@ export default function DhuCourseManager() {
   const planned = new Date(scheduledAt).getTime();
   const canPreview = /^\d{6,12}$/.test(courseCode.trim()) && /^\d{6,12}$/.test(sectionNumber.trim())
     && Number.isFinite(planned) && planned > now + 30_000 && buyMaterial !== null;
+  const passportVerified = status.login?.stage === "mfa" || status.login?.stage === "ready";
 
   return <div className={styles.root}>
     <div className={styles.intro}>
@@ -90,16 +92,20 @@ export default function DhuCourseManager() {
     <section className={styles.card}>
       <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession ? styles.good : styles.warn}>{status.schoolSession ? `已连接 · ${when(status.schoolSession.savedAt)}` : status.login?.stage === "mfa" ? "等待企业微信验证码" : status.login?.stage === "ready" ? "已验证，待连接课程列表" : "尚未连接"}</span></div>
       <p>密码和验证码经本站传给学校认证接口，仅学校会话 Cookie 保存在当前访问者的独立会话中。本站不保存密码或验证码。</p>
-      <form className={styles.form} onSubmit={async (event) => {
+      {passportVerified && !relogin ? <div className={styles.form}>
+        <label>学校通行证账号<input value={status.login?.username || username} readOnly /></label>
+        <label>学校通行证密码<input value="登录成功" readOnly /></label>
+        <button type="button" disabled={busy} onClick={() => setRelogin(true)}>重新登录学校通行证</button>
+      </div> : <form className={styles.form} onSubmit={async (event) => {
         event.preventDefault();
         const submittedPassword = password;
         setPassword("");
-        await act("startLogin", { username: username.trim(), password: submittedPassword });
+        if (await act("startLogin", { username: username.trim(), password: submittedPassword })) setRelogin(false);
       }}>
         <label>学校通行证账号<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
         <label>学校通行证密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
         <button type="submit" disabled={busy || !username.trim() || !password}>登录学校通行证</button>
-      </form>
+      </form>}
       {status.login?.stage === "mfa" && <form className={styles.form} onSubmit={async (event) => {
         event.preventDefault();
         const submittedCode = code;

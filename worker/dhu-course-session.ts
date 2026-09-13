@@ -109,10 +109,17 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const config = record(enhanced?.config);
     const mfa = record(config.mfaAuth);
     if (mfa.status !== "1") throw new Error("学校未返回预期的企业微信认证步骤，请在学校官网核对登录状态");
+    const app = record(mfa.app);
+    const mfaType = Number(mfa.type);
+    if (![1, 2].includes(mfaType)) throw new Error("学校返回了未知的企业微信认证类型");
+    const appId = String(app.appId || "");
+    const appUrl = String(app.appUrl || "");
+    if (mfaType === 2 && (!appId || !appUrl)) throw new Error("学校未提供企业微信应用认证参数");
     const schoolUser = String(config.username || username);
     if (schoolUser !== username) throw new Error("学校认证账号与提交账号不一致");
     state.stage = "mfa";
     state.username = schoolUser;
+    state.mfa = { type: mfaType, appId, appUrl };
     state.updatedAt = Date.now();
     await this.storage.delete("courses");
     await this.storage.put("school", state);
@@ -140,25 +147,29 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const code = String(record(input).code || "").trim();
     if (!/^\d{4,8}$/.test(code)) throw new Error("请填写学校发送的验证码");
     const school = new SchoolHttp(state);
-    const policy = (await school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`)).body.data;
-    const mfa = record(record(policy?.config).mfaAuth);
-    if (mfa.status !== "1") throw new Error("学校认证步骤已过期，请重新登录");
-    const app = record(mfa.app);
+    const storedMfa = state.mfa;
+    const policy = storedMfa ? null : (await school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`)).body.data;
+    const mfa = storedMfa || record(record(policy?.config).mfaAuth);
+    if (!storedMfa && mfa.status !== "1") throw new Error("学校认证步骤已过期，请重新登录");
+    const app = storedMfa || record(mfa.app);
     const dataField: Record<string, string> = {
       username: state.username, password: "", msgCode: code, vcode: "",
     };
     let endpoint = `${state.authPrefix}/esc-sso/auth/login`;
-    if (mfa.type === 2) {
+    if (Number(mfa.type) === 2) {
       endpoint = `${state.authPrefix}/esc-sso/authn/app/enhance/ext/login`;
       dataField.appId = String(app.appId || "");
       dataField.appUrl = String(app.appUrl || "");
     }
-    const result = (await school.json(endpoint, "POST", {
+    const result = (await schoolStep("学校企业微信验证码验证", school.json(endpoint, "POST", {
       authType: "webWorkWechatMsgAuth", dataField, redirectUri: "",
-    }, `${state.authPrefix}/login/mfaLogin.html`)).body;
+    }, `${state.authPrefix}/login/mfaLogin.html`))).body;
     const redirect = schoolRedirect(result.data, state.authPrefix);
     if (!redirect) throw new Error("学校未返回认证完成后的跳转地址");
-    await school.request(redirect);
+    const completed = await schoolStep("学校认证完成跳转", school.request(redirect));
+    if (!completed.response.ok || completed.url.pathname === "/wengine-vpn/failed") {
+      throw new Error("学校网关未完成登录，请在学校官网核对认证状态");
+    }
     state.stage = "ready";
     state.updatedAt = Date.now();
     await this.storage.put("school", state);

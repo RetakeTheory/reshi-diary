@@ -8,6 +8,7 @@ export type SchoolState = {
   cookies: SchoolCookie[];
   authPrefix?: string;
   username?: string;
+  mfa?: { type: number; appId: string; appUrl: string };
   stage: "passport" | "mfa" | "ready";
   coursePageUrl?: string;
   updatedAt: number;
