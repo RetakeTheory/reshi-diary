@@ -70,11 +70,13 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     if (!/^[a-zA-Z0-9@._-]{4,64}$/.test(username) || !password || password.length > 100) {
       throw new Error("请填写学校通行证账号和密码");
     }
-    const attempts = await this.storage.get<{ count: number; until: number }>("loginAttempts");
-    if (attempts && attempts.until > Date.now() && attempts.count >= 5) throw new Error("登录尝试过于频繁，请稍后再试");
+    const savedAttempts = await this.storage.get<{ version?: number; count: number; until: number }>("loginAttempts");
+    const attempts = savedAttempts?.version === 2 ? savedAttempts : undefined;
+    if (attempts && attempts.until > Date.now() && attempts.count >= 5) throw new Error("本站登录尝试过于频繁，请在 5 分钟后重试");
     await this.storage.put("loginAttempts", {
+      version: 2,
       count: attempts && attempts.until > Date.now() ? attempts.count + 1 : 1,
-      until: attempts && attempts.until > Date.now() ? attempts.until : Date.now() + 15 * 60_000,
+      until: attempts && attempts.until > Date.now() ? attempts.until : Date.now() + 5 * 60_000,
     });
 
     const state: SchoolState = { cookies: [], stage: "passport", username, updatedAt: Date.now() };

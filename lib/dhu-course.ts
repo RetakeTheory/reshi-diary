@@ -14,6 +14,8 @@ export type DhuTask = {
   updatedAt: number;
 };
 
+export type DhuCourseOption = { courseCode: string; name: string; status: string };
+
 export const DHU_LOGIN_URL = "https://webproxy.dhu.edu.cn/login";
 export const WATCH_WINDOW_MS = 10 * 60_000;
 export const RETRY_INTERVAL_MS = 60_000;
@@ -51,4 +53,24 @@ export function classifySchoolResult(messages: string[]): "success" | "failed" |
   if (/失败|错误|冲突|已满|不能|不允许|未开放|验证码|重新登录/.test(text)) return "failed";
   if (/选课成功|报名成功|选课申请成功|已成功选课|录取成功/.test(text)) return "success";
   return "unknown";
+}
+
+function cellText(html: string) {
+  return html.replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ").trim();
+}
+
+export function parseDhuCourseOptions(html: string): DhuCourseOption[] {
+  const table = html.match(/<table\b[^>]*\bid=["']tsCoursesTbl["'][^>]*>([\s\S]*?)<\/table>/i)?.[1];
+  if (!table) return [];
+  const courses: DhuCourseOption[] = [];
+  for (const row of table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
+    if (cells.length < 5) continue;
+    const code = cells[1].match(/<a\b[^>]*>\s*(\d{6,12})\s*<\/a>/i)?.[1];
+    if (!code) continue;
+    courses.push({ courseCode: code, name: cellText(cells[2]), status: cellText(cells[4]) });
+  }
+  return courses;
 }

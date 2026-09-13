@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifySchoolResult, isSchoolCoursePage, normalizeDhuTask } from "../lib/dhu-course.ts";
+import { classifySchoolResult, isSchoolCoursePage, normalizeDhuTask, parseDhuCourseOptions } from "../lib/dhu-course.ts";
 
 test("reservation requires exact codes, future time and explicit textbook choice", () => {
   const now = 1_000_000;
@@ -17,4 +17,10 @@ test("school page and success detection fail closed", () => {
   assert.equal(classifySchoolResult(["本次选课申请成功"]), "success");
   assert.equal(classifySchoolResult(["选课失败：时间冲突"]), "failed");
   assert.equal(classifySchoolResult(["请求已受理"]), "unknown");
+});
+
+test("toSH course table yields selectable course codes", () => {
+  const html = '<table id="tsCoursesTbl"><tbody><tr><td>通识教育</td><td><a onclick="selectScope(this)">016051</a></td><td>线性代数</td><td>3.0</td><td>未读</td></tr><tr><td>合计</td></tr></tbody></table>';
+  assert.deepEqual(parseDhuCourseOptions(html), [{ courseCode: "016051", name: "线性代数", status: "未读" }]);
+  assert.deepEqual(parseDhuCourseOptions("<p>login</p>"), []);
 });
