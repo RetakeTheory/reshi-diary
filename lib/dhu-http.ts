@@ -59,7 +59,7 @@ export class SchoolHttp {
 
   constructor(state: SchoolState, send: typeof fetch = fetch) {
     this.state = state;
-    this.send = send;
+    this.send = (input, init) => send.call(globalThis, input, init);
   }
 
   async request(input: string, init: RequestInit = {}, follow = true): Promise<{ url: URL; response: Response }> {

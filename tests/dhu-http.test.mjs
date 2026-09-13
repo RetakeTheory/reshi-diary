@@ -5,6 +5,17 @@ import {
   SchoolHttp, authPrefixFrom, encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
 } from "../lib/dhu-http.ts";
 
+test("school fetch keeps the Workers global invocation context", async () => {
+  const state = { cookies: [], stage: "passport", updatedAt: 0 };
+  const http = new SchoolHttp(state, async function (url) {
+    assert.equal(this, globalThis);
+    assert.equal(String(url), "https://webproxy.dhu.edu.cn/login");
+    return new Response("ok");
+  });
+  const result = await http.request("https://webproxy.dhu.edu.cn/login");
+  assert.equal(result.response.status, 200);
+});
+
 test("school requests retain cookies across redirects and reject off-site targets", async () => {
   const visited = [];
   const state = { cookies: [], stage: "passport", updatedAt: 0 };
