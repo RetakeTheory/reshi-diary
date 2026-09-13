@@ -137,7 +137,7 @@ const worker = {
     const d1PluginApi = url.pathname === "/api/roll-call"
       || url.pathname === "/api/food-rankings" || url.pathname.startsWith("/api/food-rankings/")
       || url.pathname === "/api/admin/food-rankings" || url.pathname.startsWith("/api/admin/food-rankings/");
-    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/site-pages") && url.pathname !== "/api/admin/dhu" && !cloudflareOneBotApi && !d1PluginApi) {
+    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/site-pages") && url.pathname !== "/api/appoint" && !cloudflareOneBotApi && !d1PluginApi) {
       const origin = env?.RUST_BACKEND_ORIGIN?.trim();
       if (origin) {
         const upstream = new URL(`${url.pathname}${url.search}`, origin);

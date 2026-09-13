@@ -19,7 +19,7 @@ const labels: Record<DhuTask["status"], string> = {
 function when(timestamp: number) { return new Date(timestamp).toLocaleString("zh-CN", { hour12: false }); }
 
 async function request(action?: string, payload?: Record<string, unknown>) {
-  const response = await fetch("/api/admin/dhu", {
+  const response = await fetch("/api/appoint", {
     method: action ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
     headers: action ? { "Content-Type": "application/json" } : undefined,
     body: action ? JSON.stringify({ action, ...payload }) : undefined,
@@ -79,7 +79,7 @@ export default function DhuCourseManager() {
     <div className={styles.intro}>
       <h2>东华大学课程预约</h2>
       <p>在本站完成设置；学校登录与企业微信验证仍由学校页面处理。预约前请先在下方窗口打开目标课程类别列表。</p>
-      <p className={styles.notice}>学校会话会过期；系统发现过期后暂停提交并提示重新验证。后端浏览器操作仍可能被学校识别或限制，无法保证名额或精确到毫秒。</p>
+      <p className={styles.notice}>学校会话会过期；系统发现过期后暂停提交并提示重新验证。后端浏览器操作仍可能被学校识别或限制，无法保证名额或精确到毫秒。预约记录与本机浏览器关联，请不要在预约结束前清除本站 Cookie。</p>
     </div>
 
     <section className={styles.card}>

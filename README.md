@@ -1,7 +1,7 @@
 
 ## GitHub 自动部署到 Cloudflare Worker
 
-管理员课程预约接入说明见 [东华大学课程预约](docs/dhu-course.md)。
+公开课程预约接入说明见 [东华大学课程预约](docs/dhu-course.md)。
 
 ## 浏览器整站模块编辑器
 
