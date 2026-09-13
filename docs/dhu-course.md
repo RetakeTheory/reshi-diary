@@ -1,6 +1,6 @@
 # 东华大学课程预约
 
-管理员在 `admin.rettheory.top/admin#admin-dhu-course` 使用。手机上打开“学校登录窗口”，在嵌入的学校页面完成通行证登录及学校企业微信验证，进入目标课程类别的课程列表后点“保存登录状态”。随后填写课程编号、选课序号、开始报名时间，并明确选择是否要教材；核对弹窗后才创建预约。
+管理员在 `https://rettheory.top/admin#admin-dhu-course` 使用。手机上打开“学校登录窗口”，在嵌入的学校页面完成通行证登录及学校企业微信验证，进入目标课程类别的课程列表后点“保存登录状态”。随后填写课程编号、选课序号、开始报名时间，并明确选择是否要教材；核对弹窗后才创建预约。
 
 学校密码和企业微信验证码只在学校页面输入。系统将学校浏览器的 cookie/storageState 存在管理员专属 Durable Object 中，不写入 GitHub、R2 或 S3。GitHub 国内镜像只能加速源码文件下载，不能执行预约；实际执行由 Cloudflare Worker、Browser Run 和 Durable Object alarm 完成。
 
