@@ -325,6 +325,10 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const school = new SchoolHttp(state);
     const candidates = new Set<string>();
     if (state.coursePageUrl) candidates.add(validateCoursePageUrl(state.coursePageUrl));
+    const lastWorkingUrl = await this.storage.get<string>("lastWorkingCoursePageUrl");
+    if (lastWorkingUrl) {
+      try { candidates.add(validateCoursePageUrl(lastWorkingUrl)); } catch { /* Ignore an obsolete resource link. */ }
+    }
     let sawGatewayFailure = false;
     let sawLoginRedirect = false;
     // Read the live school's resource links so a rotated webproxy resource id does not need user input.
@@ -363,6 +367,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     state.stage = "ready";
     state.coursePageUrl = coursePage.entryUrl;
     state.updatedAt = Date.now();
+    await this.storage.put("lastWorkingCoursePageUrl", coursePage.entryUrl);
     await this.storage.put("courses", parseDhuCourseOptions(html));
     await this.storage.put("sections", parseDhuSectionOptions(html));
     await this.storage.put("sessionHealth", { checkedAt: Date.now(), active: true, loginRequired: false,
@@ -421,8 +426,6 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     if (state?.stage !== "ready" || !state.coursePageUrl) throw new Error("请先连接学校课程列表");
     const courseCode = String(record(input).courseCode || "").trim();
     if (!/^\d{6,12}$/.test(courseCode)) throw new Error("课程编号格式无效");
-    const courses = await this.storage.get<DhuCourseOption[]>("courses") || [];
-    if (!courses.some((course) => course.courseCode === courseCode)) throw new Error("当前学校课程列表未找到该课程编号");
     const school = new SchoolHttp(state);
     const endpoint = (name: string) => new URL(name, state.coursePageUrl).href;
     try {
