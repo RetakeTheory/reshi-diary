@@ -11,7 +11,7 @@ type Status = {
   schoolSession: { savedAt: number; coursePageUrl: string } | null;
   sessionHealth: DhuSessionHealth | null;
   submissionRecords: DhuSubmissionRecord[];
-  login: { stage: "passport" | "mfa" | "ready"; username: string | null } | null;
+  login: { stage: "passport" | "mfa" | "verified" | "ready"; username: string | null } | null;
 };
 type MfaDiagnostic = {
   schoolError?: string;
@@ -100,7 +100,7 @@ export default function DhuCourseManager() {
   const planned = new Date(scheduledAt).getTime();
   const canPreview = /^\d{6,12}$/.test(courseCode.trim()) && /^\d{6,12}$/.test(sectionNumber.trim())
     && Number.isFinite(planned) && planned > now + 30_000 && buyMaterial !== null;
-  const passportVerified = status.login?.stage === "mfa" || status.login?.stage === "ready";
+  const passportVerified = status.login?.stage === "mfa" || status.login?.stage === "verified" || status.login?.stage === "ready";
 
   return <div className={styles.root}>
     <div className={styles.intro}>
@@ -110,7 +110,7 @@ export default function DhuCourseManager() {
     </div>
 
     <section className={styles.card}>
-      <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession && !status.sessionHealth?.loginRequired ? styles.good : styles.warn}>{status.sessionHealth?.loginRequired ? "学校要求重新认证" : status.schoolSession ? `已连接 · ${when(status.schoolSession.savedAt)}` : status.login?.stage === "mfa" ? "等待企业微信验证码" : status.login?.stage === "ready" ? "已验证，待连接课程列表" : "尚未连接"}</span></div>
+      <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession && !status.sessionHealth?.loginRequired ? styles.good : styles.warn}>{status.sessionHealth?.loginRequired ? "学校要求重新认证" : status.schoolSession ? `已连接 · ${when(status.schoolSession.savedAt)}` : status.login?.stage === "mfa" ? "等待企业微信验证码" : status.login?.stage === "verified" ? "验证码已通过，待核实课程页" : status.login?.stage === "ready" ? "已验证，待连接课程列表" : "尚未连接"}</span></div>
       <p>密码和验证码经本站传给学校认证接口，仅学校会话 Cookie 保存在当前访问者的独立会话中。本站不保存密码或验证码。</p>
       {passportVerified && !relogin ? <div className={styles.form}>
         <label>学校通行证账号<input value={status.login?.username || username} readOnly /></label>
@@ -140,11 +140,12 @@ export default function DhuCourseManager() {
       {diagnostic && <p className={styles.notice}>{diagnostic.schoolError
         ? `学校拒绝当前认证状态查询：${diagnostic.schoolError}。请稍后重新登录学校通行证。`
         : `学校状态 ${diagnostic.schoolStatus} · 验证类型 ${diagnostic.schoolType} · 步骤数 ${diagnostic.schoolSteps} · 应用参数${diagnostic.applicationParametersPresent ? "已读取" : "缺失"} · 前后${diagnostic.applicationParametersMatch ? "一致" : "不一致"} · 账号${diagnostic.accountMatches ? "一致" : "不一致"} · 会话 Cookie ${diagnostic.sessionCookieCount} 个 · 企业微信短信方式${diagnostic.methodAvailable === null ? "未知" : diagnostic.methodAvailable ? "可用" : "未列出"} · 二次密码${diagnostic.passwordRequired === null ? "未知" : diagnostic.passwordRequired ? "必填" : "不需要"} · 图形验证${diagnostic.captchaRequired == null ? "未确认" : diagnostic.captchaRequired ? "必填" : "不需要"}`}</p>}
-      {status.login?.stage === "ready" && <form className={styles.form} onSubmit={(event) => {
+      {(status.login?.stage === "mfa" || status.login?.stage === "verified" || status.login?.stage === "ready") && <form className={styles.form} onSubmit={(event) => {
         event.preventDefault();
         void act("openCoursePage", { coursePageUrl: coursePageUrl.trim() });
       }}>
         <label>学校 toSH 课程列表完整网址<input type="url" value={coursePageUrl} onChange={(event) => setCoursePageUrl(event.target.value)} placeholder="https://webproxy.dhu.edu.cn/https/…/dhu/selectcourse/toSH" required /></label>
+        {status.login?.stage === "verified" && <p className={styles.notice}>学校已接受验证码，但网关跳转未完成。连接课程页后才能确认会话可用于选课。</p>}
         <button type="submit" disabled={busy || !coursePageUrl.trim()}>连接课程列表</button>
       </form>}
       {status.schoolSession && <small>当前课程类别页面：{status.schoolSession.coursePageUrl}</small>}

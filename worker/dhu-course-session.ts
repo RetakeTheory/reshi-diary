@@ -215,16 +215,24 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     }
     const redirect = schoolRedirect(result.data, state.authPrefix);
     if (!redirect) throw new Error("学校未返回认证完成后的跳转地址");
-    const completed = await schoolStep("学校认证完成跳转", school.request(redirect));
-    if (!completed.response.ok || completed.url.pathname === "/wengine-vpn/failed") {
-      throw new Error("学校网关未完成登录，请在学校官网核对认证状态");
-    }
-    state.stage = "ready";
+    // A successful OTP response and a successful webproxy gateway hop are separate events.
+    // Keep the authenticated SSO cookies even when the VPN gateway rejects its last hop.
+    let gatewayReady = false;
+    try {
+      const completed = await schoolStep("学校认证完成跳转", school.request(redirect, {
+        headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", Referer: mfaReferer(state) },
+      }));
+      gatewayReady = completed.response.ok
+        && completed.url.pathname !== "/wengine-vpn/failed"
+        && !/\/(?:identity\/login|login\/mfaLogin\.html|login)$/i.test(completed.url.pathname);
+    } catch { /* The OTP was accepted, but the gateway still needs direct course-page verification. */ }
+    state.stage = gatewayReady ? "ready" : "verified";
     state.updatedAt = Date.now();
     await this.storage.put("school", state);
     await this.storage.delete("sessionHealth");
     await this.storage.delete("loginAttempts");
-    return { login: { stage: "ready", username: state.username } };
+    return { login: { stage: state.stage, username: state.username },
+      gatewayWarning: gatewayReady ? null : "学校已接受企业微信验证码，但网关跳转未完成。请连接学校 toSH 课程页核实会话。" };
   }
 
   private async inspectMfa() {
@@ -265,14 +273,20 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
 
   private async openCoursePage(input: unknown) {
     const state = await this.school();
-    if (!state || state.stage !== "ready") throw new Error("请先完成学校企业微信验证");
+    if (!state || state.stage === "passport") throw new Error("请先登录学校通行证");
     const coursePageUrl = validateCoursePageUrl(String(record(input).coursePageUrl || ""));
     const school = new SchoolHttp(state);
-    const { url, response } = await school.request(coursePageUrl);
+    let opened: Awaited<ReturnType<SchoolHttp["request"]>>;
+    try { opened = await school.request(coursePageUrl); }
+    catch (error) { await this.storage.put("school", state); throw error; }
+    const { url, response } = opened;
     const html = await response.text();
     if (!response.ok || !url.pathname.includes("/dhu/selectcourse/") || !html.includes("tsCoursesTbl")) {
+      await this.storage.put("school", state);
       throw new Error("未能打开学校课程列表，请检查地址和学校登录状态");
     }
+    // The course list itself is the strongest proof that webproxy and the academic system agree on this session.
+    state.stage = "ready";
     state.coursePageUrl = url.href;
     state.updatedAt = Date.now();
     await this.storage.put("courses", parseDhuCourseOptions(html));

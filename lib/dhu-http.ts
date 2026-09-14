@@ -11,7 +11,7 @@ export type SchoolState = {
   mfa?: { type: number; appId: string; appUrl: string; methodAvailable?: boolean; passwordRequired?: boolean };
   mfaPageUrl?: string;
   userAgent?: string;
-  stage: "passport" | "mfa" | "ready";
+  stage: "passport" | "mfa" | "verified" | "ready";
   coursePageUrl?: string;
   updatedAt: number;
 };
