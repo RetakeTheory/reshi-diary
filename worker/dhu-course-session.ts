@@ -1,7 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
 import {
-  SchoolHttp, authPrefixFrom, encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
+  DHU_COURSE_SEED_URL, SchoolHttp, authPrefixFrom, discoverCoursePageUrls,
+  encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
   type SchoolState,
 } from "../lib/dhu-http";
 
@@ -86,7 +87,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       if (path === "/login/code") return json(await this.sendCode());
       if (path === "/login/finish") return json(await this.finishLogin(input));
       if (path === "/login/inspect") return json(await this.inspectMfa());
-      if (path === "/login/course") return json(await this.openCoursePage(input));
+      if (path === "/login/course") return json(await this.openCoursePage());
       if (path === "/task") return json(await this.addTask(input), 201);
       if (path === "/task/cancel") return json(await this.cancelTask(input));
       return json({ error: "路径不存在" }, 404);
@@ -232,7 +233,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     await this.storage.delete("sessionHealth");
     await this.storage.delete("loginAttempts");
     return { login: { stage: state.stage, username: state.username },
-      gatewayWarning: gatewayReady ? null : "学校已接受企业微信验证码，但网关跳转未完成。请连接学校 toSH 课程页核实会话。" };
+      gatewayWarning: gatewayReady ? null : "学校已接受企业微信验证码，但网关跳转未完成。本站将自动查找课程页核实会话。" };
   }
 
   private async inspectMfa() {
@@ -271,25 +272,49 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     } };
   }
 
-  private async openCoursePage(input: unknown) {
+  private async openCoursePage() {
     const state = await this.school();
     if (!state || state.stage === "passport") throw new Error("请先登录学校通行证");
-    const coursePageUrl = validateCoursePageUrl(String(record(input).coursePageUrl || ""));
     const school = new SchoolHttp(state);
-    let opened: Awaited<ReturnType<SchoolHttp["request"]>>;
-    try { opened = await school.request(coursePageUrl); }
-    catch (error) { await this.storage.put("school", state); throw error; }
-    const { url, response } = opened;
-    const html = await response.text();
-    if (!response.ok || !url.pathname.includes("/dhu/selectcourse/") || !html.includes("tsCoursesTbl")) {
-      await this.storage.put("school", state);
-      if (url.pathname === "/wengine-vpn/failed") throw new Error("学校网关拒绝了本站服务器会话，课程页未连接。验证码通过不等于学校 VPN 已放行");
-      if (/\/(?:identity\/login|login\/mfaLogin\.html|login)$/i.test(url.pathname)) throw new Error("学校要求重新登录，当前会话尚不能访问课程页");
-      throw new Error("未能打开学校课程列表，请检查地址和学校登录状态");
+    const candidates = new Set<string>();
+    if (state.coursePageUrl) candidates.add(validateCoursePageUrl(state.coursePageUrl));
+    let sawGatewayFailure = false;
+    let sawLoginRedirect = false;
+    // Read the live school's resource links so a rotated webproxy resource id does not need user input.
+    try {
+      const portal = await school.request("https://webproxy.dhu.edu.cn/");
+      if (portal.url.pathname === "/wengine-vpn/failed") sawGatewayFailure = true;
+      if (/\/(?:identity\/login|login\/mfaLogin\.html|login)$/i.test(portal.url.pathname)) sawLoginRedirect = true;
+      if (portal.response.ok) {
+        const portalHtml = await portal.response.text();
+        for (const url of discoverCoursePageUrls(portalHtml)) candidates.add(url);
+      }
+    } catch { /* The known public resource link can still work if the portal is unavailable. */ }
+    candidates.add(DHU_COURSE_SEED_URL);
+
+    let coursePage: { url: URL; entryUrl: string; html: string } | null = null;
+    for (const candidate of candidates) {
+      try {
+        const { url, response } = await school.request(candidate);
+        if (url.pathname === "/wengine-vpn/failed") sawGatewayFailure = true;
+        if (/\/(?:identity\/login|login\/mfaLogin\.html|login)$/i.test(url.pathname)) sawLoginRedirect = true;
+        const html = await response.text();
+        if (response.ok && url.pathname.includes("/dhu/selectcourse/") && html.includes("tsCoursesTbl")) {
+          coursePage = { url, entryUrl: candidate, html };
+          break;
+        }
+      } catch { /* Try the next school-provided course link. */ }
     }
+    if (!coursePage) {
+      await this.storage.put("school", state);
+      if (sawGatewayFailure) throw new Error("学校网关拒绝了本站服务器会话，课程页未连接。验证码通过不等于学校 VPN 已放行");
+      if (sawLoginRedirect) throw new Error("学校要求重新登录，当前会话尚不能访问课程页");
+      throw new Error("学校课程页自动发现失败，当前会话尚不能读取选课列表");
+    }
+    const { url, html } = coursePage;
     // The course list itself is the strongest proof that webproxy and the academic system agree on this session.
     state.stage = "ready";
-    state.coursePageUrl = url.href;
+    state.coursePageUrl = coursePage.entryUrl;
     state.updatedAt = Date.now();
     await this.storage.put("courses", parseDhuCourseOptions(html));
     await this.storage.put("sections", parseDhuSectionOptions(html));
@@ -298,7 +323,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const scriptSource = html.match(/<script[^>]+src=["']([^"']*selecthome\.js[^"']*)["']/i)?.[1];
     if (scriptSource) {
       try {
-        const script = await school.request(scriptSource.replaceAll("&amp;", "&"));
+        const script = await school.request(new URL(scriptSource.replaceAll("&amp;", "&"), url.href).href);
         if (script.response.ok) {
           const source = await script.response.text();
           // Static school code only; never log HTML, cookies, credentials, or student data.
@@ -366,8 +391,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     try {
       const { url, response } = await school.request(state.coursePageUrl);
       const html = await response.text();
-      let validAddress = false;
-      try { validAddress = validateCoursePageUrl(url.href) === url.href; } catch { /* Login redirects are not course pages. */ }
+      const validAddress = url.pathname.includes("/dhu/selectcourse/");
       if (!response.ok || !validAddress || !html.includes("tsCoursesTbl")) {
         health = { checkedAt: Date.now(), active: false, loginRequired: true,
           message: "学校会话已失效，请重新完成学校通行证和企业微信认证" };

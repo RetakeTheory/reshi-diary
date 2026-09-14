@@ -49,7 +49,6 @@ export default function DhuCourseManager() {
   const [password, setPassword] = useState("");
   const [relogin, setRelogin] = useState(false);
   const [code, setCode] = useState("");
-  const [coursePageUrl, setCoursePageUrl] = useState("");
   const [buyMaterial, setBuyMaterial] = useState<boolean | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -58,6 +57,7 @@ export default function DhuCourseManager() {
   const [diagnostic, setDiagnostic] = useState<MfaDiagnostic | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const known = useRef<Record<string, DhuTask["status"]>>({});
+  const autoConnectAttempted = useRef("");
 
   const refresh = useCallback(async () => {
     const next = await request() as Status;
@@ -87,6 +87,16 @@ export default function DhuCourseManager() {
     catch (cause) { setError(cause instanceof Error ? cause.message : "操作失败"); return false; }
     finally { setBusy(false); }
   }
+
+  useEffect(() => {
+    const login = status.login;
+    if (!login || login.stage === "passport" || login.stage === "mfa") { autoConnectAttempted.current = ""; return; }
+    if (status.schoolSession) return;
+    const key = `${login.username}:${login.stage}`;
+    if (autoConnectAttempted.current === key) return;
+    autoConnectAttempted.current = key;
+    void act("openCoursePage");
+  }, [status.login?.stage, status.login?.username, status.schoolSession]);
 
   async function inspectMfa() {
     setBusy(true); setError(""); setDiagnostic(null);
@@ -140,14 +150,10 @@ export default function DhuCourseManager() {
       {diagnostic && <p className={styles.notice}>{diagnostic.schoolError
         ? `学校拒绝当前认证状态查询：${diagnostic.schoolError}。请稍后重新登录学校通行证。`
         : `学校状态 ${diagnostic.schoolStatus} · 验证类型 ${diagnostic.schoolType} · 步骤数 ${diagnostic.schoolSteps} · 应用参数${diagnostic.applicationParametersPresent ? "已读取" : "缺失"} · 前后${diagnostic.applicationParametersMatch ? "一致" : "不一致"} · 账号${diagnostic.accountMatches ? "一致" : "不一致"} · 会话 Cookie ${diagnostic.sessionCookieCount} 个 · 企业微信短信方式${diagnostic.methodAvailable === null ? "未知" : diagnostic.methodAvailable ? "可用" : "未列出"} · 二次密码${diagnostic.passwordRequired === null ? "未知" : diagnostic.passwordRequired ? "必填" : "不需要"} · 图形验证${diagnostic.captchaRequired == null ? "未确认" : diagnostic.captchaRequired ? "必填" : "不需要"}`}</p>}
-      {(status.login?.stage === "mfa" || status.login?.stage === "verified" || status.login?.stage === "ready") && <form className={styles.form} onSubmit={(event) => {
-        event.preventDefault();
-        void act("openCoursePage", { coursePageUrl: coursePageUrl.trim() });
-      }}>
-        <label>学校 toSH 课程列表完整网址<input type="url" value={coursePageUrl} onChange={(event) => setCoursePageUrl(event.target.value)} placeholder="https://webproxy.dhu.edu.cn/https/…/dhu/selectcourse/toSH" required /></label>
-        {status.login?.stage === "verified" && <p className={styles.notice}>学校已接受验证码，但网关跳转未完成。连接课程页后才能确认会话可用于选课。</p>}
-        <button type="submit" disabled={busy || !coursePageUrl.trim()}>连接课程列表</button>
-      </form>}
+      {(status.login?.stage === "mfa" || status.login?.stage === "verified" || status.login?.stage === "ready") && !status.schoolSession && <div className={styles.form}>
+        <p className={styles.notice}>{status.login.stage === "verified" ? "学校已接受验证码，本站正在自动查找并核实课程页。" : "本站会自动读取学校选课入口；如果验证码已通过但网关跳转失败，也可以在此重试。"}</p>
+        <button type="button" disabled={busy} onClick={() => void act("openCoursePage")}>自动连接课程列表</button>
+      </div>}
       {status.schoolSession && <small>当前课程类别页面：{status.schoolSession.coursePageUrl}</small>}
       {status.sessionHealth && <p className={styles.notice}>服务器会话检查：{status.sessionHealth.message} · {when(status.sessionHealth.checkedAt)}</p>}
     </section>

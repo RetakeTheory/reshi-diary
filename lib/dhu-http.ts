@@ -2,6 +2,9 @@ import { constants, publicEncrypt } from "node:crypto";
 
 const SCHOOL_ORIGIN = "https://webproxy.dhu.edu.cn";
 const MAX_REDIRECTS = 12;
+// Public webproxy resource link for the undergraduate academic system. The resource id
+// may rotate, so the live portal is searched first and this is only a fallback.
+export const DHU_COURSE_SEED_URL = `${SCHOOL_ORIGIN}/https/446a5061214023323032323131446855152f7f4845a0b976a6a0aa1d0121c0/dhu/selectcourse/toSH`;
 
 export type SchoolCookie = { name: string; value: string; path: string; expiresAt?: number };
 export type SchoolState = {
@@ -148,4 +151,13 @@ export function validateCoursePageUrl(input: string) {
     throw new Error("请填写学校 toSH 课程列表完整地址");
   }
   return url.href;
+}
+
+export function discoverCoursePageUrls(html: string): string[] {
+  const source = html.slice(0, 500_000).replace(/&amp;/gi, "&").replace(/\\\//g, "/")
+    .replace(/\\u002f/gi, "/").replace(/\\u003a/gi, ":");
+  const matches = source.match(/(?:https?:\/\/webproxy\.dhu\.edu\.cn(?::443)?)?\/https\/[a-f0-9]{24,128}\/dhu\/selectcourse\/toSH(?:\?[^\s"'<>]*)?/gi) || [];
+  return [...new Set(matches.flatMap((match) => {
+    try { return [validateCoursePageUrl(match)]; } catch { return []; }
+  }))];
 }

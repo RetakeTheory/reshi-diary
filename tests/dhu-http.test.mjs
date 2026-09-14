@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { constants, generateKeyPairSync, privateDecrypt } from "node:crypto";
 import {
-  SchoolHttp, authPrefixFrom, encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
+  SchoolHttp, authPrefixFrom, discoverCoursePageUrls, encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
 } from "../lib/dhu-http.ts";
 
 test("school fetch keeps the Workers global invocation context", async () => {
@@ -30,7 +30,7 @@ test("MFA request retains the school's full application Referer and browser head
     assert.equal(headers.get("X-XSRF-TOKEN"), "csrf-token");
     return Response.json({ code: "0", data: {} });
   });
-  await http.json("https://webproxy.dhu.edu.cn/https/abcdef/esc-sso/authn/app/enhance/ext/login", "POST", {}, mfaPageUrl);
+  await http.json("https://webproxy.dhu.edu.cn/https/abcdef/esc-sso/app/enhance/login", "POST", {}, mfaPageUrl);
 });
 
 test("school requests retain cookies across redirects and reject off-site targets", async () => {
@@ -65,4 +65,15 @@ test("dynamic course and auth URLs are restricted to the school's gateway", () =
   assert.throws(() => validateCoursePageUrl("https://webproxy.dhu.edu.cn/https/abcdef/dhu/selectcourse/toSCC"), /toSH/);
   assert.equal(schoolRedirect({ redirect: "https://cas.dhu.edu.cn/esc-sso/login" }, "/https/abcdef"),
     "https://webproxy.dhu.edu.cn/https/abcdef/esc-sso/login");
+});
+
+test("course links are discovered from the live gateway page without a fixed resource id", () => {
+  const a = "a".repeat(64), b = "b".repeat(64);
+  const links = discoverCoursePageUrls(`<a href="/https/${a}/dhu/selectcourse/toSH">选课</a>
+    <script>location.href="https:\\/\\/webproxy.dhu.edu.cn\\/https\\/${b}\\/dhu\\/selectcourse\\/toSH"</script>
+    <a href="https://example.com/https/${a}/dhu/selectcourse/toSH">外站</a>`);
+  assert.deepEqual(links, [
+    `https://webproxy.dhu.edu.cn/https/${a}/dhu/selectcourse/toSH`,
+    `https://webproxy.dhu.edu.cn/https/${b}/dhu/selectcourse/toSH`,
+  ]);
 });
