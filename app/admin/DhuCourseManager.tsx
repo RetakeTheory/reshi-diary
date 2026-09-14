@@ -10,6 +10,11 @@ type Status = {
   schoolSession: { savedAt: number; coursePageUrl: string } | null;
   login: { stage: "passport" | "mfa" | "ready"; username: string | null } | null;
 };
+type MfaDiagnostic = {
+  schoolStatus: string; schoolType: number; schoolSteps: number;
+  applicationParametersPresent: boolean; applicationParametersMatch: boolean;
+  accountMatches: boolean; sessionCookieCount: number;
+};
 
 const empty: Status = { tasks: [], courses: [], schoolSession: null, login: null };
 const labels: Record<DhuTask["status"], string> = {
@@ -45,6 +50,7 @@ export default function DhuCourseManager() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
+  const [diagnostic, setDiagnostic] = useState<MfaDiagnostic | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const known = useRef<Record<string, DhuTask["status"]>>({});
 
@@ -74,6 +80,15 @@ export default function DhuCourseManager() {
     setBusy(true); setError("");
     try { await request(action, payload); await refresh(); return true; }
     catch (cause) { setError(cause instanceof Error ? cause.message : "操作失败"); return false; }
+    finally { setBusy(false); }
+  }
+
+  async function inspectMfa() {
+    setBusy(true); setError(""); setDiagnostic(null);
+    try {
+      const result = await request("inspectMfa") as { diagnostic: MfaDiagnostic };
+      setDiagnostic(result.diagnostic);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "检查失败"); }
     finally { setBusy(false); }
   }
 
@@ -115,7 +130,9 @@ export default function DhuCourseManager() {
         <label>学校企业微信验证码<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} required /></label>
         <button type="button" disabled={busy} onClick={() => void act("sendCode")}>通过学校发送验证码</button>
         <button type="submit" disabled={busy || !code.trim()}>验证并登录</button>
+        <button type="button" disabled={busy} onClick={() => void inspectMfa()}>检查企业微信认证状态</button>
       </form>}
+      {diagnostic && <p className={styles.notice}>学校状态 {diagnostic.schoolStatus} · 验证类型 {diagnostic.schoolType} · 步骤数 {diagnostic.schoolSteps} · 应用参数{diagnostic.applicationParametersPresent ? "已读取" : "缺失"} · 前后{diagnostic.applicationParametersMatch ? "一致" : "不一致"} · 账号{diagnostic.accountMatches ? "一致" : "不一致"} · 会话 Cookie {diagnostic.sessionCookieCount} 个</p>}
       {status.login?.stage === "ready" && <form className={styles.form} onSubmit={(event) => {
         event.preventDefault();
         void act("openCoursePage", { coursePageUrl: coursePageUrl.trim() });

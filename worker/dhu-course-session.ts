@@ -72,6 +72,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       if (path === "/login/start") return json(await this.startLogin(input));
       if (path === "/login/code") return json(await this.sendCode());
       if (path === "/login/finish") return json(await this.finishLogin(input));
+      if (path === "/login/inspect") return json(await this.inspectMfa());
       if (path === "/login/course") return json(await this.openCoursePage(input));
       if (path === "/task") return json(await this.addTask(input), 201);
       if (path === "/task/cancel") return json(await this.cancelTask(input));
@@ -188,6 +189,27 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     await this.storage.put("school", state);
     await this.storage.delete("loginAttempts");
     return { login: { stage: "ready", username: state.username } };
+  }
+
+  private async inspectMfa() {
+    const state = await this.school();
+    if (!state || state.stage !== "mfa" || !state.authPrefix) throw new Error("当前没有待完成的企业微信认证");
+    const school = new SchoolHttp(state);
+    const policy = (await schoolStep("读取学校企业微信认证状态", school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`))).body.data;
+    const config = record(policy?.config);
+    const current = record(config.mfaAuth);
+    const app = record(current.app);
+    await this.storage.put("school", state);
+    return { diagnostic: {
+      schoolStatus: String(current.status ?? "未知"),
+      schoolType: Number(current.type),
+      schoolSteps: Number(current.count),
+      applicationParametersPresent: Boolean(app.appId && app.appUrl),
+      applicationParametersMatch: Boolean(state.mfa && String(app.appId || "") === state.mfa.appId
+        && String(app.appUrl || "") === state.mfa.appUrl),
+      accountMatches: String(config.username || "") === state.username,
+      sessionCookieCount: state.cookies.length,
+    } };
   }
 
   private async openCoursePage(input: unknown) {
