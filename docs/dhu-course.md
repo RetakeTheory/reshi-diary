@@ -18,6 +18,6 @@
 4. 受控课程为用户指定的线性代数（016051），选课序号 288543，选择教材。先 GET 所需详情，再执行一次受控 POST；记录学校响应状态和最小必要字段，随后 GET“已选课程”核对结果。出现不确定结果时先查已选状态，避免盲目重复提交。若需清理测试选课，只使用学校正常退课流程，并另行核对退课后的课程状态。
 5. 一次受控试验确认成功与失败判定后，将同一请求适配器接到 Durable Object alarm。每次尝试先在 D1 记录编号与发送时间；成功即停止，未成功且学校会话仍有效时至少间隔 2 秒，最多 10 次。学校要求重新认证时停止并提示用户；不绕过学校规则。
 
-已确认脚本 SHA-256 `d44c415774df8e9c5160048380bf5b335de879783315ea75fe7c2ee8df92e9ba` 的调用顺序：`accessJudge` 用 `courseCode` 检查课程，`initACC` 用 `courseCode` 返回 DataTables 班次，第一列 `cttId` 即选课序号。正式提交先 POST 表单 `scConflictCheck`（`cttId`），无冲突后 POST 表单 `scSubmit`（`cttId`、`needMaterial`、`capCode`）。`success: true` 且 `msg !== "F"` 是学校脚本的成功分支；`msg: "F"` 要求图形验证码。当前已部署仅针对用户指定的线性代数 `016051 / 288543 / 需要教材` 的一次受控试提交入口，提交记录写入 D1；定时自动提交仍待学校真实响应和已选状态核对后开启。
+已确认脚本 SHA-256 `d44c415774df8e9c5160048380bf5b335de879783315ea75fe7c2ee8df92e9ba` 的调用顺序：`accessJudge` 用 `courseCode` 检查课程，`initACC` 用 `courseCode` 返回 DataTables 班次，第一列 `cttId` 即选课序号。正式提交先 POST 表单 `scConflictCheck`（`cttId`），无冲突后 POST 表单 `scSubmit`（`cttId`、`needMaterial`、`capCode`）。`success: true` 且 `msg !== "F"` 是学校脚本的成功分支；`msg: "F"` 要求图形验证码。用户指定的线性代数 `016051 / 288543 / 需要教材` 已完成一次受控试提交：学校返回成功，D1 记录为 accepted，用户在学校已选课程核实了班次与教材。定时队列只对 D1 中核验过的脚本 SHA 开放；提交前记录尝试，学校明确未开放或名额满时至少间隔 2 秒重试、最多 10 次。冲突、验证码、认证失效或网络结果不明时停止，以免盲目重复选课。Cloudflare alarm 的实际触发时间可能晚于预约秒数。
 
 学校认证与会话会过期；系统应在过期时要求重新验证，不能绕过学校身份认证。Durable Object alarm 与网络延迟不保证请求精确到达学校的指定秒，实际结果只以学校返回的确认信息为准。

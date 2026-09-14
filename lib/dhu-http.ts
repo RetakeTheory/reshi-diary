@@ -133,6 +133,7 @@ export class SchoolHttp {
         "X-Requested-With": "XMLHttpRequest",
       },
       body: new URLSearchParams(fields),
+      signal: AbortSignal.timeout(12_000),
     });
     if (url.pathname !== expected.pathname || !response.ok) throw new Error("学校接口未返回预期结果，请检查登录状态");
     const body = await response.json().catch(() => null);

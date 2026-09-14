@@ -33,7 +33,16 @@ export async function ensureDhuTables(db: Db) {
     db.prepare(`CREATE TABLE IF NOT EXISTS dhu_protocol_samples (
       script_sha256 TEXT PRIMARY KEY NOT NULL, checked_at INTEGER NOT NULL,
       submit_context TEXT NOT NULL)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dhu_protocol_verifications (
+      script_sha256 TEXT PRIMARY KEY NOT NULL, verified_at INTEGER NOT NULL,
+      verification_method TEXT NOT NULL)`),
   ]);
+}
+
+export async function isDhuProtocolVerified(db: Db, sha256: string) {
+  const row = await db.prepare(`SELECT verified_at FROM dhu_protocol_verifications
+    WHERE script_sha256 = ? LIMIT 1`).bind(sha256).first<{ verified_at: number }>();
+  return Boolean(row?.verified_at);
 }
 
 // This holds only a short excerpt of the school's public static JS asset.
