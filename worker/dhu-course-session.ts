@@ -448,7 +448,8 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       if (!Array.isArray(payload.aaData) && !Array.isArray(payload.data)) {
         throw new Error("学校班次接口结构待核对，请稍后重试");
       }
-      await this.storage.put("sections", sections);
+      const saved = await this.storage.get<DhuSectionOption[]>("sections") || [];
+      await this.storage.put("sections", [...saved.filter((section) => section.courseCode !== courseCode), ...sections]);
       return { sections, total: Number(payload.iTotalRecords ?? sections.length) };
     } finally {
       await this.storage.put("school", state);
