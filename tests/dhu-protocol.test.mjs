@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeSchoolScript, findSchoolScript } from "../lib/dhu-protocol.ts";
+import { analyzeSchoolScript, findSchoolScript, schoolSubmitSourceContext } from "../lib/dhu-protocol.ts";
 
 test("protocol inspection accepts only the school course script", () => {
   const base = "https://webproxy.dhu.edu.cn/https/abc123/dhu/selectcourse/toSH";
@@ -20,5 +20,6 @@ test("protocol evidence identifies candidates but never marks them verified", as
   assert.deepEqual(result.endpointCandidates, ["/dhu/selectcourse/saveChoice"]);
   assert.deepEqual(result.fieldHints, ["buyMaterial", "courseCode"]);
   assert.equal(result.verified, false);
+  assert.match(schoolSubmitSourceContext('a'.repeat(10) + '/selectcourse/scSubmit' + 'b'.repeat(10))[0].source, /scSubmit/);
   await assert.rejects(analyzeSchoolScript("<html><title>登录</title></html>"), /不是可核验/);
 });
