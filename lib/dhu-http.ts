@@ -89,13 +89,20 @@ export class SchoolHttp {
   }
 
   async json(input: string, method = "GET", data?: unknown, referer?: string) {
+    const xsrf = this.state.cookies.find((cookie) => cookie.name === "XSRF-TOKEN"
+      && (!cookie.expiresAt || cookie.expiresAt > Date.now()));
     const { url, response } = await this.request(input, {
       method,
-      headers: data === undefined ? undefined : {
+      headers: {
         "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/json; charset=utf-8",
-        "X-Requested-With": "XMLHttpRequest",
-        "Origin": SCHOOL_ORIGIN,
+        "Accept-Language": "zh-CN",
+        "language": "zh-CN",
+        "browserid": "",
+        ...(xsrf ? { "X-XSRF-TOKEN": xsrf.value } : {}),
+        ...(data === undefined ? {} : {
+          "Content-Type": "application/json; charset=utf-8",
+          "Origin": SCHOOL_ORIGIN,
+        }),
         ...(referer ? { Referer: schoolUrl(referer).href } : {}),
       },
       body: data === undefined ? undefined : JSON.stringify(data),
