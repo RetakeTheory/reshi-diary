@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { MAX_SUBMISSION_ATTEMPTS, RETRY_INTERVAL_MS, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, planDhuSubmission, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
-import { ensureDhuTables, saveDhuAccount, saveDhuSubmission, saveDhuTask } from "../lib/dhu-persistence";
+import { ensureDhuTables, saveDhuAccount, saveDhuProtocolSample, saveDhuSubmission, saveDhuTask } from "../lib/dhu-persistence";
 import { analyzeSchoolScript, findSchoolScript, schoolSubmitSourceContext, type DhuProtocolEvidence } from "../lib/dhu-protocol";
 import {
   DHU_COURSE_SEED_URL, SchoolHttp, authPrefixFrom, discoverCoursePageUrls,
@@ -386,9 +386,12 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const source = await response.text();
     const evidence = await analyzeSchoolScript(source);
     await this.storage.put("protocolEvidence", evidence);
+    const contexts = schoolSubmitSourceContext(source);
+    if (contexts.length) await saveDhuProtocolSample(await this.db(), evidence.scriptSha256,
+      evidence.checkedAt, contexts[0].source);
     console.info(JSON.stringify({ event: "dhu_course_protocol_evidence", ...evidence }));
     console.info(JSON.stringify({ event: "dhu_course_submit_source_context", scriptSha256: evidence.scriptSha256,
-      contexts: schoolSubmitSourceContext(source) }));
+      contexts }));
     return evidence;
   }
 

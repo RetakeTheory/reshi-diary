@@ -30,7 +30,19 @@ export async function ensureDhuTables(db: Db) {
       recorded_at INTEGER NOT NULL, outcome TEXT NOT NULL, message TEXT NOT NULL)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_dhu_course_submissions_account
       ON dhu_course_submissions (username, owner_id, recorded_at DESC)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dhu_protocol_samples (
+      script_sha256 TEXT PRIMARY KEY NOT NULL, checked_at INTEGER NOT NULL,
+      submit_context TEXT NOT NULL)`),
   ]);
+}
+
+// This holds only a short excerpt of the school's public static JS asset.
+// It has no account key, session cookie, page HTML, password, or MFA code.
+export async function saveDhuProtocolSample(db: Db, sha256: string, checkedAt: number, context: string) {
+  await db.prepare(`INSERT INTO dhu_protocol_samples (script_sha256, checked_at, submit_context)
+    VALUES (?, ?, ?) ON CONFLICT(script_sha256) DO UPDATE SET
+      checked_at = excluded.checked_at, submit_context = excluded.submit_context`)
+    .bind(sha256, checkedAt, context).run();
 }
 
 export async function saveDhuAccount(db: Db, ownerId: string, state: SchoolState) {
