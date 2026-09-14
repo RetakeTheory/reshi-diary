@@ -2,7 +2,7 @@
 .intro h2 { margin: 0 0 8px; font-size: 1.45rem; }
 .intro p { margin: 0 0 8px; line-height: 1.6; }
 .notice { color: #86510d; }
-.card { min-width: 0; padding: 20px; border: 1px solid #d9dee5; border-radius: 16px; background: #fff; box-shadow: 0 3px 18px #162b4510; }
+.card { min-width: 0; padding: 20px 0; border: 0; border-bottom: 1px solid #d9dee5; border-radius: 0; background: transparent; box-shadow: none; }
 .card h3 { margin: 0 0 12px; font-size: 1.1rem; }
 .card p { line-height: 1.6; }
 .card small { display: block; overflow-wrap: anywhere; color: #596273; }
@@ -34,4 +34,4 @@
 .dialog > div button:first-child { color: #9d1d22; background: white; }
 .error, .toast { position: fixed; z-index: 1001; right: 16px; bottom: 16px; max-width: min(400px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 10px; color: white; background: #a1262d; box-shadow: 0 8px 30px #0003; }
 .toast { background: #187149; }
-@media (max-width: 680px) { .card { padding: 16px; } .form { grid-template-columns: 1fr; } .liveFoot { align-items: stretch; flex-direction: column; } .live iframe { height: 64vh; } }
+@media (max-width: 680px) { .card { padding: 18px 0; } .form { grid-template-columns: 1fr; } .liveFoot { align-items: stretch; flex-direction: column; } .live iframe { height: 64vh; } }

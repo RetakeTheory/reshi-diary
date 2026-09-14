@@ -33,8 +33,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin) return Response.json({ error: "请求来源无效" }, { status: 403 });
-  const token = tokenFrom(request);
-  if (!token) return Response.json({ error: "请刷新页面后重试" }, { status: 401 });
   if (!request.headers.get("content-type")?.startsWith("application/json")) return Response.json({ error: "请求格式无效" }, { status: 415 });
   const input = await request.json().catch(() => null) as { action?: string; [key: string]: unknown } | null;
   const path = ({ startLogin: "/login/start", sendCode: "/login/code", finishLogin: "/login/finish",
@@ -43,5 +41,9 @@ export async function POST(request: Request) {
     addTask: "/task", cancelTask: "/task/cancel" })[
     input?.action as "startLogin" | "sendCode" | "finishLogin" | "inspectMfa" | "openCoursePage" | "inspectProtocol" | "testSubmit" | "loadSections" | "addTask" | "cancelTask"];
   if (!path) return Response.json({ error: "操作不支持" }, { status: 400 });
-  return forward(token, path, "POST", input, request.headers.get("user-agent"));
+  const existingToken = tokenFrom(request);
+  const token = existingToken || newToken();
+  const response = await forward(token, path, "POST", input, request.headers.get("user-agent"));
+  if (!existingToken) response.headers.set("Set-Cookie", `${COOKIE}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; Secure; SameSite=Lax`);
+  return response;
 }
