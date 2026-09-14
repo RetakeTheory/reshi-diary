@@ -50,6 +50,23 @@ test("school requests retain cookies across redirects and reject off-site target
   await assert.rejects(() => http.request("https://example.com/login"), /跳转地址无效/);
 });
 
+test("school DataTables POST uses form encoding in the authenticated gateway session", async () => {
+  const page = "https://webproxy.dhu.edu.cn/https/abcdef/dhu/selectcourse/toSH";
+  const target = "https://webproxy.dhu.edu.cn/https/abcdef/dhu/selectcourse/initACC";
+  const state = { cookies: [{ name: "session", value: "abc", path: "/" }], stage: "ready", updatedAt: 0 };
+  const http = new SchoolHttp(state, async (url, init) => {
+    const headers = new Headers(init.headers);
+    assert.equal(String(url), target);
+    assert.equal(init.method, "POST");
+    assert.match(headers.get("Content-Type"), /application\/x-www-form-urlencoded/);
+    assert.equal(headers.get("Referer"), page);
+    assert.equal(headers.get("Cookie"), "session=abc");
+    assert.equal(String(init.body), "courseCode=016051&sEcho=1");
+    return Response.json({ aaData: [{ cttId: 288543 }] });
+  });
+  assert.equal((await http.postForm(target, { courseCode: "016051", sEcho: "1" }, page)).aaData[0].cttId, 288543);
+});
+
 test("school password uses the school's RSA key and is recoverable with its private key", () => {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 1024 });
   const der = publicKey.export({ type: "spki", format: "der" }).toString("base64");

@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { MAX_SUBMISSION_ATTEMPTS, RETRY_INTERVAL_MS, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, planDhuSubmission, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
+import { MAX_SUBMISSION_ATTEMPTS, RETRY_INTERVAL_MS, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, parseDhuSectionRows, planDhuSubmission, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
 import { ensureDhuTables, saveDhuAccount, saveDhuProtocolSample, saveDhuSubmission, saveDhuTask } from "../lib/dhu-persistence";
 import { analyzeSchoolScript, findSchoolScript, schoolSubmitSourceContext, type DhuProtocolEvidence } from "../lib/dhu-protocol";
 import {
@@ -131,6 +131,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       if (path === "/login/inspect") return json(await this.inspectMfa());
       if (path === "/login/course") return json(await this.openCoursePage());
       if (path === "/protocol/inspect") return json(await this.inspectProtocol());
+      if (path === "/course/sections") return json(await this.loadSections(input));
       if (path === "/task") return json(await this.addTask(input), 201);
       if (path === "/task/cancel") return json(await this.cancelTask(input));
       return json({ error: "路径不存在" }, 404);
@@ -411,6 +412,32 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       return { protocolEvidence: await this.collectProtocolEvidence(school, html, url) };
     } finally {
       state.updatedAt = Date.now();
+      await this.storage.put("school", state);
+    }
+  }
+
+  private async loadSections(input: unknown) {
+    const state = await this.school();
+    if (state?.stage !== "ready" || !state.coursePageUrl) throw new Error("请先连接学校课程列表");
+    const courseCode = String(record(input).courseCode || "").trim();
+    if (!/^\d{6,12}$/.test(courseCode)) throw new Error("课程编号格式无效");
+    const courses = await this.storage.get<DhuCourseOption[]>("courses") || [];
+    if (!courses.some((course) => course.courseCode === courseCode)) throw new Error("当前学校课程列表未找到该课程编号");
+    const school = new SchoolHttp(state);
+    const endpoint = (name: string) => new URL(name, state.coursePageUrl).href;
+    try {
+      const access = await school.postForm(endpoint("accessJudge"), { courseCode }, state.coursePageUrl);
+      if (access.success !== true) throw new Error(schoolMessage(access.msg || "学校未开放该课程的班次列表"));
+      const payload = await school.postForm(endpoint("initACC"), {
+        courseCode, sEcho: "1", iDisplayStart: "0", iDisplayLength: "200",
+      }, state.coursePageUrl);
+      const sections = parseDhuSectionRows(courseCode, payload);
+      if (!Array.isArray(payload.aaData) && !Array.isArray(payload.data)) {
+        throw new Error("学校班次接口结构待核对，请稍后重试");
+      }
+      await this.storage.put("sections", sections);
+      return { sections, total: Number(payload.iTotalRecords ?? sections.length) };
+    } finally {
       await this.storage.put("school", state);
     }
   }

@@ -183,6 +183,7 @@ export default function DhuCourseManager() {
           {status.courses.map((course) => <option key={course.courseCode} value={course.courseCode}>{course.courseCode} · {course.name} · {course.status}</option>)}
         </select></label>}
         <label>课程编号<input inputMode="numeric" pattern="[0-9]{6,12}" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="例如 030158" required /></label>
+        {status.schoolSession && /^\d{6,12}$/.test(courseCode.trim()) && <button type="button" disabled={busy} onClick={() => void act("loadSections", { courseCode: courseCode.trim() })}>读取该课程的选课序号</button>}
         {status.sections.some((section) => section.courseCode === courseCode) && <label>从班次列表选择<select value={status.sections.some((section) => section.courseCode === courseCode && section.sectionNumber === sectionNumber) ? sectionNumber : ""} onChange={(event) => setSectionNumber(event.target.value)}>
           <option value="">请选择选课序号</option>
           {status.sections.filter((section) => section.courseCode === courseCode).map((section) => <option key={section.sectionNumber} value={section.sectionNumber}>{section.sectionNumber} · {section.teacher} · {section.schedule} · 已录 {section.admitted}/{section.capacity}</option>)}

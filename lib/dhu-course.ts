@@ -148,3 +148,23 @@ export function parseDhuSectionOptions(html: string): DhuSectionOption[] {
   }
   return sections;
 }
+
+export function parseDhuSectionRows(courseCode: string, payload: unknown): DhuSectionOption[] {
+  if (!/^\d{6,12}$/.test(courseCode) || !payload || typeof payload !== "object") return [];
+  const source = payload as Record<string, unknown>;
+  const rows = Array.isArray(source.aaData) ? source.aaData : Array.isArray(source.data) ? source.data : [];
+  return rows.slice(0, 200).flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const sectionNumber = String(row.cttId ?? "").trim();
+    if (!/^\d{6,12}$/.test(sectionNumber)) return [];
+    const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+    return [{
+      courseCode, sectionNumber, classNumber: String(row.classNo ?? ""),
+      capacity: number(row.maxCnt), applicants: number(row.applyCnt), admitted: number(row.enrollCnt),
+      teacher: String(row.techName ?? "").slice(0, 120),
+      schedule: [row.useWeek1, row.useWeek2, row.useTime].filter(Boolean).map(String).join(" ").slice(0, 200),
+      location: String(row.roomName ?? row.classroom ?? "").slice(0, 120),
+    }];
+  });
+}

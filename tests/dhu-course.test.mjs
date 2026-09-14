@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyDhuSubmissionResult, classifySchoolResult, isSchoolCoursePage, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, planDhuSubmission } from "../lib/dhu-course.ts";
+import { applyDhuSubmissionResult, classifySchoolResult, isSchoolCoursePage, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, parseDhuSectionRows, planDhuSubmission } from "../lib/dhu-course.ts";
 
 test("reservation requires exact codes, future time and explicit textbook choice", () => {
   const now = 1_000_000;
@@ -32,6 +32,14 @@ test("expanded class table maps a section to its parent course and capacity", ()
     applicants: 25, admitted: 83, teacher: "王澜", schedule: "1-16周 周三.7.8.9节", location: "1教109",
   }]);
   assert.deepEqual(parseDhuSectionOptions('<table id="accessClassTbl"></table>'), []);
+});
+
+test("school DataTables rows map cttId to the visible section number", () => {
+  const sections = parseDhuSectionRows("016051", { aaData: [{ cttId: 288543, classNo: 2,
+    maxCnt: 80, applyCnt: 65, enrollCnt: 79, techName: "王老师", useWeek1: "1-16周" }] });
+  assert.equal(sections[0].sectionNumber, "288543");
+  assert.equal(sections[0].courseCode, "016051");
+  assert.equal(sections[0].admitted, 79);
 });
 
 test("submission plan waits until server time, spaces attempts by two seconds and stops at ten", () => {

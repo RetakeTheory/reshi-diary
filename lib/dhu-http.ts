@@ -120,6 +120,25 @@ export class SchoolHttp {
     }
     return { url, body };
   }
+
+  async postForm(input: string, fields: Record<string, string>, referer: string): Promise<Record<string, unknown>> {
+    const expected = schoolUrl(input);
+    const { url, response } = await this.request(expected.href, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Origin": SCHOOL_ORIGIN,
+        "Referer": schoolUrl(referer).href,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: new URLSearchParams(fields),
+    });
+    if (url.pathname !== expected.pathname || !response.ok) throw new Error("学校接口未返回预期结果，请检查登录状态");
+    const body = await response.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("学校接口返回格式异常");
+    return body as Record<string, unknown>;
+  }
 }
 
 export function authPrefixFrom(url: URL) {
