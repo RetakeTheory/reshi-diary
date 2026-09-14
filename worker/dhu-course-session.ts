@@ -21,6 +21,7 @@ type CourseStorage = {
 const SESSION_CHECK_MS = 10 * 60_000;
 const SESSION_RETRY_MS = 2 * 60_000;
 const CONTROLLED_SCRIPT_SHA = "d44c415774df8e9c5160048380bf5b335de879783315ea75fe7c2ee8df92e9ba";
+type LoginProgress = { id: string; status: "running" | "failed"; startedAt: number; message?: string };
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -101,10 +102,10 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
   }
 
   private async summary() {
-    const [state, courses, sections, sessionHealth, protocolEvidence] = await Promise.all([
+    const [state, courses, sections, sessionHealth, protocolEvidence, loginProgress] = await Promise.all([
       this.school(), this.storage.get<DhuCourseOption[]>("courses"),
       this.storage.get<DhuSectionOption[]>("sections"), this.storage.get<DhuSessionHealth>("sessionHealth"),
-      this.storage.get<DhuProtocolEvidence>("protocolEvidence"),
+      this.storage.get<DhuProtocolEvidence>("protocolEvidence"), this.storage.get<LoginProgress>("loginProgress"),
     ]);
     const [tasks, submissionRecords] = await Promise.all([
       this.tasks(state?.username),
@@ -125,6 +126,8 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       schoolSession: state?.stage === "ready" && state.coursePageUrl
         ? { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } : null,
       login: state ? { stage: state.stage, username: state.username || null } : null,
+      loginProgress: loginProgress?.status === "running" && Date.now() - loginProgress.startedAt > 120_000
+        ? { ...loginProgress, status: "failed", message: "学校登录等待超时，请重试" } : loginProgress || null,
     };
   }
 
@@ -134,7 +137,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       if (request.method === "GET" && path === "/status") return json(await this.summary());
       if (request.method !== "POST") return json({ error: "方法不支持" }, 405);
       const input = await request.json().catch(() => null);
-      if (path === "/login/start") return json(await this.startLogin(input, request.headers.get("X-Appoint-User-Agent")));
+      if (path === "/login/start") return json(await this.beginLogin(input, request.headers.get("X-Appoint-User-Agent")), 202);
       if (path === "/login/code") return json(await this.sendCode());
       if (path === "/login/finish") return json(await this.finishLogin(input));
       if (path === "/login/inspect") return json(await this.inspectMfa());
@@ -150,7 +153,29 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     }
   }
 
-  private async startLogin(input: unknown, userAgent: string | null) {
+  private async beginLogin(input: unknown, userAgent: string | null) {
+    const data = record(input);
+    const username = String(data.username || "").trim();
+    const password = String(data.password || "");
+    if (!/^[a-zA-Z0-9@._-]{4,64}$/.test(username) || !password || password.length > 100) {
+      throw new Error("请填写学校通行证账号和密码");
+    }
+    const previous = await this.storage.get<LoginProgress>("loginProgress");
+    if (previous?.status === "running" && Date.now() - previous.startedAt < 120_000) return { loginProgress: previous };
+    const progress: LoginProgress = { id: crypto.randomUUID(), status: "running", startedAt: Date.now() };
+    await this.storage.put("loginProgress", progress);
+    // A Durable Object stays active while this job has pending I/O; the browser can poll status separately.
+    void this.startLogin(data, userAgent, progress.id).then(async () => {
+      if ((await this.storage.get<LoginProgress>("loginProgress"))?.id === progress.id) await this.storage.delete("loginProgress");
+    }).catch(async (error) => {
+      if ((await this.storage.get<LoginProgress>("loginProgress"))?.id === progress.id) {
+        await this.storage.put("loginProgress", { ...progress, status: "failed", message: schoolMessage(errorMessage(error)) });
+      }
+    });
+    return { loginProgress: progress };
+  }
+
+  private async startLogin(input: unknown, userAgent: string | null, progressId: string) {
     const data = record(input);
     const username = String(data.username || "").trim();
     const password = String(data.password || "");
@@ -207,6 +232,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     state.mfa = { type: mfaType, appId, appUrl, methodAvailable: auths.includes("webWorkWechatMsgAuth"),
       passwordRequired: messageAuth.staticPassword === "1" };
     state.updatedAt = Date.now();
+    if ((await this.storage.get<LoginProgress>("loginProgress"))?.id !== progressId) return;
     await this.storage.delete("courses");
     await this.storage.delete("sections");
     await this.storage.delete("sessionHealth");

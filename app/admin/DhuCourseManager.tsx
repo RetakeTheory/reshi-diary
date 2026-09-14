@@ -15,6 +15,7 @@ type Status = {
   submissionReady: boolean;
   protocolEvidence: DhuProtocolEvidence | null;
   login: { stage: "passport" | "mfa" | "verified" | "ready"; username: string | null } | null;
+  loginProgress: { id: string; status: "running" | "failed"; startedAt: number; message?: string } | null;
 };
 type MfaDiagnostic = {
   schoolError?: string;
@@ -24,7 +25,7 @@ type MfaDiagnostic = {
   methodAvailable: boolean | null; passwordRequired: boolean | null; captchaRequired?: boolean | null;
 };
 
-const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, sessionHealth: null, submissionRecords: [], submissionReady: false, protocolEvidence: null, login: null };
+const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, sessionHealth: null, submissionRecords: [], submissionReady: false, protocolEvidence: null, login: null, loginProgress: null };
 const labels: Record<DhuTask["status"], string> = {
   scheduled: "等待执行", watching: "监听中", needs_login: "需重新登录", paused: "已暂停", submitted: "已提交待核实",
   success: "报名成功", failed: "未报名", cancelled: "已取消",
@@ -33,14 +34,23 @@ const labels: Record<DhuTask["status"], string> = {
 function when(timestamp: number) { return new Date(timestamp).toLocaleString("zh-CN", { hour12: false }); }
 
 async function request(action?: string, payload?: Record<string, unknown>) {
-  const response = await fetch("/api/appoint", {
-    method: action ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
-    headers: action ? { "Content-Type": "application/json" } : undefined,
-    body: action ? JSON.stringify({ action, ...payload }) : undefined,
-  });
-  const result = await response.json() as Record<string, unknown>;
-  if (!response.ok) throw new Error(String(result.error || "操作失败"));
-  return result;
+  for (let attempt = 0; ; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch("/api/appoint", {
+        method: action ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
+        headers: action ? { "Content-Type": "application/json" } : undefined,
+        body: action ? JSON.stringify({ action, ...payload }) : undefined,
+      });
+    } catch (cause) {
+      if (!action && attempt < 2) { await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1))); continue; }
+      throw new TypeError(action ? "本站连接中断，请检查网络；操作不会自动重复发送" : "本站状态读取中断，请检查网络", { cause });
+    }
+    const result = await response.json().catch(() => null) as Record<string, unknown> | null;
+    if (!result) throw new Error("本站接口响应异常，请稍后重试");
+    if (!response.ok) throw new Error(String(result.error || "操作失败"));
+    return result;
+  }
 }
 
 export default function DhuCourseManager() {
@@ -62,6 +72,7 @@ export default function DhuCourseManager() {
   const [now, setNow] = useState(() => Date.now());
   const known = useRef<Record<string, DhuTask["status"]>>({});
   const autoConnectAttempted = useRef("");
+  const initialStatus = useRef<Promise<Status> | null>(null);
 
   const refresh = useCallback(async () => {
     const next = await request() as Status;
@@ -71,11 +82,18 @@ export default function DhuCourseManager() {
     }
     setStatus(next);
     setNow(Date.now());
+    return next;
   }, []);
 
   useEffect(() => {
-    queueMicrotask(() => { void refresh().catch((cause) => setError(cause.message)); });
-    const timer = window.setInterval(() => { void refresh().catch(() => undefined); }, 5000);
+    queueMicrotask(() => {
+      const first = refresh();
+      initialStatus.current = first;
+      void first.then(() => { if (initialStatus.current === first) initialStatus.current = null; },
+        () => { if (initialStatus.current === first) initialStatus.current = null; });
+      void first.catch((cause) => setError(cause.message));
+    });
+    const timer = window.setInterval(() => { if (!initialStatus.current) void refresh().catch(() => undefined); }, 5000);
     return () => window.clearInterval(timer);
   }, [refresh]);
 
@@ -87,20 +105,38 @@ export default function DhuCourseManager() {
 
   async function act(action: string, payload?: Record<string, unknown>) {
     setBusy(true); setError("");
-    try { await request(action, payload); await refresh(); return true; }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "操作失败"); return false; }
-    finally { setBusy(false); }
+    try {
+      await initialStatus.current?.catch(() => undefined);
+      try {
+        await request(action, payload);
+      } catch (cause) {
+        if (action === "startLogin" && cause instanceof TypeError) {
+          try {
+            const latest = await refresh();
+            if (latest.loginProgress?.status === "running" || latest.login?.stage === "mfa") return true;
+          } catch { /* The browser may still be offline; never resend the school login automatically. */ }
+        }
+        setError(cause instanceof Error ? cause.message : "操作失败");
+        return false;
+      }
+      try { await refresh(); }
+      catch { setError("操作已发送，状态暂时未刷新；页面会自动继续检查。"); }
+      return true;
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
     const login = status.login;
+    if (status.loginProgress?.status === "running") return;
     if (!login || login.stage === "passport" || login.stage === "mfa") { autoConnectAttempted.current = ""; return; }
     if (status.schoolSession) return;
     const key = `${login.username}:${login.stage}`;
     if (autoConnectAttempted.current === key) return;
     autoConnectAttempted.current = key;
     void act("openCoursePage");
-  }, [status.login?.stage, status.login?.username, status.schoolSession]);
+  }, [status.login?.stage, status.login?.username, status.schoolSession, status.loginProgress?.status]);
 
   async function inspectMfa() {
     setBusy(true); setError(""); setDiagnostic(null);
@@ -126,7 +162,8 @@ export default function DhuCourseManager() {
   const planned = new Date(scheduledAt).getTime();
   const canPreview = /^\d{6,12}$/.test(courseCode.trim()) && /^\d{6,12}$/.test(sectionNumber.trim())
     && Number.isFinite(planned) && planned > now + 30_000 && buyMaterial !== null;
-  const passportVerified = status.login?.stage === "mfa" || status.login?.stage === "verified" || status.login?.stage === "ready";
+  const loginRunning = status.loginProgress?.status === "running";
+  const passportVerified = !loginRunning && (status.login?.stage === "mfa" || status.login?.stage === "verified" || status.login?.stage === "ready");
 
   return <div className={styles.root}>
     <div className={styles.intro}>
@@ -136,8 +173,11 @@ export default function DhuCourseManager() {
     </div>
 
     <section className={styles.card}>
-      <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession && !status.sessionHealth?.loginRequired ? styles.good : styles.warn}>{status.sessionHealth?.loginRequired ? "学校要求重新认证" : status.schoolSession ? `已连接 · ${when(status.schoolSession.savedAt)}` : status.login?.stage === "mfa" ? "等待企业微信验证码" : status.login?.stage === "verified" ? "验证码已通过，待核实课程页" : status.login?.stage === "ready" ? "已验证，待连接课程列表" : "尚未连接"}</span></div>
+      <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession && !status.sessionHealth?.loginRequired ? styles.good : styles.warn}>{loginRunning ? "学校登录处理中" : status.sessionHealth?.loginRequired ? "学校要求重新认证" : status.schoolSession ? `已连接 · ${when(status.schoolSession.savedAt)}` : status.login?.stage === "mfa" ? "等待企业微信验证码" : status.login?.stage === "verified" ? "验证码已通过，待核实课程页" : status.login?.stage === "ready" ? "已验证，待连接课程列表" : "尚未连接"}</span></div>
       <p>密码和验证码经本站传给学校认证接口，仅学校会话 Cookie 保存在当前访问者的独立会话中。本站不保存密码或验证码。</p>
+      {status.loginProgress && <p className={styles.notice} role="status">{loginRunning
+        ? "学校通行证正在登录，页面会自动更新结果；请勿重复提交。"
+        : `学校通行证登录失败：${status.loginProgress.message || "请稍后重试"}`}</p>}
       {passportVerified && !relogin ? <div className={styles.form}>
         <label>学校通行证账号<input value={status.login?.username || username} readOnly /></label>
         <label>学校通行证密码<input value="登录成功" readOnly /></label>
@@ -150,9 +190,9 @@ export default function DhuCourseManager() {
       }}>
         <label>学校通行证账号<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
         <label>学校通行证密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        <button type="submit" disabled={busy || !username.trim() || !password}>登录学校通行证</button>
+        <button type="submit" disabled={busy || loginRunning || !username.trim() || !password}>登录学校通行证</button>
       </form>}
-      {status.login?.stage === "mfa" && <form className={styles.form} onSubmit={async (event) => {
+      {!loginRunning && status.login?.stage === "mfa" && <form className={styles.form} onSubmit={async (event) => {
         event.preventDefault();
         const submittedCode = code;
         setCode("");
