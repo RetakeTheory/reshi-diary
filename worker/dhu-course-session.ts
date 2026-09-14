@@ -283,6 +283,8 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const html = await response.text();
     if (!response.ok || !url.pathname.includes("/dhu/selectcourse/") || !html.includes("tsCoursesTbl")) {
       await this.storage.put("school", state);
+      if (url.pathname === "/wengine-vpn/failed") throw new Error("学校网关拒绝了本站服务器会话，课程页未连接。验证码通过不等于学校 VPN 已放行");
+      if (/\/(?:identity\/login|login\/mfaLogin\.html|login)$/i.test(url.pathname)) throw new Error("学校要求重新登录，当前会话尚不能访问课程页");
       throw new Error("未能打开学校课程列表，请检查地址和学校登录状态");
     }
     // The course list itself is the strongest proof that webproxy and the academic system agree on this session.
