@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DhuCourseOption, DhuSectionOption, DhuSessionHealth, DhuSubmissionRecord, DhuTask } from "../../lib/dhu-course";
+import type { DhuProtocolEvidence } from "../../lib/dhu-protocol";
 import styles from "./DhuCourseManager.module.css";
 
 type Status = {
@@ -12,6 +13,7 @@ type Status = {
   sessionHealth: DhuSessionHealth | null;
   submissionRecords: DhuSubmissionRecord[];
   submissionReady: boolean;
+  protocolEvidence: DhuProtocolEvidence | null;
   login: { stage: "passport" | "mfa" | "verified" | "ready"; username: string | null } | null;
 };
 type MfaDiagnostic = {
@@ -22,7 +24,7 @@ type MfaDiagnostic = {
   methodAvailable: boolean | null; passwordRequired: boolean | null; captchaRequired?: boolean | null;
 };
 
-const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, sessionHealth: null, submissionRecords: [], submissionReady: false, login: null };
+const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, sessionHealth: null, submissionRecords: [], submissionReady: false, protocolEvidence: null, login: null };
 const labels: Record<DhuTask["status"], string> = {
   scheduled: "等待执行", watching: "监听中", needs_login: "需重新登录", paused: "已暂停", submitted: "已提交待核实",
   success: "报名成功", failed: "未报名", cancelled: "已取消",
@@ -157,6 +159,17 @@ export default function DhuCourseManager() {
       </div>}
       {status.schoolSession && <small>当前课程类别页面：{status.schoolSession.coursePageUrl}</small>}
       {status.sessionHealth && <p className={styles.notice}>服务器会话检查：{status.sessionHealth.message} · {when(status.sessionHealth.checkedAt)}</p>}
+      {status.schoolSession && <details>
+        <summary>学校提交接口核验</summary>
+        <p className={styles.notice}>本站只读取学校课程页及其静态脚本，不会在此步骤提交选课申请。</p>
+        <button type="button" disabled={busy} onClick={() => void act("inspectProtocol")}>重新读取学校提交脚本</button>
+        {status.protocolEvidence ? <div className={styles.notice}>
+          <p>静态脚本已读取 · SHA-256 {status.protocolEvidence.scriptSha256.slice(0, 16)}… · {when(status.protocolEvidence.checkedAt)}</p>
+          <p>POST 调用线索 {status.protocolEvidence.postCallCount} 处；字段线索：{status.protocolEvidence.fieldHints.join("、") || "未识别"}。</p>
+          <p>候选路径：{status.protocolEvidence.endpointCandidates.join("、") || "未识别"}。</p>
+          <p>这些只是静态线索；完成受控提交和学校结果核验前，自动报名仍关闭。</p>
+        </div> : <p className={styles.notice}>尚未取得可核验的学校提交脚本。</p>}
+      </details>}
     </section>
 
     <section className={styles.card}>

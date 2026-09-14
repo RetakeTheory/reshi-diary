@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { MAX_SUBMISSION_ATTEMPTS, RETRY_INTERVAL_MS, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, planDhuSubmission, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
 import { ensureDhuTables, saveDhuAccount, saveDhuSubmission, saveDhuTask } from "../lib/dhu-persistence";
+import { analyzeSchoolScript, findSchoolScript, type DhuProtocolEvidence } from "../lib/dhu-protocol";
 import {
   DHU_COURSE_SEED_URL, SchoolHttp, authPrefixFrom, discoverCoursePageUrls,
   encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
@@ -91,9 +92,10 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
   private async school() { return await this.storage.get<SchoolState>("school"); }
 
   private async summary() {
-    const [state, courses, sections, sessionHealth] = await Promise.all([
+    const [state, courses, sections, sessionHealth, protocolEvidence] = await Promise.all([
       this.school(), this.storage.get<DhuCourseOption[]>("courses"),
       this.storage.get<DhuSectionOption[]>("sections"), this.storage.get<DhuSessionHealth>("sessionHealth"),
+      this.storage.get<DhuProtocolEvidence>("protocolEvidence"),
     ]);
     const [tasks, submissionRecords] = await Promise.all([
       this.tasks(state?.username),
@@ -110,6 +112,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       sessionHealth: state?.stage === "ready" ? sessionHealth || null : null,
       submissionRecords: submissionRecords || [],
       submissionReady: false,
+      protocolEvidence: state?.stage === "ready" ? protocolEvidence || null : null,
       schoolSession: state?.stage === "ready" && state.coursePageUrl
         ? { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } : null,
       login: state ? { stage: state.stage, username: state.username || null } : null,
@@ -127,6 +130,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       if (path === "/login/finish") return json(await this.finishLogin(input));
       if (path === "/login/inspect") return json(await this.inspectMfa());
       if (path === "/login/course") return json(await this.openCoursePage());
+      if (path === "/protocol/inspect") return json(await this.inspectProtocol());
       if (path === "/task") return json(await this.addTask(input), 201);
       if (path === "/task/cancel") return json(await this.cancelTask(input));
       return json({ error: "路径不存在" }, 404);
@@ -195,6 +199,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     await this.storage.delete("courses");
     await this.storage.delete("sections");
     await this.storage.delete("sessionHealth");
+    await this.storage.delete("protocolEvidence");
     await this.storage.deleteAlarm();
     await this.storage.put("school", state);
     await this.persistAccount(state);
@@ -361,21 +366,47 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     await this.storage.put("sections", parseDhuSectionOptions(html));
     await this.storage.put("sessionHealth", { checkedAt: Date.now(), active: true, loginRequired: false,
       message: "学校课程列表已连接" } satisfies DhuSessionHealth);
-    const scriptSource = html.match(/<script[^>]+src=["']([^"']*selecthome\.js[^"']*)["']/i)?.[1];
-    if (scriptSource) {
-      try {
-        const script = await school.request(new URL(scriptSource.replaceAll("&amp;", "&"), url.href).href);
-        if (script.response.ok) {
-          const source = await script.response.text();
-          // Static school code only; never log HTML, cookies, credentials, or student data.
-          console.log("DHU_SELECTHOME_SCRIPT", source.slice(0, 30_000));
-        }
-      } catch { /* Course page verification is independent of static script diagnostics. */ }
-    }
+    await this.storage.delete("protocolEvidence");
+    try { await this.collectProtocolEvidence(school, html, url); }
+    catch { /* The authenticated course table remains valid even if its JS asset cannot be read. */ }
     await this.storage.put("school", state);
     await this.persistAccount(state);
     await this.storage.setAlarm(Date.now() + SESSION_CHECK_MS);
     return { schoolSession: { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } };
+  }
+
+  private async collectProtocolEvidence(school: SchoolHttp, html: string, pageUrl: URL) {
+    const scriptUrl = findSchoolScript(html, pageUrl.href);
+    if (!scriptUrl) throw new Error("学校课程页没有预期的提交脚本引用");
+    const { url, response } = await school.request(scriptUrl);
+    if (!response.ok || url.pathname !== new URL(scriptUrl).pathname
+      || /text\/html/i.test(response.headers.get("content-type") || "")) {
+      throw new Error("学校提交脚本需要重新认证，尚不能提取报名协议");
+    }
+    const evidence = await analyzeSchoolScript(await response.text());
+    await this.storage.put("protocolEvidence", evidence);
+    console.info(JSON.stringify({ event: "dhu_course_protocol_evidence", ...evidence }));
+    return evidence;
+  }
+
+  private async inspectProtocol() {
+    const state = await this.school();
+    if (!state || state.stage !== "ready" || !state.coursePageUrl) throw new Error("请先连接学校课程列表");
+    const lastCheck = await this.storage.get<number>("lastProtocolCheckAt") || 0;
+    if (Date.now() - lastCheck < 30_000) throw new Error("刚刚检查过学校脚本，请 30 秒后重试");
+    await this.storage.put("lastProtocolCheckAt", Date.now());
+    const school = new SchoolHttp(state);
+    try {
+      const { url, response } = await school.request(state.coursePageUrl);
+      const html = await response.text();
+      if (!response.ok || !url.pathname.includes("/dhu/selectcourse/") || !html.includes("tsCoursesTbl")) {
+        throw new Error("学校课程页会话已失效，请重新认证");
+      }
+      return { protocolEvidence: await this.collectProtocolEvidence(school, html, url) };
+    } finally {
+      state.updatedAt = Date.now();
+      await this.storage.put("school", state);
+    }
   }
 
   private async addTask(input: unknown) {
