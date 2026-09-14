@@ -104,7 +104,10 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       authType: "webLocalAuth", dataField: { username, ...encrypted },
     }, landing.url.href))).body;
     const redirect = schoolRedirect(result.data, state.authPrefix);
-    if (redirect) await schoolStep("学校登录跳转", school.request(redirect));
+    if (redirect) {
+      const mfaLanding = await schoolStep("学校登录跳转", school.request(redirect));
+      if (/\/login\/mfaLogin\.html$/i.test(mfaLanding.url.pathname)) state.mfaPageUrl = mfaLanding.url.href;
+    }
     const enhanced = (await schoolStep("学校企业微信步骤", school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`))).body.data;
     const config = record(enhanced?.config);
     const mfa = record(config.mfaAuth);
@@ -135,7 +138,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const school = new SchoolHttp(state);
     await school.json(`${state.authPrefix}/esc-sso/message/code`, "POST", {
       username: state.username, type: "workwechat",
-    }, `${state.authPrefix}/login/mfaLogin.html`);
+    }, state.mfaPageUrl || `${state.authPrefix}/login/mfaLogin.html`);
     state.updatedAt = Date.now();
     await this.storage.put("school", state);
     return { sent: true };
@@ -163,7 +166,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     }
     const result = (await schoolStep("学校企业微信验证码验证", school.json(endpoint, "POST", {
       authType: "webWorkWechatMsgAuth", dataField, redirectUri: "",
-    }, `${state.authPrefix}/login/mfaLogin.html`))).body;
+    }, state.mfaPageUrl || `${state.authPrefix}/login/mfaLogin.html`))).body;
     const redirect = schoolRedirect(result.data, state.authPrefix);
     if (!redirect) throw new Error("学校未返回认证完成后的跳转地址");
     const completed = await schoolStep("学校认证完成跳转", school.request(redirect));

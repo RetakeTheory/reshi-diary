@@ -16,6 +16,18 @@ test("school fetch keeps the Workers global invocation context", async () => {
   assert.equal(result.response.status, 200);
 });
 
+test("MFA request retains the school's full application Referer", async () => {
+  const state = { cookies: [], stage: "mfa", updatedAt: 0 };
+  const mfaPageUrl = "https://webproxy.dhu.edu.cn/https/abcdef/login/mfaLogin.html?appId=123&appUrl=https%3A%2F%2Fcas.dhu.edu.cn%2Fesc-sso%2Flogin";
+  const http = new SchoolHttp(state, async (_url, init) => {
+    const headers = new Headers(init.headers);
+    assert.equal(headers.get("Referer"), mfaPageUrl);
+    assert.equal(headers.get("Accept"), "application/json, text/plain, */*");
+    return Response.json({ code: "0", data: {} });
+  });
+  await http.json("https://webproxy.dhu.edu.cn/https/abcdef/esc-sso/authn/app/enhance/ext/login", "POST", {}, mfaPageUrl);
+});
+
 test("school requests retain cookies across redirects and reject off-site targets", async () => {
   const visited = [];
   const state = { cookies: [], stage: "passport", updatedAt: 0 };

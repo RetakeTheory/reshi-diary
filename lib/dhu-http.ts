@@ -9,6 +9,7 @@ export type SchoolState = {
   authPrefix?: string;
   username?: string;
   mfa?: { type: number; appId: string; appUrl: string };
+  mfaPageUrl?: string;
   stage: "passport" | "mfa" | "ready";
   coursePageUrl?: string;
   updatedAt: number;
@@ -91,6 +92,7 @@ export class SchoolHttp {
     const { url, response } = await this.request(input, {
       method,
       headers: data === undefined ? undefined : {
+        "Accept": "application/json, text/plain, */*",
         "Content-Type": "application/json; charset=utf-8",
         "X-Requested-With": "XMLHttpRequest",
         "Origin": SCHOOL_ORIGIN,
