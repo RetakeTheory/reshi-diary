@@ -30,6 +30,16 @@ function schoolMessage(value: unknown) {
   return message.length <= 240 ? message : `${message.slice(0, 239)}…`;
 }
 
+function mfaReferer(state: SchoolState) {
+  if (state.mfaPageUrl) return state.mfaPageUrl;
+  const url = new URL(`${state.authPrefix}/login/mfaLogin.html`, "https://webproxy.dhu.edu.cn");
+  if (state.mfa?.appId && state.mfa.appUrl) {
+    url.searchParams.set("appId", state.mfa.appId);
+    url.searchParams.set("appUrl", state.mfa.appUrl);
+  }
+  return url.href;
+}
+
 async function schoolStep<T>(step: string, action: Promise<T>): Promise<T> {
   try { return await action; }
   catch (error) { throw new Error(`${step}：${errorMessage(error)}`); }
@@ -138,7 +148,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const school = new SchoolHttp(state);
     await school.json(`${state.authPrefix}/esc-sso/message/code`, "POST", {
       username: state.username, type: "workwechat",
-    }, state.mfaPageUrl || `${state.authPrefix}/login/mfaLogin.html`);
+    }, mfaReferer(state));
     state.updatedAt = Date.now();
     await this.storage.put("school", state);
     return { sent: true };
@@ -166,7 +176,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     }
     const result = (await schoolStep("学校企业微信验证码验证", school.json(endpoint, "POST", {
       authType: "webWorkWechatMsgAuth", dataField, redirectUri: "",
-    }, state.mfaPageUrl || `${state.authPrefix}/login/mfaLogin.html`))).body;
+    }, mfaReferer(state)))).body;
     const redirect = schoolRedirect(result.data, state.authPrefix);
     if (!redirect) throw new Error("学校未返回认证完成后的跳转地址");
     const completed = await schoolStep("学校认证完成跳转", school.request(redirect));
