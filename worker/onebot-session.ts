@@ -2,9 +2,9 @@ import { DurableObject } from "cloudflare:workers";
 import { jsonId, processOneBotEvent, type OneBotPayload } from "../lib/onebot-cloudflare";
 import { dispatchScheduledForBot } from "../lib/onebot-scheduler";
 
-import { OneBotChaoxing, type CxStorage, CX_MENU } from "../lib/onebot-chaoxing";
-import { createChaoxingFetch } from "../lib/chaoxing-relay";
-import { ChaoxingClient } from "../lib/chaoxing-client";
+import { type CxStorage } from "../lib/onebot-chaoxing";
+import { OneBotChaoxing, CX_MENU } from "../lib/onebot-chaoxing-recovered";
+import { t as ChaoxingClient, s as createChaoxingFetch, o as budgetedChaoxingFetch } from "../lib/chaoxing-recovered";
 import { sendOneBotReply } from "../lib/onebot-reply";
 import { groupReminderCommand, oneBotMessageText } from "../lib/onebot-reminder";
 
@@ -37,12 +37,13 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
   private readonly chaoxingFetch = createChaoxingFetch(this.env);
   private readonly chaoxing = new OneBotChaoxing(
     (this.ctx as unknown as { storage: CxStorage }).storage,
-    async (qq, text, image) => {
+    async (qq: string, text: string, image?: boolean) => {
       await sendOneBotReply((action, params) => this.call(action, params), "private", qq, text, image ? async () => {
         const { renderOneBotReminderCard } = await import("../lib/onebot-reminder-card");
         return renderOneBotReminderCard({ text, title: "学习通助手", menu: text === CX_MENU, dueAt: Date.now() });
       } : undefined);
-    }, (session) => new ChaoxingClient(session?.cookies, this.chaoxingFetch),
+    }, (session?: { cookies: Record<string, string> }, budget?: { take(): void }) =>
+      new ChaoxingClient(session?.cookies, budget ? budgetedChaoxingFetch(this.chaoxingFetch, budget) : this.chaoxingFetch),
   );
   private dueTask: Promise<{ sent: number; nextAt: number | null }> | null = null;
   private readonly pending = new Map<string, PendingCall>();
@@ -67,6 +68,16 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
 
   async isOnline() {
     return this.verifiedSockets().length > 0;
+  }
+
+  async queryChaoxingByUid(uid: string) {
+    return this.chaoxing.queryByUid(uid);
+  }
+
+  async repairChaoxingByUid(uid: string, botId: string) {
+    const result = await this.chaoxing.repairByUid(uid);
+    if (result.ok) await this.scheduleWake(botId, Date.now() + 1000);
+    return result;
   }
 
   async call(action: string, params: OneBotPayload) {
@@ -219,7 +230,7 @@ export class OneBotSession extends DurableObject<Cloudflare.Env> {
       const qq = jsonId(payload.user_id);
       if (payload.post_type === "message" && ["private", "group"].includes(String(payload.message_type))
         && /^\d{5,20}$/.test(qq) && Number.isSafeInteger(Number(qq))) {
-        const handled = await this.chaoxing.command(qq, commandText, targetType === "group", async (text, image) => {
+        const handled = await this.chaoxing.command(qq, commandText, targetType === "group", async (text: string, image?: boolean) => {
           if (!/^\d{5,20}$/.test(targetId) || !Number.isSafeInteger(Number(targetId))) return;
           await sendOneBotReply((action, params) => this.call(action, params), "group", targetId, text, image ? async () => {
             const { renderOneBotReminderCard } = await import("../lib/onebot-reminder-card");

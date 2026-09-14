@@ -26,6 +26,24 @@ export type DhuSectionOption = {
   schedule: string;
   location: string;
 };
+export type DhuSessionHealth = {
+  checkedAt: number;
+  active: boolean;
+  loginRequired: boolean;
+  message: string;
+};
+export type DhuSubmissionRecord = {
+  id: string;
+  username: string;
+  taskId: string;
+  courseCode: string;
+  sectionNumber: string;
+  buyMaterial: boolean;
+  scheduledAt: number;
+  recordedAt: number;
+  outcome: "not_sent" | "accepted" | "rejected" | "unknown";
+  message: string;
+};
 
 export const DHU_LOGIN_URL = "https://webproxy.dhu.edu.cn/login";
 export const WATCH_WINDOW_MS = 10 * 60_000;

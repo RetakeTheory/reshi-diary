@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DhuCourseOption, DhuSectionOption, DhuTask } from "../../lib/dhu-course";
+import type { DhuCourseOption, DhuSectionOption, DhuSessionHealth, DhuSubmissionRecord, DhuTask } from "../../lib/dhu-course";
 import styles from "./DhuCourseManager.module.css";
 
 type Status = {
@@ -9,6 +9,8 @@ type Status = {
   courses: DhuCourseOption[];
   sections: DhuSectionOption[];
   schoolSession: { savedAt: number; coursePageUrl: string } | null;
+  sessionHealth: DhuSessionHealth | null;
+  submissionRecords: DhuSubmissionRecord[];
   login: { stage: "passport" | "mfa" | "ready"; username: string | null } | null;
 };
 type MfaDiagnostic = {
@@ -19,7 +21,7 @@ type MfaDiagnostic = {
   methodAvailable: boolean | null; passwordRequired: boolean | null; captchaRequired?: boolean | null;
 };
 
-const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, login: null };
+const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, sessionHealth: null, submissionRecords: [], login: null };
 const labels: Record<DhuTask["status"], string> = {
   scheduled: "等待执行", watching: "监听中", needs_login: "需重新登录", paused: "已暂停", submitted: "已提交待核实",
   success: "报名成功", failed: "未报名", cancelled: "已取消",
@@ -104,11 +106,11 @@ export default function DhuCourseManager() {
     <div className={styles.intro}>
       <h2>东华大学课程预约</h2>
       <p>在本站填写学校通行证信息，再用学校发送的企业微信验证码完成验证。本站后端直接请求学校 webproxy 网址。</p>
-      <p className={styles.notice}>学校会话会过期；系统发现过期后会提示重新验证。预约记录与本机浏览器关联，请不要在预约结束前清除本站 Cookie。</p>
+      <p className={styles.notice}>学校会话与记录保存在服务器，并与本机浏览器关联。连接课程列表后，服务器定期检查会话；学校要求重新认证时仍需本人输入验证码。预约结束前请不要清除本站 Cookie。</p>
     </div>
 
     <section className={styles.card}>
-      <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession ? styles.good : styles.warn}>{status.schoolSession ? `已连接 · ${when(status.schoolSession.savedAt)}` : status.login?.stage === "mfa" ? "等待企业微信验证码" : status.login?.stage === "ready" ? "已验证，待连接课程列表" : "尚未连接"}</span></div>
+      <div className={styles.sectionHead}><h3>学校登录</h3><span className={status.schoolSession && !status.sessionHealth?.loginRequired ? styles.good : styles.warn}>{status.sessionHealth?.loginRequired ? "学校要求重新认证" : status.schoolSession ? `已连接 · ${when(status.schoolSession.savedAt)}` : status.login?.stage === "mfa" ? "等待企业微信验证码" : status.login?.stage === "ready" ? "已验证，待连接课程列表" : "尚未连接"}</span></div>
       <p>密码和验证码经本站传给学校认证接口，仅学校会话 Cookie 保存在当前访问者的独立会话中。本站不保存密码或验证码。</p>
       {passportVerified && !relogin ? <div className={styles.form}>
         <label>学校通行证账号<input value={status.login?.username || username} readOnly /></label>
@@ -146,6 +148,7 @@ export default function DhuCourseManager() {
         <button type="submit" disabled={busy || !coursePageUrl.trim()}>连接课程列表</button>
       </form>}
       {status.schoolSession && <small>当前课程类别页面：{status.schoolSession.coursePageUrl}</small>}
+      {status.sessionHealth && <p className={styles.notice}>服务器会话检查：{status.sessionHealth.message} · {when(status.sessionHealth.checkedAt)}</p>}
     </section>
 
     <section className={styles.card}>
@@ -175,6 +178,15 @@ export default function DhuCourseManager() {
         <small>{when(task.scheduledAt)} · {task.buyMaterial ? "需要教材" : "不需要教材"}</small>
         <p>{task.message}</p>
         {["scheduled", "watching", "needs_login", "paused"].includes(task.status) && <button type="button" disabled={busy} onClick={() => void act("cancelTask", { id: task.id })}>取消预约</button>}
+      </article>)}</div>}
+    </section>
+
+    <section className={styles.card}>
+      <h3>服务器提交记录</h3>
+      {status.submissionRecords.length === 0 ? <p>尚无学校提交记录。</p> : <div className={styles.tasks}>{status.submissionRecords.map((record) => <article key={record.id} className={styles.task}>
+        <div><strong>{record.courseCode} · {record.sectionNumber}</strong><span className={record.outcome === "accepted" ? styles.good : styles.warn}>{record.outcome === "accepted" ? "学校已接受" : record.outcome === "rejected" ? "学校已拒绝" : record.outcome === "unknown" ? "结果待核实" : "未发送"}</span></div>
+        <small>{when(record.recordedAt)} · {record.buyMaterial ? "需要教材" : "不需要教材"}</small>
+        <p>{record.message}</p>
       </article>)}</div>}
     </section>
 

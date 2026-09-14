@@ -17,10 +17,12 @@ test("school fetch keeps the Workers global invocation context", async () => {
 });
 
 test("MFA request retains the school's full application Referer and browser headers", async () => {
-  const state = { cookies: [{ name: "XSRF-TOKEN", value: "csrf-token", path: "/" }], stage: "mfa", updatedAt: 0 };
+  const state = { cookies: [{ name: "XSRF-TOKEN", value: "csrf-token", path: "/" }], stage: "mfa", updatedAt: 0, userAgent: "ClientBrowser/1" };
   const mfaPageUrl = "https://webproxy.dhu.edu.cn/https/abcdef/login/mfaLogin.html?appId=123&appUrl=https%3A%2F%2Fcas.dhu.edu.cn%2Fesc-sso%2Flogin";
-  const http = new SchoolHttp(state, async (_url, init) => {
+  const http = new SchoolHttp(state, async (url, init) => {
     const headers = new Headers(init.headers);
+    assert.match(String(url), /[?&]_=\d+/);
+    assert.equal(headers.get("User-Agent"), "ClientBrowser/1");
     assert.equal(headers.get("Referer"), mfaPageUrl);
     assert.equal(headers.get("Accept"), "application/json, text/plain, */*");
     assert.equal(headers.get("language"), "zh-CN");

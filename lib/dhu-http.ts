@@ -10,6 +10,7 @@ export type SchoolState = {
   username?: string;
   mfa?: { type: number; appId: string; appUrl: string; methodAvailable?: boolean; passwordRequired?: boolean };
   mfaPageUrl?: string;
+  userAgent?: string;
   stage: "passport" | "mfa" | "ready";
   coursePageUrl?: string;
   updatedAt: number;
@@ -73,7 +74,7 @@ export class SchoolHttp {
         (!cookie.expiresAt || cookie.expiresAt > Date.now()) && url.pathname.startsWith(cookie.path));
       const headers = new Headers(init.headers);
       headers.set("Accept", headers.get("Accept") || "application/json, text/html;q=0.9, */*;q=0.8");
-      headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+      headers.set("User-Agent", this.state.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
       if (cookies.length) headers.set("Cookie", cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; "));
       const response = await this.send(url, { ...init, method, body, headers, redirect: "manual", cache: "no-store" });
       this.state.cookies = updateSchoolCookies(this.state.cookies, response, url);
@@ -91,7 +92,9 @@ export class SchoolHttp {
   async json(input: string, method = "GET", data?: unknown, referer?: string) {
     const xsrf = this.state.cookies.find((cookie) => cookie.name === "XSRF-TOKEN"
       && (!cookie.expiresAt || cookie.expiresAt > Date.now()));
-    const { url, response } = await this.request(input, {
+    const requestUrl = schoolUrl(input);
+    requestUrl.searchParams.set("_", String(Date.now()));
+    const { url, response } = await this.request(requestUrl.href, {
       method,
       headers: {
         "Accept": "application/json, text/plain, */*",

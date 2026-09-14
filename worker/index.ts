@@ -113,6 +113,11 @@ const worker = {
       if (url.href !== request.url) routedRequest = new Request(url, request);
     }
 
+    if (url.hostname === "query.rettheory.top" && url.pathname === "/") {
+      url.pathname = "/query";
+      routedRequest = new Request(url, request);
+    }
+
     if (url.pathname === "/api/onebot/ws") {
       if (!env?.DB || !env.ONEBOT) return Response.json({ error: "OneBot 实时服务尚未部署" }, { status: 503 });
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
@@ -133,7 +138,8 @@ const worker = {
       || url.pathname === "/api/account/qq"
       || url.pathname.startsWith("/api/account/qq/")
       || url.pathname === "/api/admin/onebot"
-      || url.pathname.startsWith("/api/admin/onebot/");
+      || url.pathname.startsWith("/api/admin/onebot/")
+      || url.pathname.startsWith("/api/query/");
     const d1PluginApi = url.pathname === "/api/roll-call"
       || url.pathname === "/api/food-rankings" || url.pathname.startsWith("/api/food-rankings/")
       || url.pathname === "/api/admin/food-rankings" || url.pathname.startsWith("/api/admin/food-rankings/");

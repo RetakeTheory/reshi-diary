@@ -65,6 +65,10 @@
     {
       "pattern": "admin.rettheory.top/*",
       "zone_name": "rettheory.top"
+    },
+    {
+      "pattern": "query.rettheory.top/*",
+      "zone_name": "rettheory.top"
     }
   ],
   "observability": {

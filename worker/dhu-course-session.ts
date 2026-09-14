@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, type DhuCourseOption, type DhuSectionOption, type DhuTask } from "../lib/dhu-course";
+import { normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
 import {
   SchoolHttp, authPrefixFrom, encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
   type SchoolState,
@@ -12,6 +12,9 @@ type CourseStorage = {
   setAlarm(timestamp: number): Promise<void>;
   deleteAlarm(): Promise<void>;
 };
+
+const SESSION_CHECK_MS = 10 * 60_000;
+const SESSION_RETRY_MS = 2 * 60_000;
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -47,17 +50,26 @@ async function schoolStep<T>(step: string, action: Promise<T>): Promise<T> {
 
 export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
   private get storage() { return (this.ctx as unknown as { storage: CourseStorage }).storage; }
-  private async tasks() { return await this.storage.get<DhuTask[]>("tasks") || []; }
+  private async tasks(username?: string) {
+    return username ? await this.storage.get<DhuTask[]>(`tasks:${username}`) || [] : [];
+  }
   private async school() { return await this.storage.get<SchoolState>("school"); }
 
   private async summary() {
-    const [tasks, state, courses, sections] = await Promise.all([
-      this.tasks(), this.school(), this.storage.get<DhuCourseOption[]>("courses"), this.storage.get<DhuSectionOption[]>("sections"),
+    const [state, courses, sections, sessionHealth] = await Promise.all([
+      this.school(), this.storage.get<DhuCourseOption[]>("courses"),
+      this.storage.get<DhuSectionOption[]>("sections"), this.storage.get<DhuSessionHealth>("sessionHealth"),
+    ]);
+    const [tasks, submissionRecords] = await Promise.all([
+      this.tasks(state?.username),
+      state?.username ? this.storage.get<DhuSubmissionRecord[]>(`submissionRecords:${state.username}`) : undefined,
     ]);
     return {
       tasks,
       courses: state?.stage === "ready" ? courses || [] : [],
       sections: state?.stage === "ready" ? sections || [] : [],
+      sessionHealth: state?.stage === "ready" ? sessionHealth || null : null,
+      submissionRecords: submissionRecords || [],
       schoolSession: state?.stage === "ready" && state.coursePageUrl
         ? { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } : null,
       login: state ? { stage: state.stage, username: state.username || null } : null,
@@ -70,7 +82,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       if (request.method === "GET" && path === "/status") return json(await this.summary());
       if (request.method !== "POST") return json({ error: "方法不支持" }, 405);
       const input = await request.json().catch(() => null);
-      if (path === "/login/start") return json(await this.startLogin(input));
+      if (path === "/login/start") return json(await this.startLogin(input, request.headers.get("X-Appoint-User-Agent")));
       if (path === "/login/code") return json(await this.sendCode());
       if (path === "/login/finish") return json(await this.finishLogin(input));
       if (path === "/login/inspect") return json(await this.inspectMfa());
@@ -83,7 +95,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     }
   }
 
-  private async startLogin(input: unknown) {
+  private async startLogin(input: unknown, userAgent: string | null) {
     const data = record(input);
     const username = String(data.username || "").trim();
     const password = String(data.password || "");
@@ -99,7 +111,8 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       until: attempts && attempts.until > Date.now() ? attempts.until : Date.now() + 5 * 60_000,
     });
 
-    const state: SchoolState = { cookies: [], stage: "passport", username, updatedAt: Date.now() };
+    const state: SchoolState = { cookies: [], stage: "passport", username, updatedAt: Date.now(),
+      userAgent: userAgent && userAgent.length <= 512 ? userAgent : undefined };
     const school = new SchoolHttp(state);
     const landing = await schoolStep("学校通行证入口", school.request("https://webproxy.dhu.edu.cn/login"));
     if (!landing.response.ok) throw new Error("学校通行证入口暂不可用");
@@ -141,6 +154,8 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     state.updatedAt = Date.now();
     await this.storage.delete("courses");
     await this.storage.delete("sections");
+    await this.storage.delete("sessionHealth");
+    await this.storage.deleteAlarm();
     await this.storage.put("school", state);
     return { login: { stage: "mfa", username: schoolUser } };
   }
@@ -168,9 +183,10 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const school = new SchoolHttp(state);
     const storedMfa = state.mfa;
     const policy = storedMfa ? null : (await school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`)).body.data;
-    const mfa = storedMfa || record(record(policy?.config).mfaAuth);
-    if (!storedMfa && mfa.status !== "1") throw new Error("学校认证步骤已过期，请重新登录");
-    const app = storedMfa || record(mfa.app);
+    const policyMfa = record(record(policy?.config).mfaAuth);
+    const mfa = storedMfa || policyMfa;
+    if (!storedMfa && policyMfa.status !== "1") throw new Error("学校认证步骤已过期，请重新登录");
+    const app = storedMfa || record(policyMfa.app);
     const dataField: Record<string, string> = {
       username: state.username, password: "", msgCode: code, vcode: "",
     };
@@ -182,7 +198,8 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     if (check?.enable && check?.type) throw new Error("学校要求额外图形验证，请在学校官网完成认证");
     let endpoint = `${state.authPrefix}/esc-sso/auth/login`;
     if (Number(mfa.type) === 2) {
-      endpoint = `${state.authPrefix}/esc-sso/authn/app/enhance/ext/login`;
+      // mfaLogin.html calls appLogin (/app/enhance/login) for type 2.
+      endpoint = `${state.authPrefix}/esc-sso/app/enhance/login`;
       dataField.appId = String(app.appId || "");
       dataField.appUrl = String(app.appUrl || "");
     }
@@ -205,6 +222,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     state.stage = "ready";
     state.updatedAt = Date.now();
     await this.storage.put("school", state);
+    await this.storage.delete("sessionHealth");
     await this.storage.delete("loginAttempts");
     return { login: { stage: "ready", username: state.username } };
   }
@@ -259,6 +277,8 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     state.updatedAt = Date.now();
     await this.storage.put("courses", parseDhuCourseOptions(html));
     await this.storage.put("sections", parseDhuSectionOptions(html));
+    await this.storage.put("sessionHealth", { checkedAt: Date.now(), active: true, loginRequired: false,
+      message: "学校课程列表已连接" } satisfies DhuSessionHealth);
     const scriptSource = html.match(/<script[^>]+src=["']([^"']*selecthome\.js[^"']*)["']/i)?.[1];
     if (scriptSource) {
       try {
@@ -271,6 +291,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       } catch { /* Course page verification is independent of static script diagnostics. */ }
     }
     await this.storage.put("school", state);
+    await this.storage.setAlarm(Date.now() + SESSION_CHECK_MS);
     return { schoolSession: { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } };
   }
 
@@ -285,26 +306,66 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
 
   private async cancelTask(input: unknown) {
     const id = String(record(input).id || "");
-    const tasks = await this.tasks();
+    const state = await this.school();
+    const tasks = await this.tasks(state?.username);
     const task = tasks.find((item) => item.id === id);
     if (!task || !["scheduled", "watching", "needs_login", "paused"].includes(task.status)) throw new Error("预约不存在或已执行");
     task.status = "cancelled";
     task.message = "已取消";
     task.updatedAt = Date.now();
-    await this.storage.put("tasks", tasks);
-    await this.storage.deleteAlarm();
+    if (state?.username) await this.storage.put(`tasks:${state.username}`, tasks);
+    if (state?.stage === "ready" && state.coursePageUrl) await this.storage.setAlarm(Date.now() + SESSION_CHECK_MS);
+    else await this.storage.deleteAlarm();
     return { task };
   }
 
   async alarm() {
-    const tasks = await this.tasks();
+    const state = await this.school();
+    const tasks = await this.tasks(state?.username);
+    const now = Date.now();
+    const recordKey = state?.username ? `submissionRecords:${state.username}` : null;
+    const submissionRecords = recordKey ? await this.storage.get<DhuSubmissionRecord[]>(recordKey) || [] : [];
+    let changed = false;
     for (const task of tasks) {
-      if (!["scheduled", "watching"].includes(task.status)) continue;
+      if (!["scheduled", "watching"].includes(task.status) || task.scheduledAt > now) continue;
+      changed = true;
+      const recordId = `${task.id}:not-sent`;
+      if (recordKey && !submissionRecords.some((record) => record.id === recordId)) submissionRecords.push({
+        id: recordId, username: state?.username || "", taskId: task.id, courseCode: task.courseCode, sectionNumber: task.sectionNumber,
+        buyMaterial: task.buyMaterial, scheduledAt: task.scheduledAt, recordedAt: now,
+        outcome: "not_sent", message: "学校选课提交接口未验证，系统没有向学校发送报名请求",
+      });
       task.status = "paused";
       task.message = "学校直连选课接口尚未验证，预约未提交";
-      task.updatedAt = Date.now();
+      task.updatedAt = now;
     }
-    await this.storage.put("tasks", tasks);
-    await this.storage.deleteAlarm();
+    if (changed) {
+      if (recordKey) await this.storage.put(recordKey, submissionRecords);
+      if (state?.username) await this.storage.put(`tasks:${state.username}`, tasks);
+    }
+    if (!state || state.stage !== "ready" || !state.coursePageUrl) return;
+    const school = new SchoolHttp(state);
+    let health: DhuSessionHealth;
+    let nextCheck = SESSION_CHECK_MS;
+    try {
+      const { url, response } = await school.request(state.coursePageUrl);
+      const html = await response.text();
+      let validAddress = false;
+      try { validAddress = validateCoursePageUrl(url.href) === url.href; } catch { /* Login redirects are not course pages. */ }
+      if (!response.ok || !validAddress || !html.includes("tsCoursesTbl")) {
+        health = { checkedAt: Date.now(), active: false, loginRequired: true,
+          message: "学校会话已失效，请重新完成学校通行证和企业微信认证" };
+      } else {
+        health = { checkedAt: Date.now(), active: true, loginRequired: false, message: "学校课程列表可访问" };
+        state.updatedAt = Date.now();
+      }
+    } catch {
+      health = { checkedAt: Date.now(), active: false, loginRequired: false,
+        message: "暂时无法检查学校会话，系统将稍后重试" };
+      nextCheck = SESSION_RETRY_MS;
+    }
+    await this.storage.put("school", state);
+    await this.storage.put("sessionHealth", health);
+    if (!health.loginRequired) await this.storage.setAlarm(Date.now() + nextCheck);
   }
 }

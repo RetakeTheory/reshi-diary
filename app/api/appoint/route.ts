@@ -16,9 +16,9 @@ function newToken() {
 
 function session(token: string) { return env.DHU_COURSE.getByName(`visitor:${token}`); }
 
-async function forward(token: string, path: string, method: "GET" | "POST", body?: unknown) {
+async function forward(token: string, path: string, method: "GET" | "POST", body?: unknown, userAgent?: string | null) {
   const response = await session(token).fetch(new Request(`https://dhu.internal${path}`, {
-    method, headers: { "Content-Type": "application/json" },
+    method, headers: { "Content-Type": "application/json", ...(userAgent ? { "X-Appoint-User-Agent": userAgent } : {}) },
     body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
   }));
   return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -41,5 +41,5 @@ export async function POST(request: Request) {
     inspectMfa: "/login/inspect", openCoursePage: "/login/course", addTask: "/task", cancelTask: "/task/cancel" })[
     input?.action as "startLogin" | "sendCode" | "finishLogin" | "inspectMfa" | "openCoursePage" | "addTask" | "cancelTask"];
   if (!path) return Response.json({ error: "操作不支持" }, { status: 400 });
-  return forward(token, path, "POST", input);
+  return forward(token, path, "POST", input, request.headers.get("user-agent"));
 }
