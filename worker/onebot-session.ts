@@ -4,7 +4,8 @@ import { dispatchScheduledForBot } from "../lib/onebot-scheduler";
 
 import { type CxStorage } from "../lib/onebot-chaoxing";
 import { OneBotChaoxing, CX_MENU } from "../lib/onebot-chaoxing-recovered";
-import { t as ChaoxingClient, s as createChaoxingFetch, o as budgetedChaoxingFetch } from "../lib/chaoxing-recovered";
+import { t as ChaoxingClient, o as budgetedChaoxingFetch } from "../lib/chaoxing-recovered";
+import { createChaoxingFetch } from "../lib/chaoxing-relay";
 import { sendOneBotReply } from "../lib/onebot-reply";
 import { groupReminderCommand, oneBotMessageText } from "../lib/onebot-reminder";
 

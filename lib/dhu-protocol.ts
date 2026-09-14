@@ -41,10 +41,10 @@ export async function analyzeSchoolScript(source: string, checkedAt = Date.now()
 // The downloaded asset is a static first-party script. Keep only the call site
 // context needed to review the exact POST shape; never log page HTML or session data.
 export function schoolSubmitSourceContext(source: string) {
-  const markers = ["/selectcourse/scSubmit", "/selectcourse/scConflictCheck", "/selectcourse/accessJudge"];
+  const markers = ["/selectcourse/scSubmit"];
   return markers.flatMap((marker) => {
     const at = source.indexOf(marker);
     if (at < 0) return [];
-    return [{ marker, source: source.slice(Math.max(0, at - 3_000), Math.min(source.length, at + 3_000)) }];
+    return [{ marker, source: source.slice(Math.max(0, at - 2_000), Math.min(source.length, at + 3_000)) }];
   });
 }

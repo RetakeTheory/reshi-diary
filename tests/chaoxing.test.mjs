@@ -114,6 +114,27 @@ test("mainland relay is limited to Chaoxing; school gateway uses the ordinary ch
   await relay("https://webproxy.dhu.edu.cn/login");
   assert.deepEqual(calls,["https://webproxy.dhu.edu.cn/login"]);
 });
+test("hosts unsupported by the mainland relay use the ordinary channel",async()=>{
+  const calls=[];
+  const relay=createChaoxingFetch({CHAOXING_RELAY_ORIGIN:"https://relay.example.cn",CHAOXING_RELAY_TOKEN:"x".repeat(32)},async(input,init)=>{
+    calls.push(new Request(input,init).url); return new Response("ok");
+  });
+  await relay("https://mooc1-api.chaoxing.com/knowledge/cards?test=1");
+  assert.deepEqual(calls,["https://mooc1-api.chaoxing.com/knowledge/cards?test=1"]);
+});
+test("relay failure falls back to direct for GET, never replays a POST",async()=>{
+  const calls=[];
+  const relay=createChaoxingFetch({CHAOXING_RELAY_ORIGIN:"https://relay.example.cn",CHAOXING_RELAY_TOKEN:"x".repeat(32)},async(input,init)=>{
+    const request=new Request(input,init); calls.push({url:request.url,method:request.method});
+    return request.url.startsWith("https://relay.example.cn") ? new Response("unavailable",{status:503}) : new Response("ok");
+  });
+  const target="https://mobilelearn.chaoxing.com/v2/apis/active/student/activelist";
+  assert.equal((await relay(target)).status,200);
+  assert.deepEqual(calls.map(x=>x.url),["https://relay.example.cn/internal/chaoxing-relay",target]);
+  calls.length=0;
+  await assert.rejects(relay(target,{method:"POST",body:"test"}),e=>e.name==="ChaoxingRelayError");
+  assert.deepEqual(calls.map(x=>x.url),["https://relay.example.cn/internal/chaoxing-relay"]);
+});
 test("login falls back to the POST mobile endpoint without credentials in the URL",async()=>{
   const calls=[];
   const client=new ChaoxingClient({},async(url,init)=>{
