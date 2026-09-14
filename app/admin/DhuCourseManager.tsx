@@ -11,6 +11,7 @@ type Status = {
   schoolSession: { savedAt: number; coursePageUrl: string } | null;
   sessionHealth: DhuSessionHealth | null;
   submissionRecords: DhuSubmissionRecord[];
+  submissionReady: boolean;
   login: { stage: "passport" | "mfa" | "verified" | "ready"; username: string | null } | null;
 };
 type MfaDiagnostic = {
@@ -21,7 +22,7 @@ type MfaDiagnostic = {
   methodAvailable: boolean | null; passwordRequired: boolean | null; captchaRequired?: boolean | null;
 };
 
-const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, sessionHealth: null, submissionRecords: [], login: null };
+const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, sessionHealth: null, submissionRecords: [], submissionReady: false, login: null };
 const labels: Record<DhuTask["status"], string> = {
   scheduled: "等待执行", watching: "监听中", needs_login: "需重新登录", paused: "已暂停", submitted: "已提交待核实",
   success: "报名成功", failed: "未报名", cancelled: "已取消",
@@ -116,7 +117,7 @@ export default function DhuCourseManager() {
     <div className={styles.intro}>
       <h2>东华大学课程预约</h2>
       <p>在本站填写学校通行证信息，再用学校发送的企业微信验证码完成验证。本站后端直接请求学校 webproxy 网址。</p>
-      <p className={styles.notice}>学校会话与记录保存在服务器，并与本机浏览器关联。连接课程列表后，服务器定期检查会话；学校要求重新认证时仍需本人输入验证码。预约结束前请不要清除本站 Cookie。</p>
+      <p className={styles.notice}>学校会话保存在当前访问者的服务器会话中；账号状态和预约记录同步保存到 D1。学校要求重新认证时仍需本人输入验证码。请勿清除本站 Cookie，以免失去当前会话入口。</p>
     </div>
 
     <section className={styles.card}>
@@ -160,7 +161,9 @@ export default function DhuCourseManager() {
 
     <section className={styles.card}>
       <h3>添加课程</h3>
-      <p className={styles.notice}>学校选课提交接口正在核验。登录与课程列表可先连接，自动报名暂不开放，避免预约到点后没有实际提交。</p>
+      <p className={styles.notice}>{status.submissionReady
+        ? "自动提交已启用：到点后若未报名成功，每 2 秒最多提交一次，最多 10 次。"
+        : "目前可以保存预约意向和报名参数。学校提交接口尚未核验，自动提交未启用；保存意向不会向学校报名。"}</p>
       <form onSubmit={(event) => { event.preventDefault(); if (canPreview) setConfirm(true); }} className={styles.form}>
         {status.courses.length > 0 && <label>从学校课程列表选择（已读取 {status.courses.length} 门）<select value={status.courses.some((course) => course.courseCode === courseCode) ? courseCode : ""} onChange={(event) => setCourseCode(event.target.value)}>
           <option value="">请选择课程</option>
@@ -174,7 +177,7 @@ export default function DhuCourseManager() {
         <label>选课序号<input inputMode="numeric" pattern="[0-9]{6,12}" value={sectionNumber} onChange={(event) => setSectionNumber(event.target.value)} placeholder="例如 288755" required /></label>
         <label>开始报名时间<input type="datetime-local" step="1" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required /></label>
         <fieldset><legend>是否选教材</legend><label><input type="radio" name="material" checked={buyMaterial === true} onChange={() => setBuyMaterial(true)} /> 需要教材</label><label><input type="radio" name="material" checked={buyMaterial === false} onChange={() => setBuyMaterial(false)} /> 不需要教材</label></fieldset>
-        <button type="submit" disabled>核对报名信息（对接中）</button>
+        <button type="submit" disabled={busy || !canPreview || !status.schoolSession}>核对报名信息</button>
       </form>
     </section>
 
@@ -183,7 +186,7 @@ export default function DhuCourseManager() {
       {status.tasks.length === 0 ? <p>还没有预约课程。</p> : <div className={styles.tasks}>{status.tasks.map((task) => <article key={task.id} className={styles.task}>
         <div><strong>{task.courseCode} · {task.sectionNumber}</strong><span className={task.status === "success" ? styles.good : task.status === "needs_login" || task.status === "paused" || task.status === "failed" ? styles.warn : ""}>{labels[task.status]}</span></div>
         <small>{when(task.scheduledAt)} · {task.buyMaterial ? "需要教材" : "不需要教材"}</small>
-        <p>{task.message}</p>
+        <p>{task.message}{task.attempts ? ` · 已尝试 ${task.attempts}/10 次` : ""}</p>
         {["scheduled", "watching", "needs_login", "paused"].includes(task.status) && <button type="button" disabled={busy} onClick={() => void act("cancelTask", { id: task.id })}>取消预约</button>}
       </article>)}</div>}
     </section>
@@ -201,9 +204,12 @@ export default function DhuCourseManager() {
       <h3 id="dhu-confirm-title">确认报名信息</h3>
       <p>课程编号：<b>{courseCode.trim()}</b></p><p>选课序号：<b>{sectionNumber.trim()}</b></p>
       <p>开始时间：<b>{when(planned)}</b></p><p>教材：<b>{buyMaterial ? "需要" : "不需要"}</b></p>
-      <p>到点后系统会向学校提交该班次；最终以学校返回结果为准。</p>
+      <p>{status.submissionReady ? "到点后将每隔至少 2 秒尝试一次，最多 10 次，报名成功即停止；最终以学校返回结果为准。" : "当前仅保存预约意向。学校提交接口未核验，不会在预约时间自动向学校报名。"}</p>
       <div><button type="button" onClick={() => setConfirm(false)}>返回修改</button><button type="button" disabled={busy} onClick={async () => {
-        if (await act("addTask", { courseCode: courseCode.trim(), sectionNumber: sectionNumber.trim(), scheduledAt: planned, buyMaterial })) setConfirm(false);
+        if (await act("addTask", { courseCode: courseCode.trim(), sectionNumber: sectionNumber.trim(), scheduledAt: planned, buyMaterial })) {
+          setConfirm(false);
+          setToast(status.submissionReady ? "预约已保存" : "预约意向已保存，自动提交尚未启用");
+        }
       }}>确认预约</button></div>
     </div></div>}
     {error && <div role="alert" className={styles.error}>{error}</div>}

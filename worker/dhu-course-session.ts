@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
+import { MAX_SUBMISSION_ATTEMPTS, RETRY_INTERVAL_MS, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, planDhuSubmission, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
+import { ensureDhuTables, saveDhuAccount, saveDhuSubmission, saveDhuTask } from "../lib/dhu-persistence";
 import {
   DHU_COURSE_SEED_URL, SchoolHttp, authPrefixFrom, discoverCoursePageUrls,
   encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
@@ -50,7 +51,40 @@ async function schoolStep<T>(step: string, action: Promise<T>): Promise<T> {
 }
 
 export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
+  private schemaReady?: Promise<void>;
   private get storage() { return (this.ctx as unknown as { storage: CourseStorage }).storage; }
+  private async db() {
+    if (!this.schemaReady) this.schemaReady = ensureDhuTables(this.env.DB).catch((error) => {
+      this.schemaReady = undefined;
+      throw error;
+    });
+    await this.schemaReady;
+    return this.env.DB;
+  }
+  private async ownerId() {
+    let id = await this.storage.get<string>("ownerId");
+    if (!id) { id = crypto.randomUUID(); await this.storage.put("ownerId", id); }
+    return id;
+  }
+  private async persistAccount(state: SchoolState) {
+    if (state.username) await saveDhuAccount(await this.db(), await this.ownerId(), state);
+  }
+  private async persistTask(username: string, task: DhuTask) {
+    await saveDhuTask(await this.db(), await this.ownerId(), username, task);
+  }
+  private async persistRecord(item: DhuSubmissionRecord) {
+    await saveDhuSubmission(await this.db(), await this.ownerId(), item);
+  }
+  private async archiveExisting(username: string) {
+    const marker = `d1Archive:${username}`;
+    if (await this.storage.get<boolean>(marker)) return;
+    const [tasks, records] = await Promise.all([
+      this.tasks(username), this.storage.get<DhuSubmissionRecord[]>(`submissionRecords:${username}`),
+    ]);
+    for (const task of tasks) await this.persistTask(username, task);
+    for (const item of records || []) await this.persistRecord(item);
+    await this.storage.put(marker, true);
+  }
   private async tasks(username?: string) {
     return username ? await this.storage.get<DhuTask[]>(`tasks:${username}`) || [] : [];
   }
@@ -65,12 +99,17 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       this.tasks(state?.username),
       state?.username ? this.storage.get<DhuSubmissionRecord[]>(`submissionRecords:${state.username}`) : undefined,
     ]);
+    if (state?.username && !(await this.storage.get<boolean>(`d1Archive:${state.username}`))) {
+      await this.persistAccount(state);
+      await this.archiveExisting(state.username);
+    }
     return {
       tasks,
       courses: state?.stage === "ready" ? courses || [] : [],
       sections: state?.stage === "ready" ? sections || [] : [],
       sessionHealth: state?.stage === "ready" ? sessionHealth || null : null,
       submissionRecords: submissionRecords || [],
+      submissionReady: false,
       schoolSession: state?.stage === "ready" && state.coursePageUrl
         ? { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } : null,
       login: state ? { stage: state.stage, username: state.username || null } : null,
@@ -158,6 +197,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     await this.storage.delete("sessionHealth");
     await this.storage.deleteAlarm();
     await this.storage.put("school", state);
+    await this.persistAccount(state);
     return { login: { stage: "mfa", username: schoolUser } };
   }
 
@@ -230,6 +270,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     state.stage = gatewayReady ? "ready" : "verified";
     state.updatedAt = Date.now();
     await this.storage.put("school", state);
+    await this.persistAccount(state);
     await this.storage.delete("sessionHealth");
     await this.storage.delete("loginAttempts");
     return { login: { stage: state.stage, username: state.username },
@@ -332,17 +373,29 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       } catch { /* Course page verification is independent of static script diagnostics. */ }
     }
     await this.storage.put("school", state);
+    await this.persistAccount(state);
     await this.storage.setAlarm(Date.now() + SESSION_CHECK_MS);
     return { schoolSession: { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } };
   }
 
   private async addTask(input: unknown) {
     const state = await this.school();
-    if (!state?.coursePageUrl) throw new Error("请先连接学校课程列表");
-    // The school's course submission endpoint is not derivable from the unauthenticated page.
-    // Do not accept a reservation until the exact request and success response are verified.
-    normalizeDhuTask(input);
-    throw new Error("学校选课提交接口尚待验证，暂不能创建自动报名预约");
+    if (state?.stage !== "ready" || !state.coursePageUrl || !state.username) throw new Error("请先连接学校课程列表");
+    const task = normalizeDhuTask(input);
+    const tasks = await this.tasks(state.username);
+    if (tasks.some((item) => item.courseCode === task.courseCode && item.sectionNumber === task.sectionNumber
+      && ["scheduled", "watching", "paused", "needs_login"].includes(item.status))) {
+      throw new Error("该课程和班次已有未结束的预约意向");
+    }
+    // The live school's POST URL, fields, and success response have not been verified.
+    // Save an explicit intent, but never imply it will be submitted automatically yet.
+    task.status = "paused";
+    task.nextAt = task.scheduledAt;
+    task.attempts = 0;
+    task.message = "预约意向已保存；学校提交接口待核验，自动提交尚未启用";
+    await this.persistTask(state.username, task);
+    await this.storage.put(`tasks:${state.username}`, [...tasks, task]);
+    return { task, submissionReady: false };
   }
 
   private async cancelTask(input: unknown) {
@@ -355,6 +408,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     task.message = "已取消";
     task.updatedAt = Date.now();
     if (state?.username) await this.storage.put(`tasks:${state.username}`, tasks);
+    if (state?.username) await this.persistTask(state.username, task);
     if (state?.stage === "ready" && state.coursePageUrl) await this.storage.setAlarm(Date.now() + SESSION_CHECK_MS);
     else await this.storage.deleteAlarm();
     return { task };
@@ -368,23 +422,51 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const submissionRecords = recordKey ? await this.storage.get<DhuSubmissionRecord[]>(recordKey) || [] : [];
     let changed = false;
     for (const task of tasks) {
-      if (!["scheduled", "watching"].includes(task.status) || task.scheduledAt > now) continue;
+      if (!["scheduled", "watching", "submitted"].includes(task.status) || task.nextAt > now) continue;
       changed = true;
-      const recordId = `${task.id}:not-sent`;
-      if (recordKey && !submissionRecords.some((record) => record.id === recordId)) submissionRecords.push({
-        id: recordId, username: state?.username || "", taskId: task.id, courseCode: task.courseCode, sectionNumber: task.sectionNumber,
-        buyMaterial: task.buyMaterial, scheduledAt: task.scheduledAt, recordedAt: now,
-        outcome: "not_sent", message: "学校选课提交接口未验证，系统没有向学校发送报名请求",
-      });
-      task.status = "paused";
-      task.message = "学校直连选课接口尚未验证，预约未提交";
+      if (task.scheduledAt > now) {
+        task.status = "watching";
+        task.nextAt = task.scheduledAt;
+        task.message = "等待指定报名时间";
+      } else if (!state || state.stage !== "ready" || !state.coursePageUrl) {
+        task.status = "needs_login";
+        task.message = "学校会话未就绪，未发送报名请求";
+      } else if (planDhuSubmission(task, now).action === "wait") {
+        task.status = "watching";
+        task.nextAt = Math.max(task.scheduledAt, (task.lastAttemptAt || 0) + RETRY_INTERVAL_MS);
+      } else if ((task.attempts || 0) >= MAX_SUBMISSION_ATTEMPTS) {
+        task.status = "failed";
+        task.message = "已达到最多 10 次提交尝试";
+      } else {
+        // The protocol guard is deliberate: we have not observed the school's
+        // authenticated submit request, so there is no safe network request to send.
+        const recordId = `${task.id}:not-sent`;
+        if (recordKey && !submissionRecords.some((item) => item.id === recordId)) {
+          const item: DhuSubmissionRecord = {
+            id: recordId, username: state.username || "", taskId: task.id,
+            courseCode: task.courseCode, sectionNumber: task.sectionNumber,
+            buyMaterial: task.buyMaterial, scheduledAt: task.scheduledAt, recordedAt: now,
+            outcome: "not_sent", message: "学校提交接口未验证，没有向学校发送报名请求",
+          };
+          submissionRecords.push(item);
+          await this.persistRecord(item);
+        }
+        task.status = "paused";
+        task.message = "学校提交接口待核验，预约未提交";
+      }
       task.updatedAt = now;
+      if (state?.username) await this.persistTask(state.username, task);
     }
     if (changed) {
       if (recordKey) await this.storage.put(recordKey, submissionRecords);
       if (state?.username) await this.storage.put(`tasks:${state.username}`, tasks);
     }
-    if (!state || state.stage !== "ready" || !state.coursePageUrl) return;
+    const nextTaskAt = Math.min(...tasks.filter((task) => ["scheduled", "watching", "submitted"].includes(task.status))
+      .map((task) => task.nextAt));
+    if (!state || state.stage !== "ready" || !state.coursePageUrl) {
+      if (Number.isFinite(nextTaskAt)) await this.storage.setAlarm(nextTaskAt);
+      return;
+    }
     const school = new SchoolHttp(state);
     let health: DhuSessionHealth;
     let nextCheck = SESSION_CHECK_MS;
@@ -405,7 +487,18 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       nextCheck = SESSION_RETRY_MS;
     }
     await this.storage.put("school", state);
+    await this.persistAccount(state);
     await this.storage.put("sessionHealth", health);
-    if (!health.loginRequired) await this.storage.setAlarm(Date.now() + nextCheck);
+    if (health.loginRequired && state.username) {
+      for (const task of tasks) {
+        if (!["scheduled", "watching", "submitted"].includes(task.status)) continue;
+        task.status = "needs_login";
+        task.message = "学校会话已失效，需重新完成学校认证后才能报名";
+        task.updatedAt = Date.now();
+        await this.persistTask(state.username, task);
+      }
+      await this.storage.put(`tasks:${state.username}`, tasks);
+    }
+    if (!health.loginRequired) await this.storage.setAlarm(Math.min(Date.now() + nextCheck, nextTaskAt));
   }
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifySchoolResult, isSchoolCoursePage, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions } from "../lib/dhu-course.ts";
+import { applyDhuSubmissionResult, classifySchoolResult, isSchoolCoursePage, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, planDhuSubmission } from "../lib/dhu-course.ts";
 
 test("reservation requires exact codes, future time and explicit textbook choice", () => {
   const now = 1_000_000;
@@ -32,4 +32,25 @@ test("expanded class table maps a section to its parent course and capacity", ()
     applicants: 25, admitted: 83, teacher: "王澜", schedule: "1-16周 周三.7.8.9节", location: "1教109",
   }]);
   assert.deepEqual(parseDhuSectionOptions('<table id="accessClassTbl"></table>'), []);
+});
+
+test("submission plan waits until server time, spaces attempts by two seconds and stops at ten", () => {
+  const start = 1_000_000;
+  let task = normalizeDhuTask({ courseCode: "030158", sectionNumber: "288755", buyMaterial: false, scheduledAt: start + 60_000 }, start);
+  assert.deepEqual(planDhuSubmission(task, start + 59_999), { action: "wait", nextAt: start + 60_000 });
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    const at = start + 60_000 + (attempt - 1) * 2_000;
+    assert.deepEqual(planDhuSubmission(task, at), { action: "send", attempt });
+    task = applyDhuSubmissionResult(task, at, "retry", "学校尚未确认报名");
+    if (attempt < 10) {
+      assert.deepEqual(planDhuSubmission(task, at + 1_999), { action: "wait", nextAt: at + 2_000 });
+      assert.equal(task.status, "watching");
+    }
+  }
+  assert.equal(task.status, "failed");
+  assert.equal(task.attempts, 10);
+  assert.deepEqual(planDhuSubmission(task, start + 100_000), { action: "stop" });
+  const success = applyDhuSubmissionResult({ ...task, status: "watching", attempts: 0 }, start + 60_000, "success", "报名成功");
+  assert.equal(success.status, "success");
+  assert.deepEqual(planDhuSubmission(success, start + 100_000), { action: "stop" });
 });

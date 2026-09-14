@@ -12,6 +12,8 @@ export type DhuTask = {
   message: string;
   createdAt: number;
   updatedAt: number;
+  attempts?: number;
+  lastAttemptAt?: number;
 };
 
 export type DhuCourseOption = { courseCode: string; name: string; status: string };
@@ -43,12 +45,34 @@ export type DhuSubmissionRecord = {
   recordedAt: number;
   outcome: "not_sent" | "accepted" | "rejected" | "unknown";
   message: string;
+  attempt?: number;
 };
 
 export const DHU_LOGIN_URL = "https://webproxy.dhu.edu.cn/login";
 export const WATCH_WINDOW_MS = 10 * 60_000;
-export const RETRY_INTERVAL_MS = 60_000;
+export const RETRY_INTERVAL_MS = 2_000;
+export const MAX_SUBMISSION_ATTEMPTS = 10;
 export const PREFLIGHT_MS = 5 * 60_000;
+
+export function planDhuSubmission(task: DhuTask, now: number):
+  { action: "wait"; nextAt: number } | { action: "send"; attempt: number } | { action: "stop" } {
+  if (!["scheduled", "watching", "submitted"].includes(task.status)) return { action: "stop" };
+  const earliest = Math.max(task.scheduledAt, (task.lastAttemptAt || 0) + RETRY_INTERVAL_MS);
+  if (now < earliest) return { action: "wait", nextAt: earliest };
+  if ((task.attempts || 0) >= MAX_SUBMISSION_ATTEMPTS) return { action: "stop" };
+  return { action: "send", attempt: (task.attempts || 0) + 1 };
+}
+
+export function applyDhuSubmissionResult(task: DhuTask, attemptedAt: number,
+  result: "success" | "retry", message: string): DhuTask {
+  const attempts = (task.attempts || 0) + 1;
+  return {
+    ...task, attempts, lastAttemptAt: attemptedAt, updatedAt: attemptedAt,
+    status: result === "success" ? "success" : attempts >= MAX_SUBMISSION_ATTEMPTS ? "failed" : "watching",
+    nextAt: result === "success" || attempts >= MAX_SUBMISSION_ATTEMPTS ? 0 : attemptedAt + RETRY_INTERVAL_MS,
+    message,
+  };
+}
 
 export function normalizeDhuTask(input: unknown, now = Date.now()): DhuTask {
   if (!input || typeof input !== "object") throw new Error("请填写课程信息");
