@@ -15,7 +15,7 @@ function school(reply) {
 test("school submit follows conflict check with the exact form fields and textbook choice", async () => {
   const client = school([{ success: true }, { success: true, msg: "" }]);
   assert.deepEqual(await submitDhuCourse(client, page, "288543", true),
-    { outcome: "success", message: "学校返回选课成功" });
+    { outcome: "success", message: "学校返回选课成功", sent: true });
   assert.deepEqual(client.calls.map(({ url, fields }) => [new URL(url).pathname.split("/").at(-1), fields]), [
     ["scConflictCheck", { cttId: "288543" }],
     ["scSubmit", { cttId: "288543", needMaterial: "true", capCode: "" }],

@@ -54,6 +54,7 @@ export default function DhuCourseManager() {
   const [code, setCode] = useState("");
   const [buyMaterial, setBuyMaterial] = useState<boolean | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [testConfirm, setTestConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
@@ -107,6 +108,18 @@ export default function DhuCourseManager() {
       const result = await request("inspectMfa") as { diagnostic: MfaDiagnostic };
       setDiagnostic(result.diagnostic);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "检查失败"); }
+    finally { setBusy(false); }
+  }
+
+  async function runControlledSubmit() {
+    setBusy(true); setError("");
+    try {
+      const result = await request("testSubmit") as { testResult: { outcome: string; message: string } };
+      await refresh();
+      setTestConfirm(false);
+      setToast(result.testResult.outcome === "success"
+        ? "学校返回选课成功；请到学校已选课程再次核对" : result.testResult.message);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "受控试提交失败"); }
     finally { setBusy(false); }
   }
 
@@ -168,6 +181,9 @@ export default function DhuCourseManager() {
           <p>POST 调用线索 {status.protocolEvidence.postCallCount} 处；字段线索：{status.protocolEvidence.fieldHints.join("、") || "未识别"}。</p>
           <p>候选路径：{status.protocolEvidence.endpointCandidates.join("、") || "未识别"}。</p>
           <p>这些只是静态线索；完成受控提交和学校结果核验前，自动报名仍关闭。</p>
+          {status.protocolEvidence.scriptSha256 === "d44c415774df8e9c5160048380bf5b335de879783315ea75fe7c2ee8df92e9ba"
+            && status.sections.some((section) => section.courseCode === "016051" && section.sectionNumber === "288543")
+            && <button type="button" disabled={busy} onClick={() => setTestConfirm(true)}>受控试提交：线性代数 288543</button>}
         </div> : <p className={styles.notice}>尚未取得可核验的学校提交脚本。</p>}
       </details>}
     </section>
@@ -225,6 +241,13 @@ export default function DhuCourseManager() {
           setToast(status.submissionReady ? "预约已保存" : "预约意向已保存，自动提交尚未启用");
         }
       }}>确认预约</button></div>
+    </div></div>}
+    {testConfirm && <div className={styles.scrim} role="presentation"><div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="dhu-test-title">
+      <h3 id="dhu-test-title">确认受控试提交</h3>
+      <p>学校将收到一次真实选课申请：线性代数 <b>016051</b>，选课序号 <b>288543</b>，需要教材。</p>
+      <p>遇到冲突或图形验证码会停止。学校返回成功后，请在学校已选课程再次核对。</p>
+      <div><button type="button" disabled={busy} onClick={() => setTestConfirm(false)}>返回</button>
+        <button type="button" disabled={busy} onClick={() => void runControlledSubmit()}>确认发送一次</button></div>
     </div></div>}
     {error && <div role="alert" className={styles.error}>{error}</div>}
     {toast && <div role="status" className={styles.toast}>{toast}</div>}

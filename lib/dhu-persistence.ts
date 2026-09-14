@@ -70,10 +70,12 @@ export async function saveDhuTask(db: Db, ownerId: string, username: string, tas
 }
 
 export async function saveDhuSubmission(db: Db, ownerId: string, item: DhuSubmissionRecord) {
-  await db.prepare(`INSERT OR IGNORE INTO dhu_course_submissions
+  await db.prepare(`INSERT INTO dhu_course_submissions
     (id, owner_id, username, task_id, attempt, course_code, section_number,
       buy_material, scheduled_at, recorded_at, outcome, message)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      recorded_at = excluded.recorded_at, outcome = excluded.outcome, message = excluded.message`)
     .bind(item.id, ownerId, item.username, item.taskId, item.attempt || 0,
       item.courseCode, item.sectionNumber, item.buyMaterial ? 1 : 0,
       item.scheduledAt, item.recordedAt, item.outcome, item.message).run();

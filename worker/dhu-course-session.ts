@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { MAX_SUBMISSION_ATTEMPTS, RETRY_INTERVAL_MS, normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, parseDhuSectionRows, planDhuSubmission, type DhuCourseOption, type DhuSectionOption, type DhuSessionHealth, type DhuSubmissionRecord, type DhuTask } from "../lib/dhu-course";
 import { ensureDhuTables, saveDhuAccount, saveDhuProtocolSample, saveDhuSubmission, saveDhuTask } from "../lib/dhu-persistence";
 import { analyzeSchoolScript, findSchoolScript, schoolSubmitSourceContext, type DhuProtocolEvidence } from "../lib/dhu-protocol";
+import { submitDhuCourse } from "../lib/dhu-submit";
 import {
   DHU_COURSE_SEED_URL, SchoolHttp, authPrefixFrom, discoverCoursePageUrls,
   encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
@@ -18,6 +19,7 @@ type CourseStorage = {
 
 const SESSION_CHECK_MS = 10 * 60_000;
 const SESSION_RETRY_MS = 2 * 60_000;
+const CONTROLLED_SCRIPT_SHA = "d44c415774df8e9c5160048380bf5b335de879783315ea75fe7c2ee8df92e9ba";
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -131,6 +133,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       if (path === "/login/inspect") return json(await this.inspectMfa());
       if (path === "/login/course") return json(await this.openCoursePage());
       if (path === "/protocol/inspect") return json(await this.inspectProtocol());
+      if (path === "/protocol/test-submit") return json(await this.controlledSubmit());
       if (path === "/course/sections") return json(await this.loadSections(input));
       if (path === "/task") return json(await this.addTask(input), 201);
       if (path === "/task/cancel") return json(await this.cancelTask(input));
@@ -440,6 +443,57 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
       }
       await this.storage.put("sections", sections);
       return { sections, total: Number(payload.iTotalRecords ?? sections.length) };
+    } finally {
+      await this.storage.put("school", state);
+    }
+  }
+
+  private async controlledSubmit() {
+    const state = await this.school();
+    if (state?.stage !== "ready" || !state.coursePageUrl || !state.username) throw new Error("请先连接学校课程列表");
+    const evidence = await this.storage.get<DhuProtocolEvidence>("protocolEvidence");
+    if (evidence?.scriptSha256 !== CONTROLLED_SCRIPT_SHA) throw new Error("学校脚本版本已变化，请先重新核验提交接口");
+    const sections = await this.storage.get<DhuSectionOption[]>("sections") || [];
+    if (!sections.some((section) => section.courseCode === "016051" && section.sectionNumber === "288543")) {
+      throw new Error("请先读取线性代数的 288543 班次，并确认仍在学校列表中");
+    }
+    const marker = `controlledTest:${state.username}`;
+    const previous = await this.storage.get<{ status: string; at: number }>(marker);
+    if (previous && (previous.status !== "rejected" || Date.now() - previous.at < 60_000)) {
+      throw new Error("这条受控试提交已有记录，请先核对学校已选课程和本站提交记录");
+    }
+    const now = Date.now();
+    const recordKey = `submissionRecords:${state.username}`;
+    const records = await this.storage.get<DhuSubmissionRecord[]>(recordKey) || [];
+    const item: DhuSubmissionRecord = {
+      id: crypto.randomUUID(), username: state.username, taskId: "controlled-protocol-test",
+      courseCode: "016051", sectionNumber: "288543", buyMaterial: true,
+      scheduledAt: now, recordedAt: now, outcome: "unknown",
+      message: "受控试提交已开始，等待学校响应", attempt: 1,
+    };
+    await this.persistRecord(item);
+    records.unshift(item);
+    await this.storage.put(recordKey, records.slice(0, 100));
+    await this.storage.put(marker, { status: "pending", at: now });
+    const school = new SchoolHttp(state);
+    try {
+      const result = await submitDhuCourse(school, state.coursePageUrl, "288543", true);
+      item.outcome = !result.sent ? "not_sent" : result.outcome === "success" ? "accepted"
+        : result.outcome === "unknown" ? "unknown" : "rejected";
+      item.message = result.message;
+      item.recordedAt = Date.now();
+      await this.storage.put(recordKey, records);
+      await this.persistRecord(item);
+      await this.storage.put(marker, { status: result.outcome === "success" ? "success"
+        : result.outcome === "unknown" ? "unknown" : "rejected", at: item.recordedAt });
+      return { testResult: result, recordedAt: item.recordedAt };
+    } catch (error) {
+      item.message = `学校响应未确认：${schoolMessage(errorMessage(error))}。请在学校已选课程核对后再操作`;
+      item.recordedAt = Date.now();
+      await this.storage.put(recordKey, records);
+      await this.persistRecord(item);
+      await this.storage.put(marker, { status: "unknown", at: item.recordedAt });
+      return { testResult: { outcome: "unknown", sent: null, message: item.message }, recordedAt: item.recordedAt };
     } finally {
       await this.storage.put("school", state);
     }
