@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { normalizeDhuTask, parseDhuCourseOptions, type DhuCourseOption, type DhuTask } from "../lib/dhu-course";
+import { normalizeDhuTask, parseDhuCourseOptions, parseDhuSectionOptions, type DhuCourseOption, type DhuSectionOption, type DhuTask } from "../lib/dhu-course";
 import {
   SchoolHttp, authPrefixFrom, encryptSchoolPassword, schoolRedirect, validateCoursePageUrl,
   type SchoolState,
@@ -51,12 +51,13 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
   private async school() { return await this.storage.get<SchoolState>("school"); }
 
   private async summary() {
-    const [tasks, state, courses] = await Promise.all([
-      this.tasks(), this.school(), this.storage.get<DhuCourseOption[]>("courses"),
+    const [tasks, state, courses, sections] = await Promise.all([
+      this.tasks(), this.school(), this.storage.get<DhuCourseOption[]>("courses"), this.storage.get<DhuSectionOption[]>("sections"),
     ]);
     return {
       tasks,
       courses: state?.stage === "ready" ? courses || [] : [],
+      sections: state?.stage === "ready" ? sections || [] : [],
       schoolSession: state?.stage === "ready" && state.coursePageUrl
         ? { savedAt: state.updatedAt, coursePageUrl: state.coursePageUrl } : null,
       login: state ? { stage: state.stage, username: state.username || null } : null,
@@ -133,9 +134,13 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     if (schoolUser !== username) throw new Error("学校认证账号与提交账号不一致");
     state.stage = "mfa";
     state.username = schoolUser;
-    state.mfa = { type: mfaType, appId, appUrl };
+    const auths = Array.isArray(mfa.auths) ? mfa.auths.map((item) => String(record(item).type || "")) : [];
+    const messageAuth = record(record(record(enhanced?.login).webCodeAuth).webWorkWechatMsgAuth);
+    state.mfa = { type: mfaType, appId, appUrl, methodAvailable: auths.includes("webWorkWechatMsgAuth"),
+      passwordRequired: messageAuth.staticPassword === "1" };
     state.updatedAt = Date.now();
     await this.storage.delete("courses");
+    await this.storage.delete("sections");
     await this.storage.put("school", state);
     return { login: { stage: "mfa", username: schoolUser } };
   }
@@ -169,15 +174,28 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const dataField: Record<string, string> = {
       username: state.username, password: "", msgCode: code, vcode: "",
     };
+    // The school's MFA form checks the selected account and auth method before submitting.
+    const check = (await school.json(
+      `${state.authPrefix}/esc-sso/authn/user?username=${encodeURIComponent(state.username)}&authType=webWorkWechatMsgAuth`,
+      "GET", undefined, mfaReferer(state),
+    ).catch(() => null))?.body.data;
+    if (check?.enable && check?.type) throw new Error("学校要求额外图形验证，请在学校官网完成认证");
     let endpoint = `${state.authPrefix}/esc-sso/auth/login`;
     if (Number(mfa.type) === 2) {
       endpoint = `${state.authPrefix}/esc-sso/authn/app/enhance/ext/login`;
       dataField.appId = String(app.appId || "");
       dataField.appUrl = String(app.appUrl || "");
     }
-    const result = (await schoolStep("学校企业微信验证码验证", school.json(endpoint, "POST", {
-      authType: "webWorkWechatMsgAuth", dataField, redirectUri: "",
-    }, mfaReferer(state)))).body;
+    let result: { data?: Record<string, unknown> };
+    try {
+      result = (await schoolStep("学校企业微信验证码验证", school.json(endpoint, "POST", {
+        authType: "webWorkWechatMsgAuth", dataField, redirectUri: "",
+      }, mfaReferer(state)))).body;
+    } catch (error) {
+      // A rejected OTP can still rotate school cookies. Keep that rotation for inspection/retry.
+      await this.storage.put("school", state);
+      throw error;
+    }
     const redirect = schoolRedirect(result.data, state.authPrefix);
     if (!redirect) throw new Error("学校未返回认证完成后的跳转地址");
     const completed = await schoolStep("学校认证完成跳转", school.request(redirect));
@@ -195,10 +213,22 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     const state = await this.school();
     if (!state || state.stage !== "mfa" || !state.authPrefix) throw new Error("当前没有待完成的企业微信认证");
     const school = new SchoolHttp(state);
-    const policy = (await schoolStep("读取学校企业微信认证状态", school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`))).body.data;
+    const policyResponse = await school.json(`${state.authPrefix}/esc-sso/authn/policy/enhance`).catch((error) => ({ error: errorMessage(error) }));
+    if ("error" in policyResponse) {
+      await this.storage.put("school", state);
+      return { diagnostic: { schoolError: policyResponse.error,
+        methodAvailable: state.mfa?.methodAvailable ?? null, passwordRequired: state.mfa?.passwordRequired ?? null } };
+    }
+    const policy = policyResponse.body.data;
     const config = record(policy?.config);
     const current = record(config.mfaAuth);
     const app = record(current.app);
+    const messageAuth = record(record(record(policy?.login).webCodeAuth).webWorkWechatMsgAuth);
+    const auths = Array.isArray(current.auths) ? current.auths.map((item) => String(record(item).type || "")) : [];
+    const challenge = (await school.json(
+      `${state.authPrefix}/esc-sso/authn/user?username=${encodeURIComponent(state.username || "")}&authType=webWorkWechatMsgAuth`,
+      "GET", undefined, mfaReferer(state),
+    ).catch(() => null))?.body.data;
     await this.storage.put("school", state);
     return { diagnostic: {
       schoolStatus: String(current.status ?? "未知"),
@@ -209,6 +239,9 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
         && String(app.appUrl || "") === state.mfa.appUrl),
       accountMatches: String(config.username || "") === state.username,
       sessionCookieCount: state.cookies.length,
+      methodAvailable: auths.includes("webWorkWechatMsgAuth"),
+      passwordRequired: messageAuth.staticPassword === "1",
+      captchaRequired: challenge ? Boolean(challenge.enable && challenge.type) : null,
     } };
   }
 
@@ -225,6 +258,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     state.coursePageUrl = url.href;
     state.updatedAt = Date.now();
     await this.storage.put("courses", parseDhuCourseOptions(html));
+    await this.storage.put("sections", parseDhuSectionOptions(html));
     const scriptSource = html.match(/<script[^>]+src=["']([^"']*selecthome\.js[^"']*)["']/i)?.[1];
     if (scriptSource) {
       try {

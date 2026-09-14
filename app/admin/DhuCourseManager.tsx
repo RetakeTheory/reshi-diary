@@ -1,22 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DhuCourseOption, DhuTask } from "../../lib/dhu-course";
+import type { DhuCourseOption, DhuSectionOption, DhuTask } from "../../lib/dhu-course";
 import styles from "./DhuCourseManager.module.css";
 
 type Status = {
   tasks: DhuTask[];
   courses: DhuCourseOption[];
+  sections: DhuSectionOption[];
   schoolSession: { savedAt: number; coursePageUrl: string } | null;
   login: { stage: "passport" | "mfa" | "ready"; username: string | null } | null;
 };
 type MfaDiagnostic = {
-  schoolStatus: string; schoolType: number; schoolSteps: number;
-  applicationParametersPresent: boolean; applicationParametersMatch: boolean;
-  accountMatches: boolean; sessionCookieCount: number;
+  schoolError?: string;
+  schoolStatus?: string; schoolType?: number; schoolSteps?: number;
+  applicationParametersPresent?: boolean; applicationParametersMatch?: boolean;
+  accountMatches?: boolean; sessionCookieCount?: number;
+  methodAvailable: boolean | null; passwordRequired: boolean | null; captchaRequired?: boolean | null;
 };
 
-const empty: Status = { tasks: [], courses: [], schoolSession: null, login: null };
+const empty: Status = { tasks: [], courses: [], sections: [], schoolSession: null, login: null };
 const labels: Record<DhuTask["status"], string> = {
   scheduled: "等待执行", watching: "监听中", needs_login: "需重新登录", paused: "已暂停", submitted: "已提交待核实",
   success: "报名成功", failed: "未报名", cancelled: "已取消",
@@ -132,7 +135,9 @@ export default function DhuCourseManager() {
         <button type="submit" disabled={busy || !code.trim()}>验证并登录</button>
         <button type="button" disabled={busy} onClick={() => void inspectMfa()}>检查企业微信认证状态</button>
       </form>}
-      {diagnostic && <p className={styles.notice}>学校状态 {diagnostic.schoolStatus} · 验证类型 {diagnostic.schoolType} · 步骤数 {diagnostic.schoolSteps} · 应用参数{diagnostic.applicationParametersPresent ? "已读取" : "缺失"} · 前后{diagnostic.applicationParametersMatch ? "一致" : "不一致"} · 账号{diagnostic.accountMatches ? "一致" : "不一致"} · 会话 Cookie {diagnostic.sessionCookieCount} 个</p>}
+      {diagnostic && <p className={styles.notice}>{diagnostic.schoolError
+        ? `学校拒绝当前认证状态查询：${diagnostic.schoolError}。请稍后重新登录学校通行证。`
+        : `学校状态 ${diagnostic.schoolStatus} · 验证类型 ${diagnostic.schoolType} · 步骤数 ${diagnostic.schoolSteps} · 应用参数${diagnostic.applicationParametersPresent ? "已读取" : "缺失"} · 前后${diagnostic.applicationParametersMatch ? "一致" : "不一致"} · 账号${diagnostic.accountMatches ? "一致" : "不一致"} · 会话 Cookie ${diagnostic.sessionCookieCount} 个 · 企业微信短信方式${diagnostic.methodAvailable === null ? "未知" : diagnostic.methodAvailable ? "可用" : "未列出"} · 二次密码${diagnostic.passwordRequired === null ? "未知" : diagnostic.passwordRequired ? "必填" : "不需要"} · 图形验证${diagnostic.captchaRequired == null ? "未确认" : diagnostic.captchaRequired ? "必填" : "不需要"}`}</p>}
       {status.login?.stage === "ready" && <form className={styles.form} onSubmit={(event) => {
         event.preventDefault();
         void act("openCoursePage", { coursePageUrl: coursePageUrl.trim() });
@@ -152,6 +157,10 @@ export default function DhuCourseManager() {
           {status.courses.map((course) => <option key={course.courseCode} value={course.courseCode}>{course.courseCode} · {course.name} · {course.status}</option>)}
         </select></label>}
         <label>课程编号<input inputMode="numeric" pattern="[0-9]{6,12}" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="例如 030158" required /></label>
+        {status.sections.some((section) => section.courseCode === courseCode) && <label>从班次列表选择<select value={status.sections.some((section) => section.courseCode === courseCode && section.sectionNumber === sectionNumber) ? sectionNumber : ""} onChange={(event) => setSectionNumber(event.target.value)}>
+          <option value="">请选择选课序号</option>
+          {status.sections.filter((section) => section.courseCode === courseCode).map((section) => <option key={section.sectionNumber} value={section.sectionNumber}>{section.sectionNumber} · {section.teacher} · {section.schedule} · 已录 {section.admitted}/{section.capacity}</option>)}
+        </select></label>}
         <label>选课序号<input inputMode="numeric" pattern="[0-9]{6,12}" value={sectionNumber} onChange={(event) => setSectionNumber(event.target.value)} placeholder="例如 288755" required /></label>
         <label>开始报名时间<input type="datetime-local" step="1" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required /></label>
         <fieldset><legend>是否选教材</legend><label><input type="radio" name="material" checked={buyMaterial === true} onChange={() => setBuyMaterial(true)} /> 需要教材</label><label><input type="radio" name="material" checked={buyMaterial === false} onChange={() => setBuyMaterial(false)} /> 不需要教材</label></fieldset>

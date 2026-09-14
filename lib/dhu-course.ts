@@ -15,6 +15,17 @@ export type DhuTask = {
 };
 
 export type DhuCourseOption = { courseCode: string; name: string; status: string };
+export type DhuSectionOption = {
+  courseCode: string;
+  sectionNumber: string;
+  classNumber: string;
+  capacity: number;
+  applicants: number;
+  admitted: number;
+  teacher: string;
+  schedule: string;
+  location: string;
+};
 
 export const DHU_LOGIN_URL = "https://webproxy.dhu.edu.cn/login";
 export const WATCH_WINDOW_MS = 10 * 60_000;
@@ -73,4 +84,25 @@ export function parseDhuCourseOptions(html: string): DhuCourseOption[] {
     courses.push({ courseCode: code, name: cellText(cells[2]), status: cellText(cells[4]) });
   }
   return courses;
+}
+
+export function parseDhuSectionOptions(html: string): DhuSectionOption[] {
+  const courseCode = html.match(/id=["']curCourseCode["'][^>]*>\s*(\d{6,12})\s*</i)?.[1];
+  const table = html.match(/<table\b[^>]*\bid=["']accessClassTbl["'][^>]*>([\s\S]*?)<\/table>/i)?.[1];
+  if (!courseCode || !table) return [];
+  const sections: DhuSectionOption[] = [];
+  for (const row of table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
+    if (cells.length < 10) continue;
+    const sectionNumber = cells[0].match(/<a\b[^>]*>\s*(\d{6,12})\s*<\/a>/i)?.[1];
+    if (!sectionNumber || !/openSCC\s*\(/i.test(cells[0])) continue;
+    const number = (cell: string) => Number(cellText(cell));
+    sections.push({
+      courseCode, sectionNumber, classNumber: cellText(cells[1]),
+      capacity: number(cells[2]), applicants: number(cells[3]), admitted: number(cells[4]),
+      teacher: cellText(cells[6]), schedule: `${cellText(cells[7])} ${cellText(cells[8])}`.trim(),
+      location: cellText(cells[9]),
+    });
+  }
+  return sections;
 }
