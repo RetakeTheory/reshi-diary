@@ -388,7 +388,7 @@ export class DhuCourseSession extends DurableObject<Cloudflare.Env> {
     await this.storage.put("protocolEvidence", evidence);
     const contexts = schoolSubmitSourceContext(source);
     if (contexts.length) await saveDhuProtocolSample(await this.db(), evidence.scriptSha256,
-      evidence.checkedAt, contexts[0].source);
+      evidence.checkedAt, JSON.stringify(contexts));
     console.info(JSON.stringify({ event: "dhu_course_protocol_evidence", ...evidence }));
     console.info(JSON.stringify({ event: "dhu_course_submit_source_context", scriptSha256: evidence.scriptSha256,
       contexts }));
